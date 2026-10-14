@@ -199,3 +199,86 @@ fn read_only_git_is_refused() {
     let ro = Git::discover(Mode::ReadOnly).unwrap();
     assert_eq!(Engine::open(ro, &repo()).err().unwrap().code, "READ_ONLY");
 }
+
+fn committed(d: &Path, e: &Engine, name: &str, text: &str) {
+    write(d, name, text);
+    stage(e, &[name]);
+    commit(e, &format!("add {name}"), false);
+}
+
+#[test]
+fn discard_restores_tracked_and_untracked_and_can_be_undone() {
+    let d = repo();
+    let e = engine(&d);
+    committed(&d, &e, "a.txt", "one\n");
+    committed(&d, &e, "gone.txt", "bye\n");
+    write(&d, "a.txt", "changed\n");
+    std::fs::remove_file(d.join("gone.txt")).unwrap();
+    write(&d, "new.txt", "fresh\n");
+    let out = e
+        .run(&Operation::Discard { paths: vec!["a.txt".into(), "gone.txt".into(), "new.txt".into()] })
+        .unwrap();
+    assert_eq!(git(&d, &["status", "--porcelain"]), "");
+    assert!(!d.join("new.txt").exists());
+    e.undo(out.id.as_deref().unwrap()).unwrap();
+    assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "changed\n");
+    assert_eq!(std::fs::read_to_string(d.join("new.txt")).unwrap(), "fresh\n");
+    assert!(!d.join("gone.txt").exists());
+}
+
+#[test]
+fn undo_discard_refuses_to_overwrite_newer_work() {
+    let d = repo();
+    let e = engine(&d);
+    committed(&d, &e, "a.txt", "one\n");
+    write(&d, "a.txt", "changed\n");
+    let out = e.run(&Operation::Discard { paths: vec!["a.txt".into()] }).unwrap();
+    write(&d, "a.txt", "newer\n");
+    assert_eq!(code(e.undo(out.id.as_deref().unwrap()).map(|_| Default::default())), "WORKTREE_CHANGED");
+    assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "newer\n");
+}
+
+#[test]
+fn discard_rejects_paths_outside_the_repo() {
+    let d = repo();
+    let e = engine(&d);
+    for p in ["../x", "/etc/passwd", ".git/config", "a/../../x"] {
+        assert_eq!(code(e.run(&Operation::Discard { paths: vec![p.into()] })), "INVALID_PATH", "{p}");
+    }
+}
+
+#[test]
+fn stage_and_unstage_single_hunks() {
+    let d = repo();
+    let e = engine(&d);
+    let base: String = (1..=40).map(|i| format!("line {i}\n")).collect();
+    committed(&d, &e, "f.txt", &base);
+    let edited = base.replace("line 2\n", "LINE 2\n").replace("line 38\n", "LINE 38\n");
+    write(&d, "f.txt", &edited);
+    e.run(&Operation::StageHunk { path: "f.txt".into(), hunk: 1, unstage: false }).unwrap();
+    let staged = git(&d, &["diff", "--cached"]);
+    assert!(staged.contains("+LINE 38") && !staged.contains("+LINE 2\n"), "{staged}");
+    let unstaged = git(&d, &["diff"]);
+    assert!(unstaged.contains("+LINE 2") && !unstaged.contains("LINE 38"), "{unstaged}");
+    e.run(&Operation::StageHunk { path: "f.txt".into(), hunk: 0, unstage: true }).unwrap();
+    assert_eq!(git(&d, &["diff", "--cached"]), "");
+    assert_eq!(code(e.run(&Operation::StageHunk { path: "f.txt".into(), hunk: 5, unstage: false })), "INVALID_HUNK");
+}
+
+#[test]
+fn reader_worktree_diff_and_rows_text() {
+    use ak_core::read::{CliReader, RepoReader};
+    let d = repo();
+    let e = engine(&d);
+    committed(&d, &e, "a.txt", "one\n");
+    write(&d, "a.txt", "two\n");
+    write(&d, "u.txt", "new\n");
+    let r = CliReader::open(Git::discover(Mode::ReadOnly).unwrap(), &d).unwrap();
+    assert!(r.worktree_diff("a.txt", false, false).unwrap().contains("+two"));
+    assert_eq!(r.worktree_diff("a.txt", true, false).unwrap(), "");
+    assert!(r.worktree_diff("u.txt", false, true).unwrap().contains("+new"));
+    let head = r.head().unwrap().unwrap();
+    let rows = r.rows_text(&[head.as_str()]).unwrap();
+    assert_eq!((rows[0].summary.as_str(), rows[0].author.as_str()), ("add a.txt", "Test"));
+    assert!(r.rows_text(&["--all"]).is_err());
+}

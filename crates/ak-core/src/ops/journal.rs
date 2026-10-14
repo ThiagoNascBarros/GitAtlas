@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 pub struct JournalEntry {
     pub id: String,
     pub time: i64,
-    /// `commit` or `commit_amend`.
+    /// `commit`, `commit_amend` or `discard`.
     pub kind: String,
     pub summary: String,
     pub branch: Option<String>,
@@ -22,6 +22,12 @@ pub struct JournalEntry {
     /// git commands run (for the "show exact commands" journal view).
     pub commands: Vec<String>,
     pub undone: bool,
+    /// Discard: tracked files whose changes were backed up (restored on undo).
+    #[serde(default)]
+    pub paths: Vec<String>,
+    /// Discard: untracked files that were deleted (restored on undo).
+    #[serde(default)]
+    pub untracked: Vec<String>,
 }
 
 pub struct Journal {

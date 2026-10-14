@@ -79,6 +79,11 @@ pub enum Operation {
     Stage { paths: Vec<String> },
     Unstage { paths: Vec<String> },
     Commit { message: String, amend: bool },
+    /// Stage (or unstage) one hunk of a tracked file; `hunk` is the 0-based index
+    /// in `git diff` (or `git diff --cached` when unstaging).
+    StageHunk { path: String, hunk: usize, unstage: bool },
+    /// Throw away working-tree changes. A backup is kept so Undo can restore them.
+    Discard { paths: Vec<String> },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -91,6 +96,7 @@ pub struct OpOutcome {
 pub struct Engine {
     git: Git,
     root: PathBuf,
+    git_dir: PathBuf,
     journal: Journal,
 }
 
@@ -128,7 +134,7 @@ impl Engine {
         let root = PathBuf::from(String::from_utf8_lossy(&top).trim());
         let gd = git.run(&root, ["rev-parse", "--absolute-git-dir"])?;
         let git_dir = PathBuf::from(String::from_utf8_lossy(&gd).trim());
-        Ok(Self { git, root, journal: Journal::new(&git_dir) })
+        Ok(Self { git, root, journal: Journal::new(&git_dir), git_dir })
     }
 
     pub fn root(&self) -> &Path {
@@ -166,6 +172,8 @@ impl Engine {
             Operation::Stage { paths } => self.stage(paths, true),
             Operation::Unstage { paths } => self.stage(paths, false),
             Operation::Commit { message, amend } => self.commit(message, *amend),
+            Operation::StageHunk { path, hunk, unstage } => self.stage_hunk(path, *hunk, *unstage),
+            Operation::Discard { paths } => self.discard(paths),
         }
     }
 
@@ -241,6 +249,8 @@ impl Engine {
             snapshot_ref,
             commands: vec![format!("git {}", args.join(" "))],
             undone: false,
+            paths: vec![],
+            untracked: vec![],
         })?;
         Ok(OpOutcome { id: Some(id), head: head_after })
     }
@@ -256,10 +266,15 @@ impl Engine {
         if entry.undone {
             return Err(OpError::new("ALREADY_UNDONE", "This operation was already undone.", None));
         }
+        let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
+        if entry.kind == "discard" {
+            self.undo_discard(&entry)?;
+            self.journal.mark_undone(id)?;
+            return Ok(OpOutcome { id: None, head: self.head() });
+        }
         if !matches!(entry.kind.as_str(), "commit" | "commit_amend") {
             return Err(OpError::new("UNDO_NOT_SUPPORTED", "This operation cannot be undone.", None));
         }
-        let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
         if self.head() != entry.head_after {
             return Err(OpError::new(
                 "HEAD_MOVED",
@@ -281,4 +296,168 @@ impl Engine {
         self.journal.mark_undone(id)?;
         Ok(OpOutcome { id: None, head: self.head() })
     }
+
+    fn stage_hunk(&self, path: &str, hunk: usize, unstage: bool) -> Result<OpOutcome, OpError> {
+        check_rel(path)?;
+        let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
+        let spec = literal(path);
+        let mut args = vec!["diff", "--no-color", "--no-ext-diff", "-U3"];
+        if unstage {
+            args.push("--cached");
+        }
+        args.extend(["--", spec.as_str()]);
+        let diff = self.git.run(&self.root, args)?;
+        let (header, hunks) = split_patch(&diff);
+        let chosen = hunks
+            .get(hunk)
+            .ok_or_else(|| OpError::new("INVALID_HUNK", "That change no longer exists; the file was modified.", Some("Refresh and try again.")))?;
+        let mut patch = header;
+        patch.extend_from_slice(chosen);
+        let mut apply = vec!["apply", "--cached", "--recount", "--whitespace=nowarn"];
+        if unstage {
+            apply.push("--reverse");
+        }
+        apply.push("-");
+        self.git.run_with_input(&self.root, apply, &patch)?;
+        Ok(OpOutcome::default())
+    }
+
+    fn discard_dir(&self, id: &str) -> PathBuf {
+        self.git_dir.join("atlaskraken").join("discarded").join(id)
+    }
+
+    fn discard(&self, paths: &[String]) -> Result<OpOutcome, OpError> {
+        if paths.is_empty() {
+            return Err(OpError::new("INVALID_PATH", "No valid file was given.", None));
+        }
+        for p in paths {
+            check_rel(p)?;
+        }
+        let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
+        let mut tracked = std::collections::HashSet::new();
+        for chunk in paths.chunks(PATH_CHUNK) {
+            let specs: Vec<String> = chunk.iter().map(|p| literal(p)).collect();
+            let mut args = vec!["ls-files", "-z", "--"];
+            args.extend(specs.iter().map(String::as_str));
+            let out = self.git.run(&self.root, args)?;
+            tracked.extend(String::from_utf8_lossy(&out).split('\0').filter(|s| !s.is_empty()).map(str::to_owned));
+        }
+        let id = new_id();
+        let dir = self.discard_dir(&id);
+        let (mut keep_tracked, mut keep_untracked) = (vec![], vec![]);
+        // Back everything up first; nothing is touched if a backup fails.
+        for p in paths {
+            let src = self.root.join(p);
+            match std::fs::symlink_metadata(&src) {
+                Ok(m) if m.is_file() => {
+                    let dst = dir.join(p);
+                    std::fs::create_dir_all(dst.parent().unwrap_or(&dir))?;
+                    std::fs::copy(&src, &dst)?;
+                }
+                Ok(_) => return Err(OpError::new("UNSUPPORTED_PATH", "Only regular files can be discarded safely.", Some("Discard it from a terminal."))),
+                Err(_) => {} // deleted tracked file: nothing to back up
+            }
+            if tracked.contains(p) { keep_tracked.push(p.clone()) } else { keep_untracked.push(p.clone()) }
+        }
+        let mut commands = vec![];
+        for chunk in keep_tracked.chunks(PATH_CHUNK) {
+            let specs: Vec<String> = chunk.iter().map(|p| literal(p)).collect();
+            let mut args = vec!["checkout", "-q", "--"];
+            args.extend(specs.iter().map(String::as_str));
+            self.git.run(&self.root, args)?;
+        }
+        if !keep_tracked.is_empty() {
+            commands.push("git checkout -q -- <files>".to_owned());
+        }
+        for p in &keep_untracked {
+            std::fs::remove_file(self.root.join(p))?;
+        }
+        if !keep_untracked.is_empty() {
+            commands.push("delete untracked files".to_owned());
+        }
+        self.journal.append(&JournalEntry {
+            id: id.clone(),
+            time: now(),
+            kind: "discard".to_owned(),
+            summary: if paths.len() == 1 { paths[0].clone() } else { format!("{} files", paths.len()) },
+            branch: self.branch(),
+            head_before: self.head(),
+            head_after: self.head(),
+            snapshot_ref: None,
+            commands,
+            undone: false,
+            paths: keep_tracked,
+            untracked: keep_untracked,
+        })?;
+        Ok(OpOutcome { id: Some(id), head: self.head() })
+    }
+
+    fn undo_discard(&self, e: &JournalEntry) -> Result<(), OpError> {
+        let changed = || {
+            OpError::new(
+                "WORKTREE_CHANGED",
+                "These files changed after they were discarded, so restoring them would overwrite newer work.",
+                Some("Save or discard the newer changes first."),
+            )
+        };
+        for p in &e.untracked {
+            if self.root.join(p).exists() {
+                return Err(changed());
+            }
+        }
+        for chunk in e.paths.chunks(PATH_CHUNK) {
+            let specs: Vec<String> = chunk.iter().map(|p| literal(p)).collect();
+            let mut args = vec!["diff", "--quiet", "--"];
+            args.extend(specs.iter().map(String::as_str));
+            match self.git.run(&self.root, args) {
+                Ok(_) => {}
+                Err(GitError::Failed { code: Some(1), .. }) => return Err(changed()),
+                Err(err) => return Err(err.into()),
+            }
+        }
+        let dir = self.discard_dir(&e.id);
+        for p in e.paths.iter().chain(&e.untracked) {
+            let (bak, dst) = (dir.join(p), self.root.join(p));
+            if bak.is_file() {
+                std::fs::create_dir_all(dst.parent().unwrap_or(&self.root))?;
+                std::fs::copy(&bak, &dst)?;
+            } else {
+                let _ = std::fs::remove_file(&dst); // the discarded change was a deletion
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Paths from the UI must stay inside the working tree and away from `.git`.
+fn check_rel(p: &str) -> Result<(), OpError> {
+    let bad = p.is_empty()
+        || p.contains('\0')
+        || Path::new(p).is_absolute()
+        || Path::new(p).components().any(|c| {
+            matches!(c, std::path::Component::ParentDir | std::path::Component::RootDir)
+                || c.as_os_str() == ".git"
+        });
+    if bad {
+        Err(OpError::new("INVALID_PATH", "That path is not inside the repository.", None))
+    } else {
+        Ok(())
+    }
+}
+
+/// Splits a unified diff of one file into its header and its hunks (bytes, so
+/// non-UTF-8 content survives the round trip to `git apply`).
+fn split_patch(diff: &[u8]) -> (Vec<u8>, Vec<Vec<u8>>) {
+    let mut header = vec![];
+    let mut hunks: Vec<Vec<u8>> = vec![];
+    for line in diff.split_inclusive(|b| *b == b'\n') {
+        if line.starts_with(b"@@ ") {
+            hunks.push(line.to_vec());
+        } else if let Some(h) = hunks.last_mut() {
+            h.extend_from_slice(line);
+        } else {
+            header.extend_from_slice(line);
+        }
+    }
+    (header, hunks)
 }
