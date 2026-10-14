@@ -18,7 +18,8 @@ TICK=1700000000
 new_repo() {
   TICK=1700000000
   rm -rf "$OUT/$1"
-  git init -q -b main "$OUT/$1"
+  git init -q "$OUT/$1"
+  git -C "$OUT/$1" symbolic-ref HEAD refs/heads/main  # init -b needs Git 2.28
   cd "$OUT/$1"
   git config commit.gpgsign false
   git config user.name "$GIT_AUTHOR_NAME"
