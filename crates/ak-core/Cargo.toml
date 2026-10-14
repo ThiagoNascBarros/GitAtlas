@@ -1,0 +1,15 @@
+[package]
+name = "ak-core"
+description = "AtlasKraken core: repository reading and commit graph layout"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+ak-gitcli = { path = "../ak-gitcli" }
+thiserror.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

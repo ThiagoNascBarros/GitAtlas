@@ -1,0 +1,241 @@
+// SPDX-License-Identifier: Apache-2.0
+// Canvas commit graph (roadmap T1.8): virtualized rows, lanes, refs,
+// selection, keyboard navigation and an accessible shadow of the selection.
+import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
+import { api, FLAG_MERGE, GraphRow, OpenedRepo, RefInfo, RowMeta, SEG_IN, SEG_OUT, SEG_PASS } from "../../api";
+import { activeTheme, laneColor, token } from "../../theme/theme";
+import { t } from "../../i18n";
+
+const ROW_H = 28;
+const LANE_W = 16;
+const CHUNK = 200;
+const REF_COL_W = 180;
+const AUTHOR_W = 140;
+const DATE_W = 96;
+const SHA_W = 72;
+const MIN_MESSAGE_W = 160;
+
+/** Column x positions shared by the canvas and the header. Narrow views drop author, then date. */
+export function columns(width: number, graphW: number) {
+  const msgX = REF_COL_W + graphW;
+  let right = width - 8;
+  const shaX = right - SHA_W; right = shaX;
+  const showDate = right - DATE_W - msgX >= MIN_MESSAGE_W;
+  const dateX = showDate ? right - DATE_W : right; if (showDate) right = dateX;
+  const showAuthor = right - AUTHOR_W - msgX >= MIN_MESSAGE_W;
+  const authorX = showAuthor ? right - AUTHOR_W : right; if (showAuthor) right = authorX;
+  return { msgX, msgW: right - msgX - 12, authorX, showAuthor, dateX, showDate, shaX };
+}
+
+interface Chunk { rows: GraphRow[]; meta: RowMeta[] }
+
+export function GraphView(props: {
+  repo: OpenedRepo;
+  selected: number | null;
+  onSelect: (row: number, sha: string) => void;
+}) {
+  let scroller!: HTMLDivElement;
+  let canvas!: HTMLCanvasElement;
+  const chunks = new Map<number, Chunk>();
+  const pending = new Set<number>();
+  const [tick, setTick] = createSignal(0);
+  const [size, setSize] = createSignal({ w: 800, h: 600 });
+  const [scrollTop, setScrollTop] = createSignal(0);
+
+  const refsByRow = () => {
+    const m = new Map<number, RefInfo[]>();
+    for (const r of props.repo.refs) if (r.row !== null) m.set(r.row, [...(m.get(r.row) ?? []), r]);
+    return m;
+  };
+  const graphW = () => Math.min(Math.max(props.repo.laneCount, 1), 14) * LANE_W + LANE_W;
+
+  function ensure(chunk: number) {
+    if (chunks.has(chunk) || pending.has(chunk) || chunk * CHUNK >= props.repo.rowCount) return;
+    pending.add(chunk);
+    const start = chunk * CHUNK;
+    Promise.all([api.window(props.repo.repoId, start, CHUNK), api.rows(props.repo.repoId, start, CHUNK)]).then(([w, meta]) => {
+      chunks.set(chunk, { rows: w.rows, meta });
+      pending.delete(chunk);
+      setTick(tick() + 1);
+    });
+  }
+
+  function rowAt(i: number): { g: GraphRow; m: RowMeta } | undefined {
+    const c = chunks.get(Math.floor(i / CHUNK));
+    if (!c) return;
+    const k = i % CHUNK;
+    return c.rows[k] && { g: c.rows[k], m: c.meta[k] };
+  }
+
+  function draw() {
+    tick();
+    activeTheme();
+    const { w, h } = size();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+    const ctx = canvas.getContext("2d")!;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = token("color.bg.canvas");
+    ctx.fillRect(0, 0, w, h);
+
+    const top = scrollTop();
+    const first = Math.floor(top / ROW_H);
+    const last = Math.min(props.repo.rowCount - 1, Math.ceil((top + h) / ROW_H));
+    for (let c = Math.floor(first / CHUNK); c <= Math.floor(last / CHUNK); c++) ensure(c);
+
+    const gx = REF_COL_W - 8;
+    const laneX = (l: number) => gx + LANE_W / 2 + l * LANE_W + 4;
+    const refs = refsByRow();
+    ctx.font = "13px Inter, Cantarell, system-ui, sans-serif";
+    ctx.textBaseline = "middle";
+
+    for (let i = first; i <= last; i++) {
+      const y = i * ROW_H - top;
+      const cy = y + ROW_H / 2;
+      const r = rowAt(i);
+      if (i === props.selected) {
+        ctx.fillStyle = token("color.bg.selected");
+        ctx.fillRect(0, y, w, ROW_H);
+      }
+      if (!r) continue;
+      // Edges
+      ctx.lineWidth = 2;
+      for (const s of r.g.segs) {
+        ctx.strokeStyle = laneColor(s.color);
+        ctx.beginPath();
+        if (s.kind === SEG_PASS) {
+          ctx.moveTo(laneX(s.from), y);
+          ctx.lineTo(laneX(s.from), y + ROW_H);
+        } else if (s.kind === SEG_IN) {
+          ctx.moveTo(laneX(s.from), y);
+          ctx.bezierCurveTo(laneX(s.from), cy, laneX(s.to), y, laneX(s.to), cy);
+        } else if (s.kind === SEG_OUT) {
+          ctx.moveTo(laneX(s.from), cy);
+          ctx.bezierCurveTo(laneX(s.from), y + ROW_H, laneX(s.to), cy, laneX(s.to), y + ROW_H);
+        }
+        ctx.stroke();
+      }
+      // Node
+      const nx = laneX(r.g.lane);
+      ctx.beginPath();
+      ctx.arc(nx, cy, r.g.flags & FLAG_MERGE ? 4 : 6, 0, Math.PI * 2);
+      ctx.fillStyle = laneColor(r.g.color);
+      ctx.fill();
+      ctx.strokeStyle = token("color.bg.canvas");
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      // Ref labels
+      let rx = 8;
+      for (const ref of refs.get(i) ?? []) {
+        const label = ref.kind === "tag" ? `◆ ${ref.name}` : ref.isHead ? `✓ ${ref.name}` : ref.name;
+        const tw = Math.min(ctx.measureText(label).width + 12, REF_COL_W - rx - 8);
+        if (tw < 24) break;
+        ctx.fillStyle = ref.isHead ? token("color.accent.default") : token("color.bg.raised");
+        ctx.fillRect(rx, y + 4, tw, ROW_H - 8);
+        ctx.fillStyle = ref.isHead ? token("color.text.onAccent") : token("color.text.primary");
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(rx, y, tw - 4, ROW_H);
+        ctx.clip();
+        ctx.fillText(label, rx + 6, cy);
+        ctx.restore();
+        rx += tw + 4;
+      }
+      // Text columns: message, author, date, sha
+      const col = columns(w, graphW());
+      ctx.fillStyle = token("color.text.primary");
+      clipText(ctx, r.m.summary, col.msgX, cy, col.msgW);
+      ctx.fillStyle = token("color.text.secondary");
+      if (col.showAuthor) clipText(ctx, r.m.author, col.authorX, cy, AUTHOR_W - 12);
+      if (col.showDate) clipText(ctx, new Date(r.m.time * 1000).toLocaleDateString(), col.dateX, cy, DATE_W - 8);
+      ctx.font = "12.5px 'JetBrains Mono', 'DejaVu Sans Mono', monospace";
+      ctx.fillStyle = token("color.text.muted");
+      ctx.fillText(r.m.sha.slice(0, 7), col.shaX, cy);
+      ctx.font = "13px Inter, Cantarell, system-ui, sans-serif";
+    }
+  }
+
+  createEffect(draw);
+
+  function select(i: number) {
+    if (i < 0 || i >= props.repo.rowCount) return;
+    const r = rowAt(i);
+    if (!r) return ensure(Math.floor(i / CHUNK));
+    props.onSelect(i, r.m.sha);
+    const y = i * ROW_H;
+    if (y < scroller.scrollTop) scroller.scrollTop = y;
+    else if (y + ROW_H > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = y + ROW_H - scroller.clientHeight;
+  }
+
+  function onKey(e: KeyboardEvent) {
+    const page = Math.floor(scroller.clientHeight / ROW_H);
+    const cur = props.selected ?? -1;
+    const next = { ArrowDown: cur + 1, ArrowUp: cur - 1, PageDown: cur + page, PageUp: cur - page, Home: 0, End: props.repo.rowCount - 1 }[e.key];
+    if (next === undefined) return;
+    e.preventDefault();
+    select(Math.max(0, Math.min(props.repo.rowCount - 1, next)));
+  }
+
+  onMount(() => {
+    const ro = new ResizeObserver(() => setSize({ w: scroller.clientWidth, h: scroller.clientHeight }));
+    ro.observe(scroller);
+    onCleanup(() => ro.disconnect());
+    scroller.focus();
+  });
+
+  const selectedMeta = () => (props.selected === null ? undefined : rowAt(props.selected)?.m);
+
+  return (
+    <div class="graph">
+      <div class="graph-header" aria-hidden="true">
+        {(() => {
+          const c = columns(size().w, graphW());
+          return (
+            <>
+              <span style={{ left: "8px" }}>{t("col.refs")}</span>
+              <span style={{ left: `${REF_COL_W}px` }}>{t("col.graph")}</span>
+              <span style={{ left: `${c.msgX}px` }}>{t("col.message")}</span>
+              {c.showAuthor && <span style={{ left: `${c.authorX}px` }}>{t("col.author")}</span>}
+              {c.showDate && <span style={{ left: `${c.dateX}px` }}>{t("col.date")}</span>}
+              <span style={{ left: `${c.shaX}px` }}>{t("col.sha")}</span>
+            </>
+          );
+        })()}
+      </div>
+      <div
+        ref={scroller}
+        class="graph-scroller"
+        tabindex="0"
+        role="grid"
+        aria-label={t("graph.label")}
+        aria-rowcount={props.repo.rowCount}
+        onScroll={() => setScrollTop(scroller.scrollTop)}
+        onKeyDown={onKey}
+        onClick={(e) => {
+          const rect = scroller.getBoundingClientRect();
+          select(Math.floor((e.clientY - rect.top + scroller.scrollTop) / ROW_H));
+        }}
+      >
+        <canvas ref={canvas} class="graph-canvas" style={{ width: `${size().w}px`, height: `${size().h}px` }} />
+        <div style={{ height: `${Math.max(0, props.repo.rowCount * ROW_H - size().h)}px` }} />
+      </div>
+      {/* Accessible shadow of the canvas: announces the selected commit. */}
+      <div class="sr-only" aria-live="polite" role="status">
+        {selectedMeta() ? `${selectedMeta()!.summary}, ${selectedMeta()!.author}, ${selectedMeta()!.sha.slice(0, 7)}` : ""}
+      </div>
+    </div>
+  );
+}
+
+function clipText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, max: number) {
+  if (max <= 0) return;
+  if (ctx.measureText(text).width <= max) return ctx.fillText(text, x, y);
+  let lo = 0, hi = text.length;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (ctx.measureText(text.slice(0, mid) + "…").width <= max) lo = mid;
+    else hi = mid - 1;
+  }
+  ctx.fillText(text.slice(0, lo) + "…", x, y);
+}

@@ -1,0 +1,11 @@
+[package]
+name = "ak-gitcli"
+description = "AtlasKraken: git CLI executor, capability detection and machine-format parsers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+serde.workspace = true

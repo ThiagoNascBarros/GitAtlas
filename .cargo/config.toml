@@ -1,0 +1,3 @@
+# Keep builds light: the dev machine has ~7 GB RAM.
+[build]
+jobs = 2

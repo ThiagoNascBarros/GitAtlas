@@ -1,0 +1,14 @@
+  0 lane 0 | Change app text differently | out 0>0
+  1 lane 1 | Bump version | pass 0>0, out 1>0
+  2 lane 0 | Merge feature/graph | in 0>0, out 0>0, out 0>1
+  3 lane 1 | Virtualize graph rows | in 1>1, pass 0>0, out 1>1
+  4 lane 2 | Fix typo in README | pass 0>0, pass 1>1, out 2>2
+  5 lane 0 | Write user guide | in 0>0, pass 1>1, pass 2>2, out 0>2
+  6 lane 1 | Draw graph edges | in 1>1, pass 2>2, out 1>1
+  7 lane 2 | Merge feature/login | in 2>2, pass 1>1, out 2>2, out 2>0
+  8 lane 1 | Draft lane layout | in 1>1, pass 0>0, pass 2>2, out 1>2
+  9 lane 0 | Validate login input | in 0>0, pass 2>2, out 0>0
+ 10 lane 2 | Improve app startup | in 2>2, pass 0>0, out 2>2
+ 11 lane 0 | Add login form | in 0>0, pass 2>2, out 0>2
+ 12 lane 2 | Add app skeleton | in 2>2, out 2>2
+ 13 lane 2 | Initial commit | in 2>2

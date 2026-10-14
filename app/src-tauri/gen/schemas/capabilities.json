@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"UI may only call AtlasKraken commands and open a folder picker (no fs, shell or http).","local":true,"windows":["main"],"permissions":["core:default","dialog:allow-open"]}}

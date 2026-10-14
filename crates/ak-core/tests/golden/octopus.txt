@@ -1,0 +1,5 @@
+  0 lane 0 | Merge br-x br-y br-z | out 0>0, out 0>1, out 0>2, out 0>3
+  1 lane 3 | On z | in 3>3, pass 0>0, pass 1>1, pass 2>2, out 3>0
+  2 lane 2 | On y | in 2>2, pass 0>0, pass 1>1, out 2>0
+  3 lane 1 | On x | in 1>1, pass 0>0, out 1>0
+  4 lane 0 | Base | in 0>0
