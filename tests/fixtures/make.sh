@@ -153,6 +153,42 @@ PY
   git checkout -q -f main
 }
 
+# wide-N: N commits spread over 24 long-lived branches that commit in
+# round-robin and merge into main every 40 commits (many active lanes).
+fx_wide() {
+  local n="$1" name="wide-$2"
+  new_repo "$name"
+  python3 - "$n" <<'PY' | git fast-import --quiet
+import sys
+n = int(sys.argv[1]); W = 24
+t = 1600000000; mark = 0; out = sys.stdout
+def commit(ref, msg, parents):
+    global mark, t
+    mark += 1; t += 30
+    out.write(f"commit {ref}\nmark :{mark}\n")
+    out.write(f"author Ada Fixture <ada@fixture.test> {t} +0000\ncommitter Ada Fixture <ada@fixture.test> {t} +0000\n")
+    out.write(f"data {len(msg)}\n{msg}\n")
+    if parents:
+        out.write(f"from :{parents[0]}\n")
+        for p in parents[1:]:
+            out.write(f"merge :{p}\n")
+    out.write(f"M 644 inline f{mark % 251}.txt\ndata {len(str(mark))}\n{mark}\n\n")
+    return mark
+main = commit("refs/heads/main", "Root", [])
+tips = [main] * W
+count = 1
+while count < n:
+    b = count % W
+    if count % 40 == 0:
+        main = commit("refs/heads/main", f"Merge lane {b}", [main, tips[b]])
+        tips[b] = main
+    else:
+        tips[b] = commit(f"refs/heads/lane-{b}", f"Lane {b} work {count}", [tips[b]])
+    count += 1
+PY
+  git checkout -q -f main
+}
+
 targets=("$@")
 [ ${#targets[@]} -eq 0 ] && targets=(linear merges octopus criss-cross stash-wip demo)
 for t in "${targets[@]}"; do
@@ -160,6 +196,7 @@ for t in "${targets[@]}"; do
     linear) fx_linear ;; merges) fx_merges ;; octopus) fx_octopus ;;
     criss-cross) fx_criss_cross ;; stash-wip) fx_stash_wip ;; demo) fx_demo ;;
     big-10k) fx_big 10000 10k ;; big-100k) fx_big 100000 100k ;;
+    wide-100k) fx_wide 100000 100k ;;
     *) echo "unknown fixture: $t" >&2; exit 2 ;;
   esac
   echo "built $t: $(git -C "$OUT/$t" rev-list --all --count) commits"

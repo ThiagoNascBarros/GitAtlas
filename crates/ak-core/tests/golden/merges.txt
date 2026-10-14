@@ -1,8 +1,8 @@
   0 lane 0 | Merge feature/b | out 0>0, out 0>1
-  1 lane 0 | M2 | in 0>0, pass 1>1, out 0>0
-  2 lane 0 | Merge feature/a | in 0>0, pass 1>1, out 0>0, out 0>2
-  3 lane 1 | B1 | in 1>1, pass 0>0, pass 2>2, out 1>0
-  4 lane 0 | M1 | in 0>0, pass 2>2, out 0>0
-  5 lane 2 | A2 | in 2>2, pass 0>0, out 2>2
-  6 lane 2 | A1 | in 2>2, pass 0>0, out 2>0
+  1 lane 0 | M2 | pass 1>1, in 0>0, out 0>0
+  2 lane 0 | Merge feature/a | pass 1>1, in 0>0, out 0>0, out 0>2
+  3 lane 1 | B1 | pass 0>0, pass 2>2, in 1>1, out 1>0
+  4 lane 0 | M1 | pass 2>2, in 0>0, out 0>0
+  5 lane 2 | A2 | pass 0>0, in 2>2, out 2>2
+  6 lane 2 | A1 | pass 0>0, in 2>2, out 2>0
   7 lane 0 | Initial | in 0>0

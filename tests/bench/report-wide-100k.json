@@ -1,0 +1,26 @@
+{
+  "checks": {
+    "nfr1_first_window_le_300ms": true,
+    "nfr1_layout_le_400ms": true,
+    "nfr2_graph_bytes_per_commit_le_120": true
+  },
+  "commits": 100000,
+  "first_window_bytes": 41368,
+  "graph_bytes_per_commit": 33,
+  "lanes": 25,
+  "not_measured": [
+    "UI first paint",
+    "UI scroll fps",
+    "app idle RSS (shell + WebKit)"
+  ],
+  "peak_rss_mb_core_process": 76.83984375,
+  "refs": 25,
+  "repo": "tests/fixtures/out/wide-100k",
+  "timings_ms": {
+    "deep_window": 0.08609499999999999,
+    "first_window": 0.07668799999999999,
+    "git_read": 576.582779,
+    "layout": 4.071345,
+    "topology": 14.65758
+  }
+}

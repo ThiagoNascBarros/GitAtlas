@@ -16,15 +16,16 @@ pub const FLAG_MISSING_PARENT: u8 = 2;
 pub fn encode_window(t: &Topology, l: &Layout, start: RowIdx, count: u32) -> Vec<u8> {
     let start = start.min(l.rows() as u32);
     let end = (start + count).min(l.rows() as u32);
-    let first_seg = l.seg_start.get(start as usize).copied().unwrap_or(0);
-    let last_seg = l.seg_start.get(end as usize).copied().unwrap_or(first_seg);
-    let mut b = Vec::with_capacity(16 + (end - start) as usize * 16 + (last_seg - first_seg) as usize * 8);
+    let segs = l.segments_window(t, start, end);
+    let total: usize = segs.iter().map(Vec::len).sum();
+    let mut b = Vec::with_capacity(16 + (end - start) as usize * 16 + total * 8);
     b.extend_from_slice(MAGIC);
     b.extend_from_slice(&VERSION.to_le_bytes());
     b.extend_from_slice(&start.to_le_bytes());
     b.extend_from_slice(&(end - start).to_le_bytes());
     b.extend_from_slice(&l.lane_count.to_le_bytes());
-    for r in start..end {
+    let mut offset = 0u32;
+    for (k, r) in (start..end).enumerate() {
         let i = r as usize;
         let mut flags = 0u8;
         if t.parents_of(r).len() > 1 {
@@ -38,10 +39,11 @@ pub fn encode_window(t: &Topology, l: &Layout, start: RowIdx, count: u32) -> Vec
         b.extend_from_slice(&l.color[i].to_le_bytes());
         b.push(flags);
         b.push(0);
-        b.extend_from_slice(&(l.seg_start[i] - first_seg).to_le_bytes());
-        b.extend_from_slice(&((l.seg_start[i + 1] - l.seg_start[i]) as u16).to_le_bytes());
+        b.extend_from_slice(&offset.to_le_bytes());
+        b.extend_from_slice(&(segs[k].len() as u16).to_le_bytes());
+        offset += segs[k].len() as u32;
     }
-    for s in &l.segments[first_seg as usize..last_seg as usize] {
+    for s in segs.iter().flatten() {
         b.push(match s.kind {
             SegKind::Pass => 0,
             SegKind::In => 1,

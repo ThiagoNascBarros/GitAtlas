@@ -30,12 +30,16 @@ fn load(name: &str) -> (Vec<ak_gitcli::parse::CommitRecord>, Topology, Layout) {
     (commits, topo, lay)
 }
 
+fn topo_of(commits: &[ak_gitcli::parse::CommitRecord]) -> Topology {
+    Topology::from_commits(commits.iter().map(|c| (c.sha.as_str(), c.parents.as_slice())))
+}
+
 /// Human-readable dump: one line per row, e.g. `1 |o  | Merge x | in 0>1 pass 2 out 1>1`.
 fn dump(commits: &[ak_gitcli::parse::CommitRecord], l: &Layout) -> String {
     let mut s = String::new();
+    let all = l.segments_window(&topo_of(commits), 0, commits.len() as u32);
     for (i, c) in commits.iter().enumerate() {
-        let segs: Vec<String> = l
-            .segments_of(i as u32)
+        let segs: Vec<String> = all[i]
             .iter()
             .map(|g| format!("{:?} {}>{}", g.kind, g.from, g.to).to_lowercase())
             .collect();
@@ -132,13 +136,38 @@ fn random_dags_have_valid_layouts() {
 }
 
 #[test]
+fn windows_match_full_expansion_across_checkpoints() {
+    // A window starting mid-way (after a checkpoint) must equal the full expansion.
+    let mut rng = Lcg(7);
+    let n = 3000usize;
+    let shas: Vec<String> = (0..n).map(|i| format!("{i:040}")).collect();
+    let parents: Vec<Vec<String>> = (0..n)
+        .map(|i| {
+            let below = n - 1 - i;
+            if below == 0 { return vec![]; }
+            let k = 1 + (rng.next() % 2) as usize;
+            let mut ps: Vec<String> = (0..k).map(|_| shas[i + 1 + (rng.next() as usize % below.min(40))].clone()).collect();
+            ps.dedup();
+            ps
+        })
+        .collect();
+    let topo = Topology::from_commits(shas.iter().map(String::as_str).zip(parents.iter().map(Vec::as_slice)));
+    let lay = graph::layout(&topo);
+    let full = lay.segments_window(&topo, 0, n as u32);
+    for start in [0u32, 1023, 1024, 1500, 2047, 2990] {
+        let w = lay.segments_window(&topo, start, start + 10);
+        assert_eq!(w.as_slice(), &full[start as usize..(start as usize + 10).min(n)], "window at {start}");
+    }
+}
+
+#[test]
 fn window_encoding_roundtrip_header() {
     let (_, topo, lay) = load("demo");
     let w = graph::encode_window(&topo, &lay, 2, 5);
     assert_eq!(&w[0..4], b"AKRW");
     assert_eq!(u32::from_le_bytes(w[6..10].try_into().unwrap()), 2);
     assert_eq!(u32::from_le_bytes(w[10..14].try_into().unwrap()), 5);
-    let segs: usize = (2..7).map(|r| lay.segments_of(r).len()).sum();
+    let segs: usize = lay.segments_window(&topo, 2, 7).iter().map(Vec::len).sum();
     assert_eq!(w.len(), 16 + 5 * 16 + segs * 8);
     // Window past the end is clamped.
     let tail = graph::encode_window(&topo, &lay, 1000, 10);
@@ -156,7 +185,7 @@ fn big_100k_layout_time() {
     let lay = graph::layout(&topo);
     let ms = t0.elapsed().as_millis();
     verify::check(&topo, &lay).unwrap();
-    let bytes = topo.parents.len() * 4 + topo.parent_start.len() * 4 + lay.lane.len() * 4 + lay.segments.len() * 8 + lay.seg_start.len() * 4;
+    let bytes = topo.parents.len() * 4 + topo.parent_start.len() * 4 + topo.has_missing_parent.len() + lay.heap_bytes();
     println!("100k: topology+layout {ms} ms, {} bytes/commit, {} lanes", bytes / commits.len(), lay.lane_count);
     assert_eq!(commits.len(), 100_000);
     assert!(ms <= 400, "layout took {ms} ms");

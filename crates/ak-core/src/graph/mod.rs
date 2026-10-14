@@ -89,8 +89,11 @@ pub struct Segment {
 pub struct Layout {
     pub lane: Vec<u16>,
     pub color: Vec<u16>,
+    /// In/Out segments only; Pass segments are derived (see `segments_window`).
     pub seg_start: Vec<u32>,
     pub segments: Vec<Segment>,
+    /// Lane state before rows 0, CHECKPOINT_EVERY, 2·CHECKPOINT_EVERY, …
+    pub checkpoints: Vec<layout::LaneState>,
     /// Maximum number of simultaneously used lanes.
     pub lane_count: u16,
 }
@@ -100,8 +103,44 @@ impl Layout {
         self.lane.len()
     }
 
-    pub fn segments_of(&self, row: RowIdx) -> &[Segment] {
+    /// Stored In/Out segments of one row.
+    pub fn io_segments(&self, row: RowIdx) -> &[Segment] {
         let r = row as usize;
         &self.segments[self.seg_start[r] as usize..self.seg_start[r + 1] as usize]
+    }
+
+    /// Complete segments (Pass + In + Out) for rows `start..end`, replaying the
+    /// lane state from the nearest checkpoint. Cost: O(CHECKPOINT_EVERY + window).
+    pub fn segments_window(&self, t: &Topology, start: RowIdx, end: RowIdx) -> Vec<Vec<Segment>> {
+        let end = end.min(self.rows() as RowIdx);
+        if start >= end {
+            return vec![];
+        }
+        let cp = start as usize / layout::CHECKPOINT_EVERY;
+        let mut state = self.checkpoints[cp].clone();
+        let mut scratch = Vec::new();
+        for r in (cp * layout::CHECKPOINT_EVERY) as RowIdx..start {
+            scratch.clear();
+            state.step(t, r, &mut scratch);
+        }
+        let mut rows = Vec::with_capacity((end - start) as usize);
+        for r in start..end {
+            let mut segs = Vec::new();
+            state.pass_segments(r, &mut segs);
+            segs.extend_from_slice(self.io_segments(r));
+            scratch.clear();
+            state.step(t, r, &mut scratch);
+            rows.push(segs);
+        }
+        rows
+    }
+
+    /// Approximate heap bytes held by the layout (for NFR-2 accounting).
+    pub fn heap_bytes(&self) -> usize {
+        self.lane.len() * 2
+            + self.color.len() * 2
+            + self.seg_start.len() * 4
+            + self.segments.len() * std::mem::size_of::<Segment>()
+            + self.checkpoints.iter().map(|c| c.active.len() * 8 + c.lane_color.len() * 2 + 16).sum::<usize>()
     }
 }
