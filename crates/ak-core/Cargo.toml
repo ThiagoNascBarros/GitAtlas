@@ -10,6 +10,7 @@ rust-version.workspace = true
 ak-gitcli = { path = "../ak-gitcli" }
 thiserror.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 gix = { version = "0.89", default-features = false, features = ["sha1", "max-performance-safe"], optional = true }
 
 [features]
@@ -17,4 +18,3 @@ gix = { version = "0.89", default-features = false, features = ["sha1", "max-per
 gix-reader = ["dep:gix"]
 
 [dev-dependencies]
-serde_json.workspace = true

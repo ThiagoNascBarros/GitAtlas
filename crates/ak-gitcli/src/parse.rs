@@ -9,7 +9,7 @@ pub const FS: char = '\u{1f}';
 /// `git log` arguments that produce what [`parse_commits`] expects.
 pub const COMMIT_FORMAT: &str = "--format=%H%x1f%P%x1f%an%x1f%ae%x1f%at%x1f%s";
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, serde::Deserialize)]
 pub struct CommitRecord {
     pub sha: String,
     pub parents: Vec<String>,

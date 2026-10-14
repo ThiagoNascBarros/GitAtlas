@@ -2,6 +2,7 @@
 //! AtlasKraken core: repository reading and commit graph (SDD §3).
 //! Has no UI dependency.
 
+pub mod cache;
 pub mod graph;
 pub mod read;
 #[cfg(feature = "gix-reader")]

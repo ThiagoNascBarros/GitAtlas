@@ -130,17 +130,7 @@ fn check_rev(rev: &str) -> Result<(), ReadError> {
 
 impl RepoReader for CliReader {
     fn commits(&self) -> Result<Vec<CommitRecord>, ReadError> {
-        // HEAD may be detached or unborn; --ignore-missing keeps unborn repos working.
-        let out = self.git.run(
-            &self.root,
-            ["log", "-z", "--date-order", parse::COMMIT_FORMAT, "--exclude=refs/stash", "--all", "HEAD", "--ignore-missing"],
-        );
-        match out {
-            Ok(bytes) => Ok(parse::parse_commits(&bytes)?),
-            // Empty repository: no commits yet.
-            Err(GitError::Failed { stderr, .. }) if stderr.contains("does not have any commits") => Ok(vec![]),
-            Err(e) => Err(e.into()),
-        }
+        self.commits_limited(None)
     }
 
     fn refs(&self) -> Result<Vec<RefRecord>, ReadError> {
@@ -161,4 +151,25 @@ impl RepoReader for CliReader {
             Err(e) => Err(e.into()),
         }
     }
+}
+
+impl CliReader {
+    /// Newest `limit` commits (date order). `None` reads the whole history.
+    /// Used for the first paint: the rest of the history can load in the background.
+    pub fn commits_limited(&self, limit: Option<usize>) -> Result<Vec<CommitRecord>, ReadError> {
+        // HEAD may be detached or unborn; --ignore-missing keeps unborn repos working.
+        let max = limit.map(|n| format!("--max-count={n}"));
+        let mut args = vec!["log", "-z", "--date-order", parse::COMMIT_FORMAT, "--exclude=refs/stash", "--all", "HEAD", "--ignore-missing"];
+        if let Some(m) = max.as_deref() {
+            args.push(m);
+        }
+        let out = self.git.run(&self.root, args);
+        match out {
+            Ok(bytes) => Ok(parse::parse_commits(&bytes)?),
+            // Empty repository: no commits yet.
+            Err(GitError::Failed { stderr, .. }) if stderr.contains("does not have any commits") => Ok(vec![]),
+            Err(e) => Err(e.into()),
+        }
+    }
+
 }

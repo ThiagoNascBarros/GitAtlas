@@ -191,3 +191,18 @@ fn big_100k_layout_time() {
     assert!(ms <= 400, "layout took {ms} ms");
     assert!(bytes / commits.len() <= 120);
 }
+
+#[test]
+fn limited_history_is_a_prefix_of_full_history() {
+    // The first paint shows only the newest N commits; they must be exactly the
+    // first N rows of the full history, or the background load would reorder rows.
+    for name in ["demo", "big-10k"] {
+        let reader = CliReader::open(Git::discover(Mode::ReadOnly).unwrap(), &fixture(name)).unwrap();
+        let full = reader.commits().unwrap();
+        for n in [1usize, 200, 999] {
+            let top = reader.commits_limited(Some(n)).unwrap();
+            assert_eq!(top.len(), n.min(full.len()), "{name}: count for {n}");
+            assert_eq!(top.as_slice(), &full[..top.len()], "{name}: prefix for {n}");
+        }
+    }
+}

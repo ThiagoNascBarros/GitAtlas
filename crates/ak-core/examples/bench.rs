@@ -23,10 +23,26 @@ fn main() {
     let repo = args.next().expect("repo path");
     let report_path = args.next();
 
+    // Cache path, as the app uses it: cold = build and save, warm = load only.
     let t = Instant::now();
     let reader = CliReader::open(Git::discover(Mode::ReadOnly).unwrap(), repo.as_ref()).unwrap();
-    let commits = reader.commits().unwrap();
     let refs = reader.refs().unwrap();
+    let head = reader.head().unwrap();
+    let fp = ak_core::cache::fingerprint(
+        &refs.iter().map(|r| (r.name.clone(), r.target.clone())).collect::<Vec<_>>(),
+        head.as_deref(),
+    );
+    let cache_file = ak_core::cache::cache_path(&reader.root().join(".git"));
+    let commits = match cache_file.as_deref().and_then(|p| ak_core::cache::load(p, fp)) {
+        Some(c) => c,
+        None => {
+            let c = reader.commits().unwrap();
+            if let Some(p) = cache_file.as_deref() {
+                ak_core::cache::save(p, fp, &c);
+            }
+            c
+        }
+    };
     let read_ms = t.elapsed().as_secs_f64() * 1e3;
 
     let t = Instant::now();
