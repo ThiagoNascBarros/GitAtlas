@@ -21,7 +21,7 @@ export const api = {
   close: (repoId: number) => invoke<void>("repo_close", { repoId }),
   rows: (repoId: number, start: number, count: number) => invoke<RowMeta[]>("graph_rows", { repoId, start, count }),
   window: async (repoId: number, start: number, count: number) =>
-    decodeWindow(await invoke<ArrayBuffer>("graph_window", { repoId, start, count })),
+    decodeWindow(toArrayBuffer(await invoke<unknown>("graph_window", { repoId, start, count }))),
   details: (repoId: number, sha: string) => invoke<CommitDetails>("commit_details", { repoId, sha }),
   diff: (repoId: number, sha: string, path: string) => invoke<string>("diff_file", { repoId, sha, path }),
 };
@@ -31,6 +31,17 @@ export const FLAG_MERGE = 1, FLAG_MISSING_PARENT = 2;
 export interface Seg { kind: number; from: number; to: number; color: number }
 export interface GraphRow { row: number; lane: number; color: number; flags: number; segs: Seg[] }
 export interface GraphWindow { start: number; laneCount: number; rows: GraphRow[] }
+
+/**
+ * Tauri returns raw `Response` bodies as an ArrayBuffer, a Uint8Array or a plain
+ * number[] depending on the IPC path (custom protocol vs. postMessage fallback).
+ */
+export function toArrayBuffer(v: unknown): ArrayBuffer {
+  if (v instanceof ArrayBuffer) return v;
+  if (ArrayBuffer.isView(v)) return v.buffer.slice(v.byteOffset, v.byteOffset + v.byteLength) as ArrayBuffer;
+  if (Array.isArray(v)) return Uint8Array.from(v).buffer;
+  throw new Error(`unexpected graph window payload: ${Object.prototype.toString.call(v)}`);
+}
 
 /** Decodes the binary RowWindow (SDD §4.3; see ak-core graph/encode.rs). */
 export function decodeWindow(buf: ArrayBuffer): GraphWindow {

@@ -9,6 +9,8 @@ import { t } from "../../i18n";
 const ROW_H = 28;
 const LANE_W = 16;
 const CHUNK = 200;
+/** Lanes shown before the graph column stops growing (the rest is clipped). */
+const MAX_VISIBLE_LANES = 12;
 import { perfEnabled, perfStats, recordDraw } from "./perf";
 import { columns, ColumnWidths, loadWidths, saveWidths, clampWidth } from "./columns";
 
@@ -51,7 +53,7 @@ export function GraphView(props: {
     for (const r of props.repo.refs) if (r.row !== null) m.set(r.row, [...(m.get(r.row) ?? []), r]);
     return m;
   };
-  const graphW = () => Math.min(Math.max(props.repo.laneCount, 1), 14) * LANE_W + LANE_W;
+  const graphW = () => Math.min(Math.max(props.repo.laneCount, 1), MAX_VISIBLE_LANES) * LANE_W + LANE_W;
 
   function ensure(chunk: number) {
     const k = key(chunk);
@@ -117,7 +119,11 @@ export function GraphView(props: {
       }
       if (!r) continue;
       painted++;
-      // Edges
+      // Edges and node, clipped to the graph column so wide graphs never cover the message.
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(gx, y, graphW(), ROW_H);
+      ctx.clip();
       ctx.lineWidth = 2;
       for (const s of r.g.segs) {
         ctx.strokeStyle = laneColor(s.color);
@@ -143,6 +149,16 @@ export function GraphView(props: {
       ctx.strokeStyle = token("color.bg.canvas");
       ctx.lineWidth = 2;
       ctx.stroke();
+      ctx.restore();
+      // More lanes than fit: fade the right edge as a hint that the graph continues.
+      if (props.repo.laneCount > MAX_VISIBLE_LANES) {
+        const fx = gx + graphW() - 12;
+        const grad = ctx.createLinearGradient(fx, 0, fx + 12, 0);
+        grad.addColorStop(0, "transparent");
+        grad.addColorStop(1, i === props.selected ? token("color.bg.selected") : token("color.bg.canvas"));
+        ctx.fillStyle = grad;
+        ctx.fillRect(fx, y, 12, ROW_H);
+      }
       // Ref labels
       let rx = 8;
       for (const ref of refs.get(i) ?? []) {
