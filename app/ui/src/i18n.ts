@@ -5,7 +5,11 @@ const en = {
   "open.title": "Open a repository",
   "open.hint": "Choose a folder that contains a Git repository, or start AtlasKraken with a path: atlaskraken /path/to/repo",
   "open.button": "Open repository…",
-  "toolbar.readOnly": "Read-only preview (Phase 1)",
+  "toolbar.undo": "Undo",
+  "toolbar.redo": "Redo",
+  "toolbar.redoTitle": "Redo the last undone operation",
+  "toolbar.undoTitle": "Undo the last operation",
+  "toolbar.readOnly": "Read-only (old Git)",
   "toolbar.theme": "Theme",
   "theme.system": "Follow system",
   "theme.dark": "Atlas Dark",
@@ -37,10 +41,63 @@ const en = {
   "status.commits": "{n} commits",
   "status.git": "Git {v}",
   "error.title": "Could not open the repository",
+  "wip.row": "Working directory",
+  "wip.changes": "{n} changed files",
+  "wip.clean": "No changes",
+  "wip.unstaged": "Unstaged files",
+  "wip.staged": "Staged files",
+  "wip.stageAll": "Stage all",
+  "wip.unstageAll": "Unstage all",
+  "wip.stage": "Stage",
+  "wip.unstage": "Unstage",
+  "wip.discard": "Discard",
+  "wip.discardConfirm": "Discard? (click again)",
+  "wip.conflicts": "Conflicted files",
+  "wip.summary": "Summary",
+  "wip.description": "Description",
+  "wip.amend": "Amend previous commit",
+  "wip.commit": "Commit",
+  "wip.commitAmend": "Amend commit",
+  "wip.empty": "Nothing here.",
+  "diff.stageHunk": "Stage hunk",
+  "diff.unstageHunk": "Unstage hunk",
+  "diff.untracked": "New file (untracked)",
+  "toast.committed": "Committed: {s}",
+  "toast.discarded": "Discarded {s}",
+  "toast.undone": "Undone",
+  "toast.redone": "Redone",
+  "toast.undo": "Undo",
+  "toast.nothingToUndo": "Nothing to undo.",
+  "err.dismiss": "Dismiss",
+  "err.details": "Details",
+  "err.GIT_IDENTITY_MISSING": "Git does not know your name and email, so it cannot create the commit.",
+  "err.GIT_IDENTITY_MISSING.fix": "Run: git config --global user.name \"Your Name\" and git config --global user.email you@example.com",
+  "err.NOTHING_TO_COMMIT": "There is nothing staged to commit.",
+  "err.EMPTY_MESSAGE": "Write a commit summary first.",
+  "err.REPO_BUSY": "Another operation is still running on this repository.",
+  "err.HEAD_MOVED": "The branch changed since that operation, so it can no longer be undone safely.",
+  "err.NOTHING_TO_REDO": "There is nothing to redo.",
+  "err.ALREADY_UNDONE": "That operation was already undone.",
+  "err.WORKTREE_CHANGED": "Those files changed after being discarded; restoring them would overwrite newer work.",
+  "err.INVALID_HUNK": "That change no longer exists. The file was modified; the view will refresh.",
+  "err.READ_ONLY": "This repository is read-only because your Git is older than 2.20.",
+  "err.UNSUPPORTED_PATH": "Only regular files can be discarded here. Use a terminal for links.",
+  "err.GIT_FAILED": "Git could not complete the operation.",
 } as const;
 
 export type Key = keyof typeof en;
 
 export function t(key: Key, vars: Record<string, string | number> = {}): string {
   return en[key].replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? `{${k}}`));
+}
+
+/** Human text for an error code; falls back to the core's message. */
+export function errorText(e: { code: string; message: string }): string {
+  const k = `err.${e.code}` as Key;
+  return k in en ? en[k] : e.message;
+}
+
+export function errorFix(e: { code: string; suggestion?: string }): string | undefined {
+  const k = `err.${e.code}.fix` as Key;
+  return k in en ? en[k] : e.suggestion;
 }

@@ -109,6 +109,13 @@ fn new_id() -> String {
     format!("{nanos:x}-{:x}", N.fetch_add(1, Ordering::Relaxed))
 }
 
+fn now_ns() -> i128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos() as i128)
+        .unwrap_or(0)
+}
+
 fn now() -> i64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -249,6 +256,7 @@ impl Engine {
             snapshot_ref,
             commands: vec![format!("git {}", args.join(" "))],
             undone: false,
+            undone_at: 0,
             paths: vec![],
             untracked: vec![],
         })?;
@@ -269,7 +277,7 @@ impl Engine {
         let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
         if entry.kind == "discard" {
             self.undo_discard(&entry)?;
-            self.journal.mark_undone(id)?;
+            self.journal.set_undone(id, true, now_ns())?;
             return Ok(OpOutcome { id: None, head: self.head() });
         }
         if !matches!(entry.kind.as_str(), "commit" | "commit_amend") {
@@ -293,8 +301,83 @@ impl Engine {
             }
             (None, None) => return Err(OpError::new("UNDO_NOT_SUPPORTED", "This operation cannot be undone.", None)),
         }
-        self.journal.mark_undone(id)?;
+        // Keep the undone commit reachable so Redo can bring it back.
+        if let Some(after) = &entry.head_after {
+            self.git.run(&self.root, ["update-ref", format!("{SNAPSHOT_PREFIX}{id}-redo").as_str(), after.as_str()])?;
+        }
+        self.journal.set_undone(id, true, now_ns())?;
         Ok(OpOutcome { id: None, head: self.head() })
+    }
+
+    /// The operation Redo would bring back: the most recently undone one, as long
+    /// as nothing newer has been done since (a new operation clears the redo stack).
+    pub fn redo_candidate(&self) -> Option<JournalEntry> {
+        let list = self.journal.list();
+        let (pos, cand) = list.iter().enumerate().filter(|(_, e)| e.undone).max_by_key(|(_, e)| e.undone_at)?;
+        list[pos + 1..].iter().all(|e| e.undone).then(|| cand.clone())
+    }
+
+    pub fn redo_last(&self) -> Result<OpOutcome, OpError> {
+        let entry = self
+            .redo_candidate()
+            .ok_or_else(|| OpError::new("NOTHING_TO_REDO", "There is nothing to redo.", None))?;
+        let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
+        if entry.kind == "discard" {
+            self.redo_discard(&entry)?;
+        } else {
+            let moved = || {
+                OpError::new(
+                    "HEAD_MOVED",
+                    "The branch has changed since that operation, so it cannot be redone safely.",
+                    None,
+                )
+            };
+            if self.head() != entry.head_before {
+                return Err(moved());
+            }
+            match (&entry.head_after, &entry.head_before, &entry.branch) {
+                (Some(after), Some(_), _) => {
+                    self.git.run(&self.root, ["reset", "-q", "--soft", after.as_str()])?;
+                }
+                (Some(after), None, Some(branch)) => {
+                    let name = format!("refs/heads/{branch}");
+                    self.git.run(&self.root, ["update-ref", name.as_str(), after.as_str()])?;
+                }
+                _ => return Err(OpError::new("UNDO_NOT_SUPPORTED", "This operation cannot be redone.", None)),
+            }
+        }
+        self.journal.set_undone(&entry.id, false, 0)?;
+        Ok(OpOutcome { id: Some(entry.id), head: self.head() })
+    }
+
+    fn redo_discard(&self, e: &JournalEntry) -> Result<(), OpError> {
+        let dir = self.discard_dir(&e.id);
+        // Only discard again if the files are still exactly what Undo restored.
+        for p in e.paths.iter().chain(&e.untracked) {
+            let (bak, cur) = (dir.join(p), self.root.join(p));
+            let same = match (std::fs::read(&bak), std::fs::read(&cur)) {
+                (Ok(a), Ok(b)) => a == b,
+                (Err(_), Err(_)) => true,
+                _ => false,
+            };
+            if !same {
+                return Err(OpError::new(
+                    "WORKTREE_CHANGED",
+                    "These files changed after the undo, so discarding them again would lose newer work.",
+                    None,
+                ));
+            }
+        }
+        for chunk in e.paths.chunks(PATH_CHUNK) {
+            let specs: Vec<String> = chunk.iter().map(|p| literal(p)).collect();
+            let mut args = vec!["checkout", "-q", "--"];
+            args.extend(specs.iter().map(String::as_str));
+            self.git.run(&self.root, args)?;
+        }
+        for p in &e.untracked {
+            let _ = std::fs::remove_file(self.root.join(p));
+        }
+        Ok(())
     }
 
     fn stage_hunk(&self, path: &str, hunk: usize, unstage: bool) -> Result<OpOutcome, OpError> {
@@ -386,6 +469,7 @@ impl Engine {
             snapshot_ref: None,
             commands,
             undone: false,
+            undone_at: 0,
             paths: keep_tracked,
             untracked: keep_untracked,
         })?;

@@ -5,9 +5,18 @@ import { api } from "../../api";
 import { t } from "../../i18n";
 import { parseUnified, toSplit } from "./parse";
 
-export function DiffView(props: { repoId: number; sha: string; path: string; onClose: () => void }) {
+/** A committed file, or a working-directory file (unstaged/staged) that supports hunk staging. */
+export type DiffSource =
+  | { kind: "commit"; sha: string }
+  | { kind: "wip"; staged: boolean; untracked: boolean; rev: number; onHunk: (index: number) => void };
+
+export function DiffView(props: { repoId: number; source: DiffSource; path: string; onClose: () => void }) {
   const [mode, setMode] = createSignal<"unified" | "split">("unified");
-  const [patch] = createResource(() => [props.repoId, props.sha, props.path] as const, ([r, s, p]) => api.diff(r, s, p));
+  const [patch] = createResource(
+    () => [props.repoId, props.source, props.path, props.source.kind === "wip" ? props.source.rev : 0] as const,
+    ([r, src, p]) => (src.kind === "commit" ? api.diff(r, src.sha, p) : api.worktreeDiff(r, p, src.staged, src.untracked)),
+  );
+  const wip = () => (props.source.kind === "wip" ? props.source : null);
   const parsed = () => parseUnified(patch() ?? "");
   const no = (n: number | null) => (n === null ? "" : String(n));
 
@@ -24,10 +33,18 @@ export function DiffView(props: { repoId: number; sha: string; path: string; onC
       <div class="diff-body">
         <Show when={!patch.loading} fallback={<p class="muted">{t("loading")}</p>}>
           <Show when={!parsed().binary} fallback={<p class="muted">{t("diff.binary")}</p>}>
+            <Show when={wip()?.untracked}><p class="muted pad">{t("diff.untracked")}</p></Show>
             <For each={parsed().hunks}>
-              {(h) => (
+              {(h, hi) => (
                 <div class="hunk">
-                  <div class="hunk-header">{h.header}</div>
+                  <div class="hunk-header">
+                    <span>{h.header}</span>
+                    <Show when={wip() && !wip()!.untracked}>
+                      <button class="hunk-btn" onClick={() => wip()!.onHunk(hi())}>
+                        {wip()!.staged ? t("diff.unstageHunk") : t("diff.stageHunk")}
+                      </button>
+                    </Show>
+                  </div>
                   <Show
                     when={mode() === "split"}
                     fallback={

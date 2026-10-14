@@ -22,6 +22,9 @@ pub struct JournalEntry {
     /// git commands run (for the "show exact commands" journal view).
     pub commands: Vec<String>,
     pub undone: bool,
+    /// When it was undone (ns since epoch); orders Redo. 0 while not undone.
+    #[serde(default)]
+    pub undone_at: i128,
     /// Discard: tracked files whose changes were backed up (restored on undo).
     #[serde(default)]
     pub paths: Vec<String>,
@@ -56,11 +59,12 @@ impl Journal {
             .collect()
     }
 
-    /// Marks an entry as undone (atomic rewrite). Returns false if the id is unknown.
-    pub fn mark_undone(&self, id: &str) -> std::io::Result<bool> {
+    /// Marks an entry as undone or redone (atomic rewrite). Returns false if the id is unknown.
+    pub fn set_undone(&self, id: &str, undone: bool, at: i128) -> std::io::Result<bool> {
         let mut entries = self.list();
         let Some(e) = entries.iter_mut().find(|e| e.id == id) else { return Ok(false) };
-        e.undone = true;
+        e.undone = undone;
+        e.undone_at = if undone { at } else { 0 };
         let text: String = entries
             .iter()
             .map(|e| serde_json::to_string(e).map(|s| s + "\n"))

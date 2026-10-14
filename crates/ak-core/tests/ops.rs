@@ -282,3 +282,55 @@ fn reader_worktree_diff_and_rows_text() {
     assert_eq!((rows[0].summary.as_str(), rows[0].author.as_str()), ("add a.txt", "Test"));
     assert!(r.rows_text(&["--all"]).is_err());
 }
+
+#[test]
+fn redo_brings_back_commit_amend_and_first_commit() {
+    let d = repo();
+    let e = engine(&d);
+    write(&d, "a.txt", "1");
+    stage(&e, &["a.txt"]);
+    let root = commit(&e, "root", false);
+    let sha = git(&d, &["rev-parse", "HEAD"]);
+    e.undo(root.id.as_deref().unwrap()).unwrap();
+    e.redo_last().unwrap();
+    assert_eq!(git(&d, &["rev-parse", "HEAD"]), sha);
+    // amend
+    let am = commit(&e, "root v2", true);
+    let amended = git(&d, &["rev-parse", "HEAD"]);
+    e.undo(am.id.as_deref().unwrap()).unwrap();
+    assert_eq!(git(&d, &["rev-parse", "HEAD"]), sha);
+    e.redo_last().unwrap();
+    assert_eq!(git(&d, &["rev-parse", "HEAD"]), amended);
+    assert_eq!(e.redo_last().unwrap_err().code, "NOTHING_TO_REDO");
+}
+
+#[test]
+fn redo_is_cleared_by_a_new_operation_and_follows_undo_order() {
+    let d = repo();
+    let e = engine(&d);
+    committed(&d, &e, "a.txt", "1");
+    let c2 = {
+        write(&d, "b.txt", "2");
+        stage(&e, &["b.txt"]);
+        commit(&e, "c2", false)
+    };
+    e.undo(c2.id.as_deref().unwrap()).unwrap();
+    // A new commit makes the undone one unreachable for Redo.
+    commit(&e, "c2 again", false);
+    assert_eq!(e.redo_last().unwrap_err().code, "NOTHING_TO_REDO");
+}
+
+#[test]
+fn redo_discard_discards_again() {
+    let d = repo();
+    let e = engine(&d);
+    committed(&d, &e, "a.txt", "one\n");
+    write(&d, "a.txt", "changed\n");
+    write(&d, "u.txt", "x\n");
+    let out = e.run(&Operation::Discard { paths: vec!["a.txt".into(), "u.txt".into()] }).unwrap();
+    e.undo(out.id.as_deref().unwrap()).unwrap();
+    assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "changed\n");
+    e.redo_last().unwrap();
+    assert_eq!(git(&d, &["status", "--porcelain"]), "");
+    assert!(!d.join("u.txt").exists());
+}

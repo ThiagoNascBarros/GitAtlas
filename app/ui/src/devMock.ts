@@ -23,6 +23,14 @@ export async function installDevMock(first: string, next = "hubbi") {
     if (!r) throw { code: "UNKNOWN_REPO", message: String(id) };
     return r;
   };
+  // Working-directory state for the first repo, mutated by the mocked operations.
+  const wt = [
+    { path: "src/app.ts", index: ".", worktree: "M" },
+    { path: "README.md", index: "M", worktree: "." },
+    { path: "notes/todo.txt", index: ".", worktree: "?", untracked: true },
+  ];
+  const entry = (e: any) => ({ path: e.path, orig_path: null, index: e.index, worktree: e.worktree, conflicted: false, untracked: !!e.untracked });
+  const demoDiff = "diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three\n@@ -20,2 +20,3 @@\n x\n+added\n y\n";
   mockIPC(async (cmd, args: any) => {
     switch (cmd) {
       case "get_initial_path": return `/mock/${first}`;
@@ -39,6 +47,25 @@ export async function installDevMock(first: string, next = "hubbi") {
         return args.start === 0 ? new Uint8Array(repo(args.repoId).window).buffer : emptyWindow(args.start);
       case "commit_details": return repo(args.repoId).details[args.sha];
       case "diff_file": return repo(args.repoId).diffs[`${args.sha}|${args.path}`] ?? "";
+      case "repo_refresh": return { ...repo(args.repoId).open, repoId: args.repoId };
+      case "status_get": return { branch: repo(args.repoId).open.branch, oid: repo(args.repoId).open.head, entries: wt.map(entry) };
+      case "diff_worktree": return args.untracked ? demoDiff.replace("@@ -1,3 +1,3 @@", "@@ -0,0 +1,3 @@") : demoDiff;
+      case "op_stage": case "op_unstage": {
+        for (const e of wt) if (args.paths.includes(e.path)) {
+          if (cmd === "op_stage") { e.index = e.untracked ? "A" : "M"; e.worktree = "."; delete (e as any).untracked; } else { e.worktree = e.index; e.index = "."; }
+        }
+        return { id: null, head: null };
+      }
+      case "op_commit":
+        if (!args.message.trim()) throw { code: "EMPTY_MESSAGE", message: "empty" };
+        if (!wt.some((e) => e.index !== ".")) throw { code: "NOTHING_TO_COMMIT", message: "none" };
+        for (const e of wt) e.index = ".";
+        return { id: "demo-undo", head: null };
+      case "op_discard": for (const p of args.paths) wt.splice(wt.findIndex((e) => e.path === p), 1); return { id: "d1", head: null };
+      case "op_stage_hunk": return { id: null, head: null };
+      case "op_redo": throw { code: "NOTHING_TO_REDO", message: "none" };
+      case "op_undo": return { id: null, head: null };
+      case "journal_list": return [];
       default: throw { code: "UNKNOWN_COMMAND", message: cmd };
     }
   });
