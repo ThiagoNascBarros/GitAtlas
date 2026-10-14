@@ -10,7 +10,7 @@ rust-version.workspace = true
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-ak-core = { path = "../../crates/ak-core" }
+ak-core = { path = "../../crates/ak-core", features = ["gix-reader"] }
 ak-gitcli = { path = "../../crates/ak-gitcli" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"

@@ -10,6 +10,11 @@ rust-version.workspace = true
 ak-gitcli = { path = "../ak-gitcli" }
 thiserror.workspace = true
 serde.workspace = true
+gix = { version = "0.89", default-features = false, features = ["sha1", "max-performance-safe"], optional = true }
+
+[features]
+# In-process reads via gitoxide (SDD §1.2). Off by default: heavy to compile.
+gix-reader = ["dep:gix"]
 
 [dev-dependencies]
 serde_json.workspace = true

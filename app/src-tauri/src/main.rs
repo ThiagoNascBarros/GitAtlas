@@ -10,6 +10,7 @@ use std::sync::Mutex;
 
 use ak_core::graph::{self, Layout, Topology};
 use ak_core::read::{CliReader, CommitDetails, RepoReader};
+use ak_core::read_gix::GixReader;
 use ak_gitcli::parse::{CommitRecord, RefKind, StatusReport};
 use ak_gitcli::{Git, Mode};
 use serde::Serialize;
@@ -89,9 +90,16 @@ fn repo_open(path: String, state: State<'_, AppState>) -> Result<OpenedRepo> {
     // Phase 1 is read-only by design (roadmap constraint).
     let git = Git::discover(Mode::ReadOnly).map_err(|e| UiError::new("GIT_NOT_FOUND", e))?;
     let caps = git.caps().clone();
-    let reader = CliReader::open(git, &PathBuf::from(&path)).map_err(|e| UiError::new("NOT_A_REPO", e))?;
-    let commits = reader.commits().map_err(|e| UiError::new("READ_FAILED", e))?;
-    let refs = reader.refs().map_err(|e| UiError::new("READ_FAILED", e))?;
+    let reader = CliReader::open(git.clone(), &PathBuf::from(&path)).map_err(|e| UiError::new("NOT_A_REPO", e))?;
+    // History and refs via gitoxide (faster, same output); fall back to the CLI on any error.
+    let fast = GixReader::open(git, reader.root()).ok().and_then(|g| Some((g.commits().ok()?, g.refs().ok()?)));
+    let (commits, refs) = match fast {
+        Some(v) => v,
+        None => (
+            reader.commits().map_err(|e| UiError::new("READ_FAILED", e))?,
+            reader.refs().map_err(|e| UiError::new("READ_FAILED", e))?,
+        ),
+    };
     let status = reader.status().map_err(|e| UiError::new("READ_FAILED", e))?;
     let head = reader.head().map_err(|e| UiError::new("READ_FAILED", e))?;
     let topo = Topology::from_commits(commits.iter().map(|c| (c.sha.as_str(), c.parents.as_slice())));

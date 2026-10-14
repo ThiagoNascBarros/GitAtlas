@@ -35,7 +35,7 @@ jobs:
           echo "$HOME/git-min/bin" >> "$GITHUB_PATH"
       - run: git --version
       - name: Test core crates
-        run: cargo test -p ak-gitcli -p ak-core
+        run: cargo test -p ak-gitcli -p ak-core --features ak-core/gix-reader
 
   app:
     name: App (UI + Tauri shell)

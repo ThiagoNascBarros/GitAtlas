@@ -4,3 +4,5 @@
 
 pub mod graph;
 pub mod read;
+#[cfg(feature = "gix-reader")]
+pub mod read_gix;
