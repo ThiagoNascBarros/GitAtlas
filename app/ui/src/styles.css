@@ -92,3 +92,5 @@ select { appearance: none; background-color: var(--ak-color-bg-raised); color: v
 
 .statusbar { display: flex; gap: 16px; align-items: center; padding: 0 12px; font-size: 12px; color: var(--ak-color-text-secondary); background: var(--ak-color-bg-surface); border-top: 1px solid var(--ak-color-border-default); }
 .statusbar .warn { color: var(--ak-color-status-modified); }
+.graph-error { position: absolute; margin: 8px; padding: 6px 10px; border: 1px solid var(--ak-color-status-deleted); border-radius: 6px; background: var(--ak-color-bg-overlay); }
+.graph { position: relative; }

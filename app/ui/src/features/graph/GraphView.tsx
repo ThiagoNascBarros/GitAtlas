@@ -36,8 +36,11 @@ export function GraphView(props: {
 }) {
   let scroller!: HTMLDivElement;
   let canvas!: HTMLCanvasElement;
-  const chunks = new Map<number, Chunk>();
-  const pending = new Set<number>();
+  // Cache keys include the repo id: the component is reused across tabs.
+  const chunks = new Map<string, Chunk>();
+  const pending = new Set<string>();
+  const [loadError, setLoadError] = createSignal<string | null>(null);
+  const key = (chunk: number) => `${props.repo.repoId}:${chunk}`;
   const [tick, setTick] = createSignal(0);
   const [size, setSize] = createSignal({ w: 800, h: 600 });
   const [scrollTop, setScrollTop] = createSignal(0);
@@ -50,18 +53,29 @@ export function GraphView(props: {
   const graphW = () => Math.min(Math.max(props.repo.laneCount, 1), 14) * LANE_W + LANE_W;
 
   function ensure(chunk: number) {
-    if (chunks.has(chunk) || pending.has(chunk) || chunk * CHUNK >= props.repo.rowCount) return;
-    pending.add(chunk);
+    const k = key(chunk);
+    if (chunks.has(k) || pending.has(k) || chunk * CHUNK >= props.repo.rowCount) return;
+    pending.add(k);
     const start = chunk * CHUNK;
-    Promise.all([api.window(props.repo.repoId, start, CHUNK), api.rows(props.repo.repoId, start, CHUNK)]).then(([w, meta]) => {
-      chunks.set(chunk, { rows: w.rows, meta });
-      pending.delete(chunk);
-      setTick(tick() + 1);
-    });
+    const repoId = props.repo.repoId;
+    Promise.all([api.window(repoId, start, CHUNK), api.rows(repoId, start, CHUNK)])
+      .then(([w, meta]) => {
+        chunks.set(k, { rows: w.rows, meta });
+        setLoadError(null);
+      })
+      .catch((e) => {
+        // Surface the failure instead of leaving an empty graph; a later redraw retries.
+        console.error("graph chunk failed", k, e);
+        setLoadError(String(e?.message ?? e));
+      })
+      .finally(() => {
+        pending.delete(k);
+        setTick(tick() + 1);
+      });
   }
 
   function rowAt(i: number): { g: GraphRow; m: RowMeta } | undefined {
-    const c = chunks.get(Math.floor(i / CHUNK));
+    const c = chunks.get(key(Math.floor(i / CHUNK)));
     if (!c) return;
     const k = i % CHUNK;
     return c.rows[k] && { g: c.rows[k], m: c.meta[k] };
@@ -158,6 +172,15 @@ export function GraphView(props: {
 
   createEffect(draw);
 
+  // New repo in this view (tab switch): start at the top.
+  createEffect(() => {
+    props.repo.repoId;
+    if (scroller) {
+      scroller.scrollTop = 0;
+      setScrollTop(0);
+    }
+  });
+
   function select(i: number) {
     if (i < 0 || i >= props.repo.rowCount) return;
     const r = rowAt(i);
@@ -221,6 +244,7 @@ export function GraphView(props: {
         <div style={{ height: `${Math.max(0, props.repo.rowCount * ROW_H - size().h)}px` }} />
       </div>
       {/* Accessible shadow of the canvas: announces the selected commit. */}
+      {loadError() && <div class="graph-error" role="alert">{loadError()}</div>}
       <div class="sr-only" aria-live="polite" role="status">
         {selectedMeta() ? `${selectedMeta()!.summary}, ${selectedMeta()!.author}, ${selectedMeta()!.sha.slice(0, 7)}` : ""}
       </div>
