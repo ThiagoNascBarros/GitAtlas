@@ -7,6 +7,7 @@ import { GraphView } from "./features/graph/GraphView";
 import { DiffView } from "./features/diff/DiffView";
 import { setTheme, themeChoice, ThemeChoice } from "./theme/theme";
 import { t } from "./i18n";
+import { toTreeRows } from "./features/files/tree";
 
 interface Tab { repo: OpenedRepo; selected: number | null; sha: string | null; diffPath: string | null }
 
@@ -14,6 +15,7 @@ export function App() {
   const [tabs, setTabs] = createSignal<Tab[]>([]);
   const [active, setActive] = createSignal(0);
   const [error, setError] = createSignal<UiError | null>(null);
+  const [fileView, setFileView] = createSignal<"path" | "tree">("path");
   const tab = () => tabs()[active()];
   const patch = (p: Partial<Tab>) => setTabs(tabs().map((x, i) => (i === active() ? { ...x, ...p } : x)));
 
@@ -146,18 +148,49 @@ export function App() {
                   <Show when={d().message.includes("\n")}><pre class="body-text">{d().message.split("\n").slice(1).join("\n").trim()}</pre></Show>
                   <p class="meta">{d().author} · {new Date(d().time * 1000).toLocaleString()}</p>
                   <p class="meta">{t("details.parents")}: <span class="mono">{d().parents.map((p) => p.slice(0, 7)).join(", ") || "—"}</span></p>
-                  <h3>{t("details.files")} <span class="muted">{d().files.length}</span></h3>
+                  <div class="files-head">
+                    <h3>{t("details.files")} <span class="muted">{d().files.length}</span></h3>
+                    <div class="seg" role="group" aria-label={t("files.view")}>
+                      <button aria-pressed={fileView() === "path"} onClick={() => setFileView("path")}>{t("files.path")}</button>
+                      <button aria-pressed={fileView() === "tree"} onClick={() => setFileView("tree")}>{t("files.tree")}</button>
+                    </div>
+                  </div>
                   <ul class="files">
-                    <For each={d().files}>
-                      {(f) => (
-                        <li>
-                          <button classList={{ active: tab()!.diffPath === f.path }} onClick={() => patch({ diffPath: f.path })}>
-                            <span class={`st st-${f.status}`}>{f.status}</span>
-                            <span class="path">{f.path}</span>
-                          </button>
-                        </li>
-                      )}
-                    </For>
+                    <Show
+                      when={fileView() === "tree"}
+                      fallback={
+                        <For each={d().files}>
+                          {(f) => (
+                            <li>
+                              <button classList={{ active: tab()!.diffPath === f.path }} onClick={() => patch({ diffPath: f.path })}>
+                                <span class={`st st-${f.status}`}>{f.status}</span>
+                                <span class="path">{f.path}</span>
+                              </button>
+                            </li>
+                          )}
+                        </For>
+                      }
+                    >
+                      <For each={toTreeRows(d().files)}>
+                        {(r) =>
+                          r.kind === "dir" ? (
+                            <li class="dir" style={{ "padding-left": `${8 + r.depth * 14}px` }}>▾ {r.name}</li>
+                          ) : (
+                            <li>
+                              <button
+                                style={{ "padding-left": `${8 + r.depth * 14}px` }}
+                                classList={{ active: tab()!.diffPath === r.file.path }}
+                                onClick={() => patch({ diffPath: r.file.path })}
+                                title={r.file.path}
+                              >
+                                <span class={`st st-${r.file.status}`}>{r.file.status}</span>
+                                <span class="path">{r.name}</span>
+                              </button>
+                            </li>
+                          )
+                        }
+                      </For>
+                    </Show>
                   </ul>
                 </div>
               )}

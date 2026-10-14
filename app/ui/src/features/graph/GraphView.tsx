@@ -9,23 +9,7 @@ import { t } from "../../i18n";
 const ROW_H = 28;
 const LANE_W = 16;
 const CHUNK = 200;
-const REF_COL_W = 180;
-const AUTHOR_W = 140;
-const DATE_W = 96;
-const SHA_W = 72;
-const MIN_MESSAGE_W = 160;
-
-/** Column x positions shared by the canvas and the header. Narrow views drop author, then date. */
-export function columns(width: number, graphW: number) {
-  const msgX = REF_COL_W + graphW;
-  let right = width - 8;
-  const shaX = right - SHA_W; right = shaX;
-  const showDate = right - DATE_W - msgX >= MIN_MESSAGE_W;
-  const dateX = showDate ? right - DATE_W : right; if (showDate) right = dateX;
-  const showAuthor = right - AUTHOR_W - msgX >= MIN_MESSAGE_W;
-  const authorX = showAuthor ? right - AUTHOR_W : right; if (showAuthor) right = authorX;
-  return { msgX, msgW: right - msgX - 12, authorX, showAuthor, dateX, showDate, shaX };
-}
+import { columns, ColumnWidths, loadWidths, saveWidths, clampWidth } from "./columns";
 
 interface Chunk { rows: GraphRow[]; meta: RowMeta[] }
 
@@ -44,6 +28,22 @@ export function GraphView(props: {
   const [tick, setTick] = createSignal(0);
   const [size, setSize] = createSignal({ w: 800, h: 600 });
   const [scrollTop, setScrollTop] = createSignal(0);
+  const [widths, setWidths] = createSignal<ColumnWidths>(loadWidths());
+
+  /** Drag a header edge to resize a column (refs grows to the right; author/date grow to the left). */
+  function startResize(e: PointerEvent, col: keyof ColumnWidths) {
+    e.preventDefault();
+    const x0 = e.clientX, w0 = widths()[col];
+    const dir = col === "refs" ? 1 : -1;
+    const move = (ev: PointerEvent) => setWidths({ ...widths(), [col]: clampWidth(col, w0 + dir * (ev.clientX - x0)) });
+    const up = () => {
+      saveWidths(widths());
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
 
   const refsByRow = () => {
     const m = new Map<number, RefInfo[]>();
@@ -98,7 +98,7 @@ export function GraphView(props: {
     const last = Math.min(props.repo.rowCount - 1, Math.ceil((top + h) / ROW_H));
     for (let c = Math.floor(first / CHUNK); c <= Math.floor(last / CHUNK); c++) ensure(c);
 
-    const gx = REF_COL_W - 8;
+    const gx = widths().refs - 8;
     const laneX = (l: number) => gx + LANE_W / 2 + l * LANE_W + 4;
     const refs = refsByRow();
     ctx.font = "13px Inter, Cantarell, system-ui, sans-serif";
@@ -143,7 +143,7 @@ export function GraphView(props: {
       let rx = 8;
       for (const ref of refs.get(i) ?? []) {
         const label = ref.kind === "tag" ? `◆ ${ref.name}` : ref.isHead ? `✓ ${ref.name}` : ref.name;
-        const tw = Math.min(ctx.measureText(label).width + 12, REF_COL_W - rx - 8);
+        const tw = Math.min(ctx.measureText(label).width + 12, widths().refs - rx - 8);
         if (tw < 24) break;
         ctx.fillStyle = ref.isHead ? token("color.accent.default") : token("color.bg.raised");
         ctx.fillRect(rx, y + 4, tw, ROW_H - 8);
@@ -157,12 +157,12 @@ export function GraphView(props: {
         rx += tw + 4;
       }
       // Text columns: message, author, date, sha
-      const col = columns(w, graphW());
+      const col = columns(w, graphW(), widths());
       ctx.fillStyle = token("color.text.primary");
       clipText(ctx, r.m.summary, col.msgX, cy, col.msgW);
       ctx.fillStyle = token("color.text.secondary");
-      if (col.showAuthor) clipText(ctx, r.m.author, col.authorX, cy, AUTHOR_W - 12);
-      if (col.showDate) clipText(ctx, new Date(r.m.time * 1000).toLocaleDateString(), col.dateX, cy, DATE_W - 8);
+      if (col.showAuthor) clipText(ctx, r.m.author, col.authorX, cy, widths().author - 12);
+      if (col.showDate) clipText(ctx, new Date(r.m.time * 1000).toLocaleDateString(), col.dateX, cy, widths().date - 8);
       ctx.font = "12.5px 'JetBrains Mono', 'DejaVu Sans Mono', monospace";
       ctx.fillStyle = token("color.text.muted");
       ctx.fillText(r.m.sha.slice(0, 7), col.shaX, cy);
@@ -211,16 +211,19 @@ export function GraphView(props: {
 
   return (
     <div class="graph">
-      <div class="graph-header" aria-hidden="true">
+      <div class="graph-header">
         {(() => {
-          const c = columns(size().w, graphW());
+          const c = columns(size().w, graphW(), widths());
           return (
             <>
               <span style={{ left: "8px" }}>{t("col.refs")}</span>
-              <span style={{ left: `${REF_COL_W}px` }}>{t("col.graph")}</span>
+              <span class="col-resize" style={{ left: `${widths().refs - 6}px` }} onPointerDown={(e) => startResize(e, "refs")} />
+              <span style={{ left: `${widths().refs}px` }}>{t("col.graph")}</span>
               <span style={{ left: `${c.msgX}px` }}>{t("col.message")}</span>
               {c.showAuthor && <span style={{ left: `${c.authorX}px` }}>{t("col.author")}</span>}
+              {c.showAuthor && <span class="col-resize" style={{ left: `${c.authorX - 6}px` }} onPointerDown={(e) => startResize(e, "author")} />}
               {c.showDate && <span style={{ left: `${c.dateX}px` }}>{t("col.date")}</span>}
+              {c.showDate && <span class="col-resize" style={{ left: `${c.dateX - 6}px` }} onPointerDown={(e) => startResize(e, "date")} />}
               <span style={{ left: `${c.shaX}px` }}>{t("col.sha")}</span>
             </>
           );
