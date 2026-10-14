@@ -9,6 +9,7 @@ import { t } from "../../i18n";
 const ROW_H = 28;
 const LANE_W = 16;
 const CHUNK = 200;
+import { perfEnabled, perfStats, recordDraw } from "./perf";
 import { columns, ColumnWidths, loadWidths, saveWidths, clampWidth } from "./columns";
 
 interface Chunk { rows: GraphRow[]; meta: RowMeta[] }
@@ -82,6 +83,8 @@ export function GraphView(props: {
   }
 
   function draw() {
+    const drawStart = performance.now();
+    let painted = 0;
     tick();
     activeTheme();
     const { w, h } = size();
@@ -113,6 +116,7 @@ export function GraphView(props: {
         ctx.fillRect(0, y, w, ROW_H);
       }
       if (!r) continue;
+      painted++;
       // Edges
       ctx.lineWidth = 2;
       for (const s of r.g.segs) {
@@ -168,9 +172,11 @@ export function GraphView(props: {
       ctx.fillText(r.m.sha.slice(0, 7), col.shaX, cy);
       ctx.font = "13px Inter, Cantarell, system-ui, sans-serif";
     }
+    recordDraw(drawStart, painted);
   }
 
   createEffect(draw);
+
 
   // New repo in this view (tab switch): start at the top.
   createEffect(() => {
@@ -248,6 +254,14 @@ export function GraphView(props: {
       </div>
       {/* Accessible shadow of the canvas: announces the selected commit. */}
       {loadError() && <div class="graph-error" role="alert">{loadError()}</div>}
+      {perfEnabled() && (
+        <div class="perf" aria-hidden="true">
+          <div>first paint {perfStats().firstPaintMs.toFixed(0)} ms</div>
+          <div>draw {perfStats().drawMs.toFixed(1)} ms · {perfStats().rows} rows</div>
+          <div>{perfStats().fps} painted frames/s · worst {perfStats().worstMs.toFixed(1)} ms</div>
+          <div>{props.repo.rowCount.toLocaleString()} commits · {props.repo.laneCount} lanes</div>
+        </div>
+      )}
       <div class="sr-only" aria-live="polite" role="status">
         {selectedMeta() ? `${selectedMeta()!.summary}, ${selectedMeta()!.author}, ${selectedMeta()!.sha.slice(0, 7)}` : ""}
       </div>

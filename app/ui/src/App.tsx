@@ -8,6 +8,7 @@ import { DiffView } from "./features/diff/DiffView";
 import { setTheme, themeChoice, ThemeChoice } from "./theme/theme";
 import { t } from "./i18n";
 import { toTreeRows } from "./features/files/tree";
+import { markOpenStart, togglePerf } from "./features/graph/perf";
 
 interface Tab { repo: OpenedRepo; selected: number | null; sha: string | null; diffPath: string | null }
 
@@ -21,6 +22,7 @@ export function App() {
 
   async function openPath(path: string) {
     try {
+      markOpenStart();
       const repo = await api.open(path);
       setError(null);
       setTabs([...tabs(), { repo, selected: null, sha: null, diffPath: null }]);
@@ -40,6 +42,15 @@ export function App() {
     setTabs(tabs().filter((_, k) => k !== i));
     setActive(Math.max(0, Math.min(active(), tabs().length - 1)));
   }
+
+  onMount(() => {
+    window.addEventListener("keydown", (e) => {
+      if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "p") {
+        e.preventDefault();
+        togglePerf();
+      }
+    });
+  });
 
   onMount(async () => {
     const p = await api.initialPath();
