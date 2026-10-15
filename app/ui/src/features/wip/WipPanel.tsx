@@ -4,6 +4,7 @@ import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
 import { api, OpenedRepo, StatusReport, UiError } from "../../api";
 import { t } from "../../i18n";
 import { groupStatus, WipItem } from "./status";
+import { ConflictEditor } from "../conflict/ConflictEditor";
 import { Check, FileCheck2, FilePen, Minus, Plus, TriangleAlert, X } from "lucide-solid";
 
 export interface WipFile { path: string; staged: boolean; untracked: boolean }
@@ -23,6 +24,7 @@ export function WipPanel(props: {
   const [amend, setAmend] = createSignal(false);
   const [confirm, setConfirm] = createSignal<string | null>(null);
   const [busy, setBusy] = createSignal(false);
+  const [editing, setEditing] = createSignal<string | null>(null);
   const id = props.repo.repoId;
 
   // Amend prefills the form with the previous message.
@@ -93,6 +95,9 @@ export function WipPanel(props: {
 
   return (
     <div class="wip">
+      <Show when={editing()}>
+        {(p) => <ConflictEditor repoId={id} path={p()} run={props.run} onClose={() => setEditing(null)} onError={(e) => props.onError(e as UiError)} />}
+      </Show>
       <Show when={props.status?.merging}>
         <div class="merge-banner" role="alert">
           <span>{t("merge.banner")}</span>
@@ -106,6 +111,7 @@ export function WipPanel(props: {
             <span class="st st-conflict">U</span><span class="path">{i.path}</span>
             <button class="mini" onClick={() => void props.run(() => api.resolve(id, i.path, false))}>{t("merge.ours")}</button>
             <button class="mini" onClick={() => void props.run(() => api.resolve(id, i.path, true))}>{t("merge.theirs")}</button>
+            <button class="mini" onClick={() => setEditing(i.path)}>{t("merge.edit")}</button>
           </li>}</For></ul>
         </section>
       </Show>

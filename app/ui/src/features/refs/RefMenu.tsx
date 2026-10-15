@@ -6,7 +6,8 @@ import { menuKeys, useOverlay } from "../overlay";
 import { NameDialog } from "./NameDialog";
 import { Check, GitBranchPlus, GitMerge, Pencil, Trash2 } from "lucide-solid";
 
-export interface RefMenuState { x: number; y: number; ref: RefInfo }
+/** `merge` opens straight on the merge dialog (used by drag-and-drop of a ref onto the current branch). */
+export interface RefMenuState { x: number; y: number; ref: RefInfo; merge?: boolean }
 type Run = (op: () => Promise<unknown>, opts?: { graph?: boolean; toast?: string }) => Promise<boolean>;
 
 /** Context menu for a branch/tag in the left panel, plus the name prompt it can open. */
@@ -20,7 +21,7 @@ function mergeText(p: MergePreview): string {
 export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; onClose: () => void; onError: (e: unknown) => void }) {
   const r = () => props.menu.ref;
   const local = () => r().kind === "head";
-  const [ask, setAsk] = createSignal<"new" | "rename" | "merge" | null>(null);
+  const [ask, setAsk] = createSignal<"new" | "rename" | "merge" | null>(props.menu.merge ? "merge" : null);
   const [preview] = createResource(() => (ask() === "merge" ? r().name : null), (src) => api.mergePreview(props.repoId, src).catch((e) => { props.onError(e); props.onClose(); return null; }));
   const [pos, setPos] = createSignal({ x: props.menu.x, y: props.menu.y });
   let menuEl: HTMLMenuElement | undefined;

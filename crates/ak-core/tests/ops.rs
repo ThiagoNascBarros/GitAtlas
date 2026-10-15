@@ -503,9 +503,9 @@ fn merge_preview_predicts_conflicts_then_ours_resolution_makes_two_parents() {
     let (d, e) = conflict_repo();
     let p = e.merge_preview("feature/conflict").unwrap();
     assert!(!p.fast_forward && !p.up_to_date);
-    if let Some(c) = &p.conflicts {
-        assert_eq!(c, &vec!["a.txt".to_string()]);
-    }
+    assert_eq!(p.conflicts, Some(vec!["a.txt".to_string()]));
+    // Old-Git path (used below 2.38) must agree.
+    assert_eq!(e.merge_conflicts_legacy("feature/conflict").unwrap(), vec!["a.txt".to_string()]);
     let before = git(&d, &["status", "--porcelain"]);
     let out = e.run(&Operation::Merge { source: "feature/conflict".into() }).unwrap();
     assert!(out.conflicted && e.merge_in_progress());
@@ -547,6 +547,7 @@ fn stash_push_pop_leaves_tree_identical_and_drop_is_undoable() {
     assert_eq!(code(e.run(&Operation::StashPush { message: None, include_untracked: false }).and_then(|_| e.run(&Operation::StashPush { message: None, include_untracked: false }))), "NOTHING_TO_STASH");
     assert_eq!(git(&d, &["diff"]), "");
     assert_eq!(e.stashes().unwrap().len(), 1);
+    assert_eq!(e.stashes().unwrap()[0].base, git(&d, &["rev-parse", "HEAD"]));
     e.run(&Operation::StashPop { index: 0 }).unwrap();
     assert_eq!(git(&d, &["diff"]), before);
     assert!(e.stashes().unwrap().is_empty());
@@ -586,4 +587,17 @@ fn resolve_conflict_with_theirs_takes_the_merged_branch_version() {
     assert_eq!(git(&d, &["diff", "--name-only", "--diff-filter=U"]), "");
     git(&d, &["commit", "-q", "--no-edit"]);
     assert_eq!(git(&d, &["log", "-1", "--format=%P"]).split(' ').count(), 2);
+}
+
+#[test]
+fn conflict_versions_and_resolve_with_edited_content() {
+    let (d, e) = conflict_repo();
+    e.run(&Operation::Merge { source: "feature/conflict".into() }).unwrap();
+    let v = e.conflict_versions("a.txt").unwrap();
+    assert_eq!((v.ours.as_deref(), v.theirs.as_deref()), (Some("main\n"), Some("feature\n")));
+    assert!(v.merged.contains("<<<<<<<") && v.base.is_some());
+    e.run(&Operation::ResolveWith { path: "a.txt".into(), content: "both\n".into() }).unwrap();
+    assert_eq!(git(&d, &["diff", "--name-only", "--diff-filter=U"]), "");
+    assert_eq!(git(&d, &["show", ":a.txt"]), "both");
+    assert_eq!(code(e.run(&Operation::ResolveWith { path: "../x".into(), content: String::new() })), "INVALID_PATH");
 }

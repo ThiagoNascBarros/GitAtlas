@@ -450,3 +450,11 @@ menu.ctx button:focus svg { color: currentColor; }
 .toolbar .tabs .tab-add { width: 30px; height: 30px; border-radius: var(--r-ctl); color: var(--ak-color-text-secondary); }
 .toolbar .tabs .tab-add:hover { background: color-mix(in srgb, var(--ak-color-text-primary) 10%, transparent); color: var(--ak-color-text-primary); }
 .center > .diff.full { position: fixed; inset: 0; z-index: 30; max-height: none; flex: none; background: var(--ak-color-bg-canvas); }
+.modal.conflict { width: min(1100px, 95vw); }
+.conflict-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.conflict-side h3 { margin: 0 0 4px; font-size: 12px; color: var(--ak-color-text-secondary); }
+.conflict-side pre { margin: 0; max-height: 28vh; overflow: auto; padding: 8px; border-radius: var(--r-m, 6px); background: var(--ak-color-bg-canvas); border: 1px solid var(--ak-color-border-default); }
+.conflict-chunks { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
+.conflict-chunk { display: flex; gap: 4px; align-items: center; }
+.conflict-result { display: grid; gap: 4px; }
+.conflict-result textarea { min-height: 30vh; resize: vertical; background: var(--ak-color-bg-canvas); color: var(--ak-color-text-primary); border: 1px solid var(--ak-color-border-default); border-radius: var(--r-m, 6px); padding: 8px; }

@@ -12,7 +12,7 @@ use std::time::Duration;
 use ak_core::cache;
 use ak_core::graph::{self, Layout, Topology};
 use ak_core::ops::journal::JournalEntry;
-use ak_core::ops::{MergePreview, StashInfo};
+use ak_core::ops::{ConflictVersions, MergePreview, StashInfo};
 use ak_core::ops::{Engine, OpError, OpOutcome, Operation};
 use ak_core::read::{CliReader, CommitDetails, RepoReader, RowText};
 use ak_core::read_gix::GixReader;
@@ -238,12 +238,21 @@ fn load(path: &Path) -> Result<(Repo, OpenedRepo)> {
     let layout = graph::layout(&topo);
 
     let row_of: HashMap<&str, u32> = commits.iter().enumerate().map(|(i, c)| (c.sha.as_str(), i as u32)).collect();
-    let refs = refs
-        .into_iter()
-        .map(|r| RefInfo { row: row_of.get(r.target.as_str()).copied(), name: r.short, kind: r.kind, is_head: r.is_head })
-        .collect();
     let root = reader.root().to_path_buf();
     let engine = Engine::open(git, &root).ok();
+    // Each stash is shown as a label on the commit it was taken on (`refs/stash` alone only names the newest).
+    let stashes = engine.as_ref().and_then(|e| e.stashes().ok()).unwrap_or_default();
+    let refs = refs
+        .into_iter()
+        .filter(|r| r.kind != RefKind::Stash)
+        .map(|r| RefInfo { row: row_of.get(r.target.as_str()).copied(), name: r.short, kind: r.kind, is_head: r.is_head })
+        .chain(stashes.iter().map(|s| RefInfo {
+            row: row_of.get(s.base.as_str()).copied(),
+            name: format!("stash@{{{}}}: {}", s.index, s.message),
+            kind: RefKind::Stash,
+            is_head: false,
+        }))
+        .collect();
     let read_only_reason = if !caps.supported() {
         Some("Git older than 2.20: read-only".to_owned())
     } else {
@@ -385,6 +394,17 @@ async fn op_merge_abort(repo_id: u32, state: State<'_, AppState>) -> Result<OpOu
 }
 
 #[tauri::command]
+async fn conflict_versions(repo_id: u32, path: String, state: State<'_, AppState>) -> Result<ConflictVersions> {
+    let r = get(&state, repo_id)?;
+    Ok(engine(&r)?.conflict_versions(&path)?)
+}
+
+#[tauri::command]
+async fn op_resolve_with(repo_id: u32, path: String, content: String, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::ResolveWith { path, content })
+}
+
+#[tauri::command]
 async fn op_resolve(repo_id: u32, path: String, theirs: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
     run_op(&state, repo_id, Operation::ResolveConflict { path, theirs })
 }
@@ -510,6 +530,8 @@ fn main() {
             op_merge,
             op_merge_abort,
             op_resolve,
+            conflict_versions,
+            op_resolve_with,
             op_stash,
             op_undo,
             op_redo,

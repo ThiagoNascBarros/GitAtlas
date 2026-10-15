@@ -12,6 +12,8 @@ use super::{new_id, now, Engine, OpError, OpOutcome};
 pub struct StashInfo {
     pub index: usize,
     pub sha: String,
+    /// Commit the stash was taken on (its first parent): where the graph shows it.
+    pub base: String,
     pub message: String,
     pub time: i64,
 }
@@ -22,13 +24,15 @@ fn bad_index() -> OpError {
 
 impl Engine {
     pub fn stashes(&self) -> Result<Vec<StashInfo>, OpError> {
-        let out = self.git.run(&self.root, ["stash", "list", "--format=%H%x00%gs%x00%ct"])?;
+        let out = self.git.run(&self.root, ["stash", "list", "--format=%H%x00%P%x00%gs%x00%ct"])?;
         Ok(String::from_utf8_lossy(&out)
             .lines()
             .enumerate()
             .filter_map(|(index, l)| {
                 let mut p = l.split('\0');
-                Some(StashInfo { index, sha: p.next()?.into(), message: p.next()?.into(), time: p.next()?.parse().ok()? })
+                let sha = p.next()?.into();
+                let base = p.next()?.split(' ').next()?.into();
+                Some(StashInfo { index, sha, base, message: p.next()?.into(), time: p.next()?.parse().ok()? })
             })
             .collect())
     }
