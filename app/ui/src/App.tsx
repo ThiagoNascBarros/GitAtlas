@@ -8,6 +8,7 @@ import { GraphView } from "./features/graph/GraphView";
 import { DiffView } from "./features/diff/DiffView";
 import { setTheme, themeChoice, ThemeChoice } from "./theme/theme";
 import { errorFix, errorText, t } from "./i18n";
+import { JournalPanel } from "./features/journal/JournalPanel";
 import { WipFile, WipPanel } from "./features/wip/WipPanel";
 import { changeCount, groupStatus } from "./features/wip/status";
 import { toTreeRows } from "./features/files/tree";
@@ -27,6 +28,7 @@ export function App() {
   const [error, setError] = createSignal<UiError | null>(null);
   const [fileView, setFileView] = createSignal<"path" | "tree">("path");
   const [toast, setToast] = createSignal<Toast | null>(null);
+  const [showJournal, setShowJournal] = createSignal(false);
   const [showDetail, setShowDetail] = createSignal(false);
   let toastTimer: number | undefined;
   const tab = () => tabs()[active()];
@@ -194,6 +196,7 @@ export function App() {
         <Show when={tab()?.repo.readOnlyReason}><span class="badge">{t("toolbar.readOnly")}</span></Show>
         <button disabled={!tab()} title={t("toolbar.undoTitle")} onClick={() => undo(tab().repo.repoId, null)}>↶ {t("toolbar.undo")}</button>
         <button disabled={!tab()} title={t("toolbar.redoTitle")} onClick={() => redo(tab().repo.repoId)}>↷ {t("toolbar.redo")}</button>
+        <button disabled={!tab()} title={t("toolbar.journalTitle")} onClick={() => setShowJournal(true)}>{t("toolbar.journal")}</button>
         <label class="theme-pick">
           {t("toolbar.theme")}
           <select value={themeChoice()} onChange={(e) => setTheme(e.currentTarget.value as ThemeChoice)}>
@@ -379,6 +382,9 @@ export function App() {
           <Show when={error()!.detail}><button onClick={() => setShowDetail(!showDetail())}>{t("err.details")}</button></Show>
           <button onClick={() => setError(null)}>{t("err.dismiss")}</button>
         </div>
+      </Show>
+      <Show when={showJournal() && tab()}>
+        <JournalPanel repoId={tab()!.repo.repoId} onClose={() => setShowJournal(false)} onError={(e) => fail(e)} />
       </Show>
       <Show when={toast()}>
         <div class="toast" role="status">

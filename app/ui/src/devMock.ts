@@ -66,6 +66,7 @@ export async function installDevMock(first: string, next = "hubbi") {
       case "op_redo": throw { code: "NOTHING_TO_REDO", message: "none" };
       case "op_undo": return { id: null, head: null };
       case "journal_list": return [];
+      case "journal_prune": return 0;
       default: throw { code: "UNKNOWN_COMMAND", message: cmd };
     }
   });

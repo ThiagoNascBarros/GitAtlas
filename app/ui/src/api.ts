@@ -20,7 +20,7 @@ export interface StatusEntry {
 export interface StatusReport { branch: string | null; oid: string | null; entries: StatusEntry[] }
 export interface OpOutcome { id: string | null; head: string | null }
 export interface JournalEntry {
-  id: string; time: number; kind: string; summary: string; undone: boolean; paths: string[]; untracked: string[];
+  id: string; time: number; kind: string; summary: string; undone: boolean; commands: string[]; paths: string[]; untracked: string[];
 }
 
 export const api = {
@@ -39,6 +39,7 @@ export const api = {
   undo: (repoId: number, id: string) => invoke<OpOutcome>("op_undo", { repoId, id }),
   redo: (repoId: number) => invoke<OpOutcome>("op_redo", { repoId }),
   journal: (repoId: number) => invoke<JournalEntry[]>("journal_list", { repoId }),
+  pruneJournal: (repoId: number, keep: number) => invoke<number>("journal_prune", { repoId, keep }),
   close: (repoId: number) => invoke<void>("repo_close", { repoId }),
   rows: (repoId: number, start: number, count: number) => invoke<RowMeta[]>("graph_rows", { repoId, start, count }),
   window: async (repoId: number, start: number, count: number) =>

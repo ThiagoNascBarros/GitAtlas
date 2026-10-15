@@ -59,6 +59,24 @@ impl Journal {
             .collect()
     }
 
+    /// Keeps only the newest `keep` entries; returns the dropped ones (oldest first).
+    pub fn prune(&self, keep: usize) -> std::io::Result<Vec<JournalEntry>> {
+        let mut entries = self.list();
+        if entries.len() <= keep {
+            return Ok(vec![]);
+        }
+        let kept = entries.split_off(entries.len() - keep);
+        let text: String = kept
+            .iter()
+            .map(|e| serde_json::to_string(e).map(|s| s + "\n"))
+            .collect::<Result<_, _>>()
+            .map_err(std::io::Error::other)?;
+        let tmp = self.path.with_extension("tmp");
+        std::fs::write(&tmp, text)?;
+        std::fs::rename(&tmp, &self.path)?;
+        Ok(entries)
+    }
+
     /// Marks an entry as undone or redone (atomic rewrite). Returns false if the id is unknown.
     pub fn set_undone(&self, id: &str, undone: bool, at: i128) -> std::io::Result<bool> {
         let mut entries = self.list();

@@ -152,6 +152,20 @@ impl Engine {
         self.journal.list()
     }
 
+    /// Opt-in cleanup: forgets all but the newest `keep` journal entries together with their
+    /// discard backups and snapshot refs. Dropped entries can no longer be undone.
+    pub fn prune_journal(&self, keep: usize) -> Result<usize, OpError> {
+        let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
+        let dropped = self.journal.prune(keep)?;
+        for e in &dropped {
+            let _ = std::fs::remove_dir_all(self.discard_dir(&e.id));
+            if let Some(r) = &e.snapshot_ref {
+                let _ = self.git.run(&self.root, ["update-ref", "-d", r.as_str()]);
+            }
+        }
+        Ok(dropped.len())
+    }
+
     fn head(&self) -> Option<String> {
         self.git
             .run(&self.root, ["rev-parse", "--verify", "--quiet", "HEAD"])

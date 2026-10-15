@@ -141,3 +141,11 @@ select { appearance: none; background-color: var(--ak-color-bg-raised); color: v
 /* In the column layout a flex child would grow to its content (millions of px for 100k rows). */
 .center > .graph, .center > .diff { flex: 1 1 0; min-height: 0; }
 .wip-row { flex: none; }
+
+.modal-back { position: fixed; inset: 0; background: rgb(0 0 0 / .4); display: grid; place-items: center; z-index: 10; }
+.modal { width: min(640px, 90vw); max-height: 80vh; overflow: auto; padding: 16px; border-radius: 10px; background: var(--ak-color-bg-overlay); border: 1px solid var(--ak-color-border-strong); }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+.journal { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.journal li { display: grid; gap: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--ak-color-border-default, var(--ak-color-border-strong)); }
+.journal li.undone { opacity: .6; }
+.journal code { font-size: 12px; color: var(--ak-color-text-secondary, inherit); }

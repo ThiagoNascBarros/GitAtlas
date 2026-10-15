@@ -392,3 +392,21 @@ fn symlink_discard_is_refused_and_conflicted_file_can_be_resolved() {
         assert_eq!(code(e.run(&Operation::Discard { paths: vec!["link".into()] })), "UNSUPPORTED_PATH");
     }
 }
+
+#[test]
+fn prune_journal_drops_old_entries_and_their_snapshots() {
+    let d = repo();
+    let e = engine(&d);
+    for i in 0..3 {
+        write(&d, "a.txt", &i.to_string());
+        stage(&e, &["a.txt"]);
+        commit(&e, &format!("c{i}"), false);
+    }
+    commit(&e, "c2 amended", true);
+    assert_eq!(e.journal().len(), 4);
+    assert_eq!(e.prune_journal(1).unwrap(), 3);
+    let j = e.journal();
+    assert_eq!((j.len(), j[0].summary.as_str()), (1, "c2 amended"));
+    assert_eq!(e.prune_journal(1).unwrap(), 0);
+    assert_eq!(git(&d, &["for-each-ref", "refs/atlaskraken/snapshots"]).lines().count(), 1);
+}

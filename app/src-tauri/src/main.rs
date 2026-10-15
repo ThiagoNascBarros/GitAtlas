@@ -357,6 +357,12 @@ async fn journal_list(repo_id: u32, state: State<'_, AppState>) -> Result<Vec<Jo
     Ok(engine(&r)?.journal())
 }
 
+#[tauri::command]
+async fn journal_prune(repo_id: u32, keep: usize, state: State<'_, AppState>) -> Result<usize> {
+    let r = get(&state, repo_id)?;
+    Ok(engine(&r)?.prune_journal(keep)?)
+}
+
 fn main() {
     let initial_path = std::env::args_os().nth(1).map(PathBuf::from);
     tauri::Builder::default()
@@ -380,7 +386,8 @@ fn main() {
             op_commit,
             op_undo,
             op_redo,
-            journal_list
+            journal_list,
+            journal_prune
         ])
         .run(tauri::generate_context!())
         .expect("error while running AtlasKraken");
