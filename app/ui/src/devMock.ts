@@ -73,6 +73,8 @@ export async function installDevMock(first: string, next = "hubbi") {
       case "merge_preview": return { up_to_date: false, fast_forward: false, conflicts: [] };
       case "conflict_versions": return { base: "a\n", ours: "mine\n", theirs: "yours\n", merged: "<<<<<<< HEAD\nmine\n=======\nyours\n>>>>>>> topic\n" };
       case "op_history": return { id: "h1", head: null };
+      case "op_net": return { id: null, head: null };
+      case "credentials_answer": return null;
       case "op_merge": case "op_resolve_with": case "op_merge_abort": case "op_resolve": case "op_stash":
       case "op_branch_create": case "op_branch_rename": case "op_branch_delete": case "op_checkout":
         return { id: null, head: null };
