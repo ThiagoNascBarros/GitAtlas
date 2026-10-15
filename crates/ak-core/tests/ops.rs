@@ -561,3 +561,29 @@ fn stash_push_pop_leaves_tree_identical_and_drop_is_undoable() {
     assert_eq!(e.stashes().unwrap().len(), 1);
     assert_eq!(code(e.run(&Operation::StashApply { index: 7 })), "INVALID_STASH");
 }
+
+#[test]
+fn stash_apply_brings_changes_back_and_keeps_the_stash() {
+    let (d, e) = base_repo();
+    write(&d, "a.txt", "changed\n");
+    let before = git(&d, &["diff"]);
+    e.run(&Operation::StashPush { message: Some("keep me".into()), include_untracked: false }).unwrap();
+    assert_eq!(git(&d, &["diff"]), "");
+    e.run(&Operation::StashApply { index: 0 }).unwrap();
+    assert_eq!(git(&d, &["diff"]), before);
+    let list = e.stashes().unwrap();
+    assert_eq!(list.len(), 1);
+    assert!(list[0].message.contains("keep me"));
+}
+
+#[test]
+fn resolve_conflict_with_theirs_takes_the_merged_branch_version() {
+    let (d, e) = conflict_repo();
+    let out = e.run(&Operation::Merge { source: "feature/conflict".into() }).unwrap();
+    assert!(out.conflicted);
+    e.run(&Operation::ResolveConflict { path: "a.txt".into(), theirs: true }).unwrap();
+    assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "feature\n");
+    assert_eq!(git(&d, &["diff", "--name-only", "--diff-filter=U"]), "");
+    git(&d, &["commit", "-q", "--no-edit"]);
+    assert_eq!(git(&d, &["log", "-1", "--format=%P"]).split(' ').count(), 2);
+}
