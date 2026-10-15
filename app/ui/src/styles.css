@@ -449,3 +449,4 @@ menu.ctx button:focus svg { color: currentColor; }
 @media (prefers-contrast: more) { :root { --lg-edge: var(--ak-color-border-strong); } }
 .toolbar .tabs .tab-add { width: 30px; height: 30px; border-radius: var(--r-ctl); color: var(--ak-color-text-secondary); }
 .toolbar .tabs .tab-add:hover { background: color-mix(in srgb, var(--ak-color-text-primary) 10%, transparent); color: var(--ak-color-text-primary); }
+.center > .diff.full { position: fixed; inset: 0; z-index: 30; max-height: none; flex: none; background: var(--ak-color-bg-canvas); }

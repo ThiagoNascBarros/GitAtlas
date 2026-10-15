@@ -44,6 +44,8 @@ const en = {
   "diff.unified": "Unified",
   "diff.split": "Split",
   "diff.close": "Close diff",
+  "diff.full": "Full screen (Esc to exit)",
+  "diff.exitFull": "Exit full screen",
   "diff.binary": "Binary file — no text diff.",
   "loading": "Loading…",
   "status.commits": "{n} commits",
