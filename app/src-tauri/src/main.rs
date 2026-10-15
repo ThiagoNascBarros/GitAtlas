@@ -143,7 +143,11 @@ fn load(path: &Path) -> Result<(Repo, OpenedRepo)> {
     let refs = reader.refs().map_err(|e| UiError::new("READ_FAILED", e))?;
     let head = reader.head().map_err(|e| UiError::new("READ_FAILED", e))?;
     // Commit list: reuse the on-disk cache while no ref moved (fingerprint match).
-    let git_dir = reader.root().join(".git");
+    // `.git` may be a file (worktrees, submodules): ask Git where the directory really is.
+    let git_dir = git
+        .run(reader.root(), ["rev-parse", "--absolute-git-dir"])
+        .map(|o| PathBuf::from(String::from_utf8_lossy(&o).trim()))
+        .unwrap_or_else(|_| reader.root().join(".git"));
     let fp = cache::fingerprint(
         &refs.iter().map(|r| (r.name.clone(), r.target.clone())).collect::<Vec<_>>(),
         head.as_deref(),
