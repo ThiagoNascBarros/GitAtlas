@@ -17,7 +17,7 @@ export interface UiError { code: string; message: string; detail?: string; sugge
 export interface StatusEntry {
   path: string; orig_path: string | null; index: string; worktree: string; conflicted: boolean; untracked: boolean;
 }
-export interface StatusReport { branch: string | null; oid: string | null; entries: StatusEntry[]; merging?: boolean }
+export interface StatusReport { branch: string | null; oid: string | null; entries: StatusEntry[]; merging?: boolean; upstream?: string | null; ahead?: number; behind?: number }
 export interface MergePreview { up_to_date: boolean; fast_forward: boolean; conflicts: string[] | null }
 export interface ConflictVersions { base: string | null; ours: string | null; theirs: string | null; merged: string }
 export interface StashInfo { index: number; sha: string; message: string; time: number }
@@ -52,6 +52,8 @@ export const api = {
   stashList: (repoId: number) => invoke<StashInfo[]>("stash_list", { repoId }),
   stash: (repoId: number, action: "push" | "apply" | "pop" | "drop", index = 0, message: string | null = null) =>
     invoke<OpOutcome>("op_stash", { repoId, action, index, message }),
+  net: (repoId: number, action: "fetch" | "pull" | "push", force = false) => invoke<OpOutcome>("op_net", { repoId, action, force }),
+  credentialsAnswer: (id: number, value: string | null) => invoke<void>("credentials_answer", { id, value }),
   undo: (repoId: number, id: string) => invoke<OpOutcome>("op_undo", { repoId, id }),
   redo: (repoId: number) => invoke<OpOutcome>("op_redo", { repoId }),
   journal: (repoId: number) => invoke<JournalEntry[]>("journal_list", { repoId }),
@@ -101,3 +103,4 @@ export function decodeWindow(buf: ArrayBuffer): GraphWindow {
   }
   return { start, laneCount, rows };
 }
+export interface CredentialsRequest { id: number; repoId: number; prompt: string; secret: boolean }

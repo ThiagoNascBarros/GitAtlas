@@ -4,6 +4,8 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod askpass;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -37,6 +39,7 @@ struct Repo {
 #[derive(Default)]
 struct AppState {
     repos: Mutex<HashMap<u32, Arc<Repo>>>,
+    askpass: Arc<askpass::Pending>,
     next_id: Mutex<u32>,
     initial_path: Option<PathBuf>,
 }
@@ -476,6 +479,31 @@ async fn op_checkout(repo_id: u32, target: String, is_branch: bool, state: State
     run_op(&state, repo_id, Operation::Checkout { target, is_branch })
 }
 
+/// Fetch, pull or push. Runs off the async runtime (it can wait on the network and on the user
+/// answering a credentials prompt, which arrives through `credentials_answer`).
+#[tauri::command]
+async fn op_net(repo_id: u32, action: String, force: bool, app: AppHandle, state: State<'_, AppState>) -> Result<OpOutcome> {
+    let r = get(&state, repo_id)?;
+    let pending = state.askpass.clone();
+    let op = match action.as_str() {
+        "fetch" => Operation::Fetch,
+        "pull" => Operation::Pull,
+        "push" => Operation::Push { force },
+        _ => return Err(UiError::new("GIT_FAILED", "unknown network action")),
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let e = engine(&r)?;
+        Ok(askpass::with_bridge(&app, pending, repo_id, |env| e.run_with_env(&op, env))?)
+    })
+    .await
+    .map_err(|e| UiError::new("GIT_FAILED", e))?
+}
+
+#[tauri::command]
+fn credentials_answer(id: u64, value: Option<String>, state: State<'_, AppState>) {
+    state.askpass.answer(id, value);
+}
+
 #[tauri::command]
 async fn op_undo(repo_id: u32, id: String, state: State<'_, AppState>) -> Result<OpOutcome> {
     let r = get(&state, repo_id)?;
@@ -501,6 +529,10 @@ async fn journal_prune(repo_id: u32, keep: usize, state: State<'_, AppState>) ->
 }
 
 fn main() {
+    // Started by Git/ssh as the askpass program: forward the prompt to the running app and exit.
+    if let Ok(sock) = std::env::var(askpass::SOCK_ENV) {
+        std::process::exit(askpass::client(&sock));
+    }
     let initial_path = std::env::args_os().nth(1).map(PathBuf::from);
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -533,6 +565,8 @@ fn main() {
             conflict_versions,
             op_resolve_with,
             op_stash,
+            op_net,
+            credentials_answer,
             op_undo,
             op_redo,
             journal_list,
