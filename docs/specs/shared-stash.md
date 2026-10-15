@@ -229,3 +229,14 @@ Choices made while implementing, where the spec was silent, ambiguous or not fea
 - **Fetch mode (shell).** Stored as `sharedStash.fetchMode` in `<app config dir>/settings.json` (global) and `<git-dir>/atlasgit/settings.json` (per repo, written only when changed). `shared_stash_tab_open` takes the repo id. A plain Fetch/Pull fetches shared stashes when the effective mode is `always` or the tab is open; its failures are reported per remote and never fail the Fetch/Pull.
 - **Cancel.** `shared_stash_cancel` dismisses the credentials prompts of the repository (Git then fails with an auth error). A running Git process is not killed, and `Lock::Remote` is held until it ends.
 - **Large stash.** Threshold is 10 MiB of blobs missing from the remote's known branches; best effort, a failure to estimate means no warning.
+
+## 14. Implementation notes (M5-M6, UI)
+
+- **Sidebar tab.** The sidebar has a two-button switch, "Branches" (the Local/Remote/Tags/Stashes sections) and "Shared stash". Opening the tab fetches once and tells the shell (`shared_stash_tab_open`); leaving it, switching repository or closing it reports closed.
+- **Row click** selects the shared stash's stash commit in the details panel (files list, then the existing read-only diff). The diff is the stash against its base (first parent); untracked files (`^3`) are not part of it.
+- **Share dialog.** No command exposes `user.name`, so the warning shows the slug of the user's earlier shared stash when there is one and otherwise says "your Git user name (as a lowercase slug)". The size warning cannot be computed before publishing (the engine reports it in the publish outcome), so the dialog states the rule and a toast reports the size after publishing.
+- **Failed share** closes the dialog and the error shows in the banner (a dialog would cover it).
+- **Graph glyph** is drawn on the rows of loaded graph chunks whose sha equals a valid stash's base (no sha-to-row command exists); stashes sharing a base show a count. View toggle (default on) is stored in `localStorage` only.
+- **Kept stashes** are listed under the remote recorded in `keep.json`, else the default remote.
+- **Per-remote errors and last-fetched time** are UI state (not stored); a cancelled fetch leaves the previous list and shows no error. A rejected remote hides its rows and offers "Retry check" (`shared_stash_probe_reset`).
+- **Read-only repositories** do not fetch on tab open and disable the refresh button and the mutating actions.
