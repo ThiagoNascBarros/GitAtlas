@@ -11,6 +11,11 @@ rm -f "$HOME/.local/share/applications/atlaskraken.desktop" "$HOME/.local/bin/at
 mkdir -p "$(dirname "$bin")"
 sed "s|^root=.*|root=\"$root\"|" "$root/scripts/launch.sh" >"$bin"
 chmod +x "$bin"
+# Install the icon under a theme name: the shell caches icons by file path, so a path icon goes stale.
+icon="$HOME/.local/share/icons/hicolor/512x512/apps/atlasgit.png"
+mkdir -p "$(dirname "$icon")"
+cp "$root/app/src-tauri/icons/icon.png" "$icon"
+gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
 mkdir -p "$(dirname "$file")"
 cat >"$file" <<EOF
 [Desktop Entry]
@@ -19,7 +24,7 @@ Name=AtlasGit
 Comment=Git client
 Exec=$bin
 Path=$root
-Icon=$root/app/src-tauri/icons/icon.png
+Icon=atlasgit
 Terminal=false
 Categories=Development;RevisionControl;
 StartupWMClass=atlasgit
