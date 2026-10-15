@@ -523,3 +523,7 @@ menu.ctx button:focus svg { color: currentColor; }
 .wip-head .muted { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
 .wip-hint { margin: 0 0 4px; font-size: 11.5px; line-height: 1.35; }
 .wip-why { text-align: center; margin-top: 4px; }
+/* Unstaged and staged read as two separate boxes, each tinted by its status colour. */
+.wip-sec + .wip-sec { margin-top: var(--s2); padding-top: var(--s3); border-top: 1px solid var(--ak-color-border-default); }
+.wip-sec.unstaged h3 svg { color: var(--ak-color-status-modified); }
+.wip-sec.staged h3 svg { color: var(--ak-color-status-added); }

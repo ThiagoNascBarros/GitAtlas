@@ -129,7 +129,7 @@ export function WipPanel(props: {
           </li>}</For></ul>
         </section>
       </Show>
-      <section>
+      <section class="wip-sec unstaged">
         <div class="files-head">
           <h3><FilePen size={14} aria-hidden="true" />{t("wip.unstaged")} <span class="muted">{groups().unstaged.length}</span></h3>
           <Show when={groups().unstaged.length}>
@@ -139,7 +139,7 @@ export function WipPanel(props: {
         <p class="wip-hint muted">{t("wip.unstagedHint")}</p>
         <ul class="files wip-list"><For each={groups().unstaged} fallback={<li class="muted pad-s">{t("wip.empty")}</li>}>{(i) => row(i, false)}</For></ul>
       </section>
-      <section>
+      <section class="wip-sec staged">
         <div class="files-head">
           <h3><FileCheck2 size={14} aria-hidden="true" />{t("wip.staged")} <span class="muted">{groups().staged.length}</span></h3>
           <Show when={groups().staged.length}>
