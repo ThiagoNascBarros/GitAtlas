@@ -35,6 +35,7 @@ export function App() {
   const [refFilter, setRefFilter] = createSignal("");
   const [refMenu, setRefMenu] = createSignal<RefMenuState | null>(null);
   const [showJournal, setShowJournal] = createSignal(false);
+  const [watchFailed, setWatchFailed] = createSignal<number[]>([]);
   const [askName, setAskName] = createSignal<"branch" | "stash" | null>(null);
   const [showDetail, setShowDetail] = createSignal(false);
   let toastTimer: number | undefined;
@@ -172,6 +173,7 @@ export function App() {
     try {
       // The core watches the working tree and emits this (debounced) on any change.
       await listen<number>("repo-changed", (e) => loadStatus(e.payload));
+      await listen<number>("watch-failed", (e) => setWatchFailed([...watchFailed().filter((id) => id !== e.payload), e.payload]));
       window.addEventListener("focus", () => tab() && loadStatus(tab().repo.repoId));
     } catch { /* no event bridge (plain browser) */ }
     const p = await api.initialPath();
@@ -398,6 +400,12 @@ export function App() {
         </div>
       </Show>
 
+      <Show when={tab() && watchFailed().includes(tab()!.repo.repoId)}>
+        <div class="banner" role="status">
+          <div>{t("watch.failed")}</div>
+          <button class="mini" onClick={() => setWatchFailed(watchFailed().filter((id) => id !== tab()!.repo.repoId))}>{t("err.dismiss")}</button>
+        </div>
+      </Show>
       <Show when={error() && tab()}>
         <div class="banner error" role="alert">
           <div>

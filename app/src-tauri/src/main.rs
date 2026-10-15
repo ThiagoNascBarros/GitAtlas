@@ -31,7 +31,7 @@ struct Repo {
     shas: Vec<String>,
     topo: Topology,
     layout: Layout,
-    _watcher: Option<notify::RecommendedWatcher>,
+    _watcher: Option<SharedWatcher>,
 }
 
 #[derive(Default)]
@@ -114,37 +114,86 @@ fn relevant(path: &Path, root: &Path) -> bool {
     }
 }
 
-/// Watches the working tree and tells the UI (debounced) when it changed.
-fn start_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<notify::RecommendedWatcher> {
-    let (tx, rx) = std::sync::mpsc::channel::<()>();
+type SharedWatcher = Arc<Mutex<notify::RecommendedWatcher>>;
+
+enum WatchMsg {
+    Changed,
+    NewDir(PathBuf),
+}
+
+/// Watches the working tree and tells the UI (debounced) when it changed; emits `watch-failed` (repo id) when it cannot be set up.
+fn start_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<SharedWatcher> {
+    let w = setup_watcher(app.clone(), repo_id, root);
+    if w.is_none() {
+        let _ = app.emit("watch-failed", repo_id);
+    }
+    w
+}
+
+fn is_ignored_dir(root: &Path, name: &str) -> bool {
+    std::process::Command::new("git")
+        .current_dir(root)
+        .args(["check-ignore", "-q", "--", &format!("{name}/")])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+fn setup_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<SharedWatcher> {
+    let (tx, rx) = std::sync::mpsc::channel::<WatchMsg>();
     let base = root.to_path_buf();
-    let mut w = notify::recommended_watcher(move |ev: notify::Result<notify::Event>| {
+    let w = notify::recommended_watcher(move |ev: notify::Result<notify::Event>| {
         if let Ok(ev) = ev {
+            // A new top-level directory: the root is watched non-recursively, so add it later
+            // (not here: adding a watch from inside the event callback can deadlock the backend).
+            if matches!(ev.kind, notify::EventKind::Create(_)) {
+                for p in ev.paths.iter().filter(|p| p.parent() == Some(base.as_path()) && p.is_dir()) {
+                    let _ = tx.send(WatchMsg::NewDir(p.clone()));
+                }
+            }
             if ev.paths.iter().any(|p| relevant(p, &base)) {
-                let _ = tx.send(());
+                let _ = tx.send(WatchMsg::Changed);
             }
         }
     })
     .ok()?;
+    let w = Arc::new(Mutex::new(w));
     // Watch each top-level entry except ignored dirs (node_modules, target...): saves inotify watches.
-    // shortcut: dirs created after open are not watched, re-open the repo to pick them up.
     let ignored: Vec<String> = std::process::Command::new("git")
         .current_dir(root)
         .args(["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"])
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).split('\0').map(|d| d.trim_end_matches('/').to_string()).collect())
         .unwrap_or_default();
-    w.watch(root, RecursiveMode::NonRecursive).ok()?;
-    for e in std::fs::read_dir(root).ok()?.flatten() {
-        let name = e.file_name().to_string_lossy().to_string();
-        if e.path().is_dir() && !ignored.contains(&name) {
-            w.watch(&e.path(), RecursiveMode::Recursive).ok()?;
+    {
+        let mut g = w.lock().unwrap();
+        g.watch(root, RecursiveMode::NonRecursive).ok()?;
+        for e in std::fs::read_dir(root).ok()?.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if e.path().is_dir() && !ignored.contains(&name) {
+                g.watch(&e.path(), RecursiveMode::Recursive).ok()?;
+            }
         }
     }
+    let weak = Arc::downgrade(&w);
+    let root = root.to_path_buf();
     std::thread::spawn(move || {
-        while rx.recv().is_ok() {
+        let handle = |m: WatchMsg| {
+            if let WatchMsg::NewDir(p) = m {
+                let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                if name != ".git" && !is_ignored_dir(&root, &name) {
+                    if let Some(w) = weak.upgrade() {
+                        let _ = w.lock().unwrap().watch(&p, RecursiveMode::Recursive);
+                    }
+                }
+            }
+        };
+        while let Ok(m) = rx.recv() {
+            handle(m);
             // Collapse bursts (checkout, build output) into one refresh.
-            while rx.recv_timeout(Duration::from_millis(350)).is_ok() {}
+            while let Ok(m) = rx.recv_timeout(Duration::from_millis(350)) {
+                handle(m);
+            }
             let _ = app.emit("repo-changed", repo_id);
         }
     });

@@ -151,7 +151,7 @@ const en = {
   "refmenu.checkoutDetached": "Check out (detached)",
   "toast.checkedOutDetached": "Checked out {s} (detached HEAD)",
   "journal.keep": "Keep last",
-  "watch.failed": "Automatic refresh is off for this repository: watching files failed. Changes made outside AtlasKraken need a manual refresh (focus the window).",
+  "watch.failed": "Auto-refresh is off for this repository (file watching failed); focus the window to refresh.",
   "err.GIT_FAILED": "Git could not complete the operation.",
 } as const;
 
