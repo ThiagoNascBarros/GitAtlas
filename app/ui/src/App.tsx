@@ -277,6 +277,16 @@ export function App() {
                               onClick={() => r.row !== null && patch({ selected: r.row, sha: null })}
                               onDblClick={() => r.kind === "head" && !r.isHead && void run(() => api.checkout(tab().repo.repoId, r.name, true), { graph: true, toast: t("toast.checkedOut", { s: r.name }) })}
                               onContextMenu={(e) => { e.preventDefault(); setRefMenu({ x: e.clientX, y: e.clientY, ref: r }); }}
+                              draggable={r.kind !== "tag" && !r.isHead}
+                              onDragStart={(e) => e.dataTransfer?.setData("text/x-atlas-ref", JSON.stringify(r))}
+                              onDragOver={(e) => r.isHead && e.dataTransfer?.types.includes("text/x-atlas-ref") && e.preventDefault()}
+                              onDrop={(e) => {
+                                // Dropping a ref onto the checked-out branch offers to merge it in (with the conflict preview).
+                                const src = e.dataTransfer?.getData("text/x-atlas-ref");
+                                if (!r.isHead || !src) return;
+                                e.preventDefault();
+                                setRefMenu({ x: e.clientX, y: e.clientY, ref: JSON.parse(src), merge: true });
+                              }}
                             >
                               <Dynamic component={r.kind === "tag" ? Tag : GitBranch} size={14} class="ref-icon" aria-hidden="true" />
                               <span class="path">{r.name}</span>
