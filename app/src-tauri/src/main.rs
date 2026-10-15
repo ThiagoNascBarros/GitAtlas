@@ -340,6 +340,26 @@ async fn op_commit(repo_id: u32, message: String, amend: bool, state: State<'_, 
 }
 
 #[tauri::command]
+async fn op_branch_create(repo_id: u32, name: String, at: Option<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::BranchCreate { name, at })
+}
+
+#[tauri::command]
+async fn op_branch_rename(repo_id: u32, old: String, new: String, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::BranchRename { old, new })
+}
+
+#[tauri::command]
+async fn op_branch_delete(repo_id: u32, name: String, force: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::BranchDelete { name, force })
+}
+
+#[tauri::command]
+async fn op_checkout(repo_id: u32, target: String, is_branch: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::Checkout { target, is_branch })
+}
+
+#[tauri::command]
 async fn op_undo(repo_id: u32, id: String, state: State<'_, AppState>) -> Result<OpOutcome> {
     let r = get(&state, repo_id)?;
     Ok(engine(&r)?.undo(&id)?)
@@ -384,6 +404,10 @@ fn main() {
             op_stage_hunk,
             op_discard,
             op_commit,
+            op_branch_create,
+            op_branch_rename,
+            op_branch_delete,
+            op_checkout,
             op_undo,
             op_redo,
             journal_list,

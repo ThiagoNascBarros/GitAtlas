@@ -8,6 +8,7 @@ import { GraphView } from "./features/graph/GraphView";
 import { DiffView } from "./features/diff/DiffView";
 import { setTheme, themeChoice, ThemeChoice } from "./theme/theme";
 import { errorFix, errorText, t } from "./i18n";
+import { RefMenu, RefMenuState } from "./features/refs/RefMenu";
 import { JournalPanel } from "./features/journal/JournalPanel";
 import { WipFile, WipPanel } from "./features/wip/WipPanel";
 import { changeCount, groupStatus } from "./features/wip/status";
@@ -29,6 +30,7 @@ export function App() {
   const [fileView, setFileView] = createSignal<"path" | "tree">("path");
   const [toast, setToast] = createSignal<Toast | null>(null);
   const [refFilter, setRefFilter] = createSignal("");
+  const [refMenu, setRefMenu] = createSignal<RefMenuState | null>(null);
   const [showJournal, setShowJournal] = createSignal(false);
   const [showDetail, setShowDetail] = createSignal(false);
   let toastTimer: number | undefined;
@@ -248,6 +250,8 @@ export function App() {
                               classList={{ head: r.isHead }}
                               disabled={r.row === null}
                               onClick={() => r.row !== null && patch({ selected: r.row, sha: null })}
+                              onDblClick={() => r.kind === "head" && !r.isHead && void run(() => api.checkout(tab().repo.repoId, r.name, true), { graph: true, toast: t("toast.checkedOut", { s: r.name }) })}
+                              onContextMenu={(e) => { e.preventDefault(); setRefMenu({ x: e.clientX, y: e.clientY, ref: r }); }}
                             >
                               {r.name}
                             </button>
@@ -394,6 +398,9 @@ export function App() {
           <Show when={error()!.detail}><button onClick={() => setShowDetail(!showDetail())}>{t("err.details")}</button></Show>
           <button onClick={() => setError(null)}>{t("err.dismiss")}</button>
         </div>
+      </Show>
+      <Show when={refMenu() && tab()}>
+        <RefMenu repoId={tab()!.repo.repoId} menu={refMenu()!} run={run} onClose={() => setRefMenu(null)} onError={(e) => fail(e)} />
       </Show>
       <Show when={showJournal() && tab()}>
         <JournalPanel repoId={tab()!.repo.repoId} onClose={() => setShowJournal(false)} onError={(e) => fail(e)} />
