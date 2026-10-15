@@ -16,6 +16,9 @@ import { columns, ColumnWidths, loadWidths, saveWidths, clampWidth } from "./col
 
 interface Chunk { rows: GraphRow[]; meta: RowMeta[] }
 
+// Survives remounts (graph reload after commit/undo/redo) so the view keeps its place.
+const savedScroll = new Map<number, number>();
+
 export function GraphView(props: {
   repo: OpenedRepo;
   selected: number | null;
@@ -196,12 +199,12 @@ export function GraphView(props: {
   createEffect(draw);
 
 
-  // New repo in this view (tab switch): start at the top.
+  // New repo in this view (tab switch) or reload: restore the saved position, else the top.
   createEffect(() => {
-    props.repo.repoId;
+    const top = savedScroll.get(props.repo.repoId) ?? 0;
     if (scroller) {
-      scroller.scrollTop = 0;
-      setScrollTop(0);
+      scroller.scrollTop = top;
+      setScrollTop(top);
     }
   });
 
@@ -260,7 +263,10 @@ export function GraphView(props: {
         role="grid"
         aria-label={t("graph.label")}
         aria-rowcount={props.repo.rowCount}
-        onScroll={() => setScrollTop(scroller.scrollTop)}
+        onScroll={() => {
+          setScrollTop(scroller.scrollTop);
+          savedScroll.set(props.repo.repoId, scroller.scrollTop);
+        }}
         onKeyDown={onKey}
         onClick={(e) => {
           const rect = scroller.getBoundingClientRect();
