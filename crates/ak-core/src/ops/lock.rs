@@ -12,6 +12,8 @@ pub enum Lock {
     Index,
     Config,
     RepoSettings,
+    /// Shared Stash network operations (publish, update, unshare, reshare, fetch, probe).
+    Remote,
 }
 
 type Table = Mutex<HashMap<PathBuf, HashSet<Lock>>>;
@@ -71,6 +73,17 @@ mod tests {
         assert!(try_acquire(b, &[Lock::Index]).is_ok(), "other repo is independent");
         drop(g);
         assert!(try_acquire(a, &[Lock::Index]).is_ok());
+    }
+
+    #[test]
+    fn remote_operations_conflict_with_each_other_but_not_with_index_ones() {
+        let r = Path::new("/tmp/ak-lock-d");
+        let g = try_acquire(r, &[Lock::Remote]).unwrap();
+        assert_eq!(try_acquire(r, &[Lock::Remote]).unwrap_err(), Lock::Remote, "two network operations conflict");
+        assert!(try_acquire(r, &[Lock::Index]).is_ok(), "an Index operation is not blocked by a network one");
+        drop(g);
+        let _idx = try_acquire(r, &[Lock::Index]).unwrap();
+        assert!(try_acquire(r, &[Lock::Remote]).is_ok(), "and the other way round");
     }
 
     #[test]

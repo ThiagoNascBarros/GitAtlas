@@ -7,10 +7,14 @@ mod history;
 mod merge;
 mod remote;
 mod rebase;
+pub mod shared_stash;
+mod shared_stash_ops;
 mod stash;
 
 pub use merge::{ConflictVersions, MergePreview};
 pub use rebase::TodoItem;
+pub use shared_stash::{InvalidShared, SharedStashInfo, SharedStashMeta, ValidShared};
+pub use shared_stash_ops::{KeptSharedStash, ProbeResult, RemoteFetch, RemoteStatus, SharedStashOutcome};
 pub use stash::StashInfo;
 pub mod journal;
 pub mod lock;
@@ -132,6 +136,17 @@ pub enum Operation {
     /// Rebase the current branch onto `onto`; interactive when `todo` is given (oldest first).
     Rebase { onto: String, todo: Option<Vec<TodoItem>> },
     RebaseContinue,
+    /// Mirror the shared stashes of one remote, or of all; prunes the ones that disappeared. Not journaled.
+    SharedStashFetch { remote: Option<String> },
+    /// Share a local stash (by sha). `remote` defaults to the upstream remote, else `origin`.
+    SharedStashPublish { stash_sha: String, title: String, remote: Option<String> },
+    /// Author only. New content (`stash_sha`) and/or new title; the other part is kept.
+    SharedStashUpdate { id: String, remote: String, stash_sha: Option<String>, title: Option<String> },
+    SharedStashUnshare { id: String, remote: String },
+    SharedStashReshare { id: String, remote: String },
+    SharedStashDiscardKeep { id: String },
+    SharedStashApply { id: String, remote: String },
+    SharedStashBranch { id: String, remote: String, name: String },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -141,6 +156,8 @@ pub struct OpOutcome {
     pub head: Option<String>,
     /// The operation stopped on conflicts that need resolving (merge / stash apply).
     pub conflicted: bool,
+    /// Extra results of the Shared Stash operations.
+    pub shared_stash: Option<SharedStashOutcome>,
 }
 
 pub struct Engine {
@@ -273,6 +290,14 @@ impl Engine {
             Operation::TagDelete { name } => self.tag_delete(name),
             Operation::Rebase { onto, todo } => self.rebase(onto, todo.as_deref()),
             Operation::RebaseContinue => self.rebase_continue(),
+            Operation::SharedStashFetch { remote } => self.shared_fetch(remote.as_deref(), env),
+            Operation::SharedStashPublish { stash_sha, title, remote } => self.shared_publish(stash_sha, title, remote.as_deref(), env),
+            Operation::SharedStashUpdate { id, remote, stash_sha, title } => self.shared_update(id, remote, stash_sha.as_deref(), title.as_deref(), env),
+            Operation::SharedStashUnshare { id, remote } => self.shared_unshare(id, remote, env),
+            Operation::SharedStashReshare { id, remote } => self.shared_reshare(id, remote, env),
+            Operation::SharedStashDiscardKeep { id } => self.shared_discard_keep(id),
+            Operation::SharedStashApply { id, remote } => self.shared_apply(id, remote, env),
+            Operation::SharedStashBranch { id, remote, name } => self.shared_branch(id, remote, name, env),
         }
     }
 
@@ -412,7 +437,8 @@ impl Engine {
     pub fn redo_candidate(&self) -> Option<JournalEntry> {
         let list = self.journal.list();
         let (pos, cand) = list.iter().enumerate().filter(|(_, e)| e.undone).max_by_key(|(_, e)| e.undone_at)?;
-        list[pos + 1..].iter().all(|e| e.undone).then(|| cand.clone())
+        // Network and apply entries of Shared Stash cannot be undone, so they do not end the redo chain.
+        list[pos + 1..].iter().all(|e| e.undone || branch::is_passive_kind(&e.kind)).then(|| cand.clone())
     }
 
     pub fn redo_last(&self) -> Result<OpOutcome, OpError> {

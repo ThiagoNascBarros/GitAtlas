@@ -1,4 +1,4 @@
-# AtlasGit — handoff (2026-10-14)
+# AtlasGit — handoff (2026-10-15)
 
 Original Linux Git client that follows GitKraken's workflows with its own brand/themes/components.
 Owner: Thiago (pt-BR speaker, Ubuntu, 7 GB RAM). Specs live in the Obsidian vault
@@ -33,6 +33,10 @@ Ref-menu crash, Escape/focus handling (`features/overlay.ts`), dialog/theme layo
 
 ## Phase 4 (`feature/remotes` #8, `feature/history-ops` #9, `feature/rebase`)
 Core: `ops/{remote,history,rebase}.rs`; `Engine::run_with_env` passes askpass env; `in_progress()` = merge/cherry-pick/revert/rebase with one Abort. Shell: `askpass.rs` (client mode when `ATLASGIT_ASKPASS_SOCK` is set; `with_bridge` + `credentials-request`/`credentials-cancel` events, `credentials_answer`), network on `spawn_blocking`. UI: toolbar Fetch/Pull/Push, `features/graph/CommitMenu.tsx`, `features/rebase`. Next: Shared Stash addendum (SDD §11, PRD criterion 14), then Phase 5.
+
+## Shared Stash (`feature/shared-stash`, spec `docs/specs/shared-stash.md` rev 3, plan `shared-stash-plan.md`)
+Status: M1-M6 done on the branch, **PR to `develop` not opened yet** (owner decision). Core `crates/ak-core/src/ops/shared_stash*.rs` (+ `Lock::Remote`, error codes, e2e suite for spec §9), shell `app/src-tauri/src/{shared_stash,settings}.rs` (commands, `sharedStash.fetchMode`, Fetch/Pull hook, cancel), UI `app/ui/src/features/shared-stash/` (`logic.ts` pure + tests, `model.ts` per-repo store, `SharedStashPanel`, `ShareDialog`, `SharedStashMenu`) plus `features/stash/LocalStashMenu.tsx`, graph glyph in `GraphView` (`shared` prop), strings `ss.*`/`err.*` in `i18n.ts`, mock in `devMock.ts` (two remotes, one rejecting custom refs; `window.__mockOffline = "<remote>"` makes its fetch fail). User docs: `docs/user/shared-stash.md`. Implementation notes and deviations: spec §13 and §14.
+Still open: manual run of the packaged app (`scripts/run.sh` with two clones and a local bare remote), `/code-review` pass, PR to `develop`, mark the vault SDD §11 / PRD criterion 14 as reconciled (EN then PT; never `approved`). UI follow-ups: share dialog cannot show the size warning before publishing and cannot show the real `user.name` slug before the first share (no command exposes them), no sha-to-row lookup so the graph glyph only shows for loaded rows, untracked files of a shared stash are not in the read-only diff.
 
 ## Next phases (see `en/04-plan/roadmap.md`)
 - **Phase 3 — Branching & merge**: branch create/rename/delete/checkout, native context menus, drag-and-drop ref onto ref, `ops.preview` with `git merge-tree` conflict list, merge, 3-pane conflict tool, abort, stash push/pop/apply/drop and stash rows in the graph. Reuse `Engine` (add `Operation` variants, lock `Lock::Config/RepoSettings` already exist, journal entries, snapshots before destructive ops); the read-only allow-list in `ak-gitcli/src/exec.rs` is bypassed by `Mode::ReadWrite`.

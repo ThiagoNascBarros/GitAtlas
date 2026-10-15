@@ -10,7 +10,7 @@ use super::{new_id, now, Engine, OpError, OpOutcome, SNAPSHOT_PREFIX};
 type Env = [(String, String)];
 
 /// Maps network failures to stable codes; everything else is GIT_FAILED with the raw text.
-fn net_error(what: &str, stderr: String) -> OpError {
+pub(super) fn net_error(what: &str, stderr: String) -> OpError {
     let low = stderr.to_lowercase();
     let (code, msg, fix) = if low.contains("authentication failed")
         || low.contains("permission denied")
@@ -32,7 +32,7 @@ fn net_error(what: &str, stderr: String) -> OpError {
 }
 
 impl Engine {
-    fn remotes(&self) -> Result<Vec<String>, OpError> {
+    pub(super) fn remotes(&self) -> Result<Vec<String>, OpError> {
         let out = self.git.run(&self.root, ["remote"])?;
         Ok(String::from_utf8_lossy(&out).lines().map(str::to_owned).collect())
     }

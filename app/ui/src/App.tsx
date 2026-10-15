@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 // App frame (roadmap T1.7): tabs, toolbar, refs panel, graph/diff, details, status bar.
-import { createResource, createSignal, For, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { CredentialsRequest, api, OpenedRepo, StatusReport, UiError } from "./api";
+import { CredentialsRequest, api, KeptSharedStash, OpOutcome, OpenedRepo, SharedStashInfo, StashInfo, StatusReport, UiError } from "./api";
 import { listen } from "@tauri-apps/api/event";
 import { GraphView } from "./features/graph/GraphView";
 import { DiffView } from "./features/diff/DiffView";
@@ -19,9 +19,15 @@ import { WipFile, WipPanel } from "./features/wip/WipPanel";
 import { changeCount, groupStatus } from "./features/wip/status";
 import { toTreeRows, visibleRows } from "./features/files/tree";
 import { markOpenStart, togglePerf } from "./features/graph/perf";
-import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Laptop, List, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload } from "lucide-solid";
+import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Laptop, List, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Share2 } from "lucide-solid";
 import { Dynamic } from "solid-js/web";
 import { Splitter, storedSize } from "./features/split/Splitter";
+import { SharedStashPanel } from "./features/shared-stash/SharedStashPanel";
+import { SharedActions, SharedMenuState, SharedStashMenu } from "./features/shared-stash/SharedStashMenu";
+import { LocalStashMenu, LocalStashMenuState } from "./features/stash/LocalStashMenu";
+import { ShareDialog } from "./features/shared-stash/ShareDialog";
+import { basesIndex, formatBytes } from "./features/shared-stash/logic";
+import { forget, glyphOn, modelOf, reloadList } from "./features/shared-stash/model";
 
 interface Tab {
   repo: OpenedRepo; selected: number | null; sha: string | null; diffPath: string | null;
@@ -73,6 +79,73 @@ export function App() {
   const patchRepo = (repoId: number, f: (x: Tab) => Partial<Tab>) =>
     setTabs(tabs().map((x) => (x.repo.repoId === repoId ? { ...x, ...f(x) } : x)));
 
+  // Shared stash: sidebar view, dialogs and operations (features/shared-stash).
+  const [sideView, setSideView] = createSignal<"refs" | "shared">("refs");
+  const [sharedMenu, setSharedMenu] = createSignal<SharedMenuState | null>(null);
+  const [localMenu, setLocalMenu] = createSignal<LocalStashMenuState | null>(null);
+  const [shareStash, setShareStash] = createSignal<StashInfo | null>(null);
+  const [sharing, setSharing] = createSignal(false);
+  // Tell the shell while the tab is showing, so "panel" mode fetches on Fetch/Pull only then.
+  createEffect(() => {
+    const id = tab()?.repo.repoId;
+    if (id === undefined || sideView() !== "shared") return;
+    void api.sharedStashTabOpen(id, true).catch(() => undefined);
+    onCleanup(() => void api.sharedStashTabOpen(id, false).catch(() => undefined));
+  });
+  // Mirrors change after any fetch/pull/op; reading them is local and cheap.
+  createEffect(on(() => (tab() ? ([tab()!.repo.repoId, tab()!.diffRev] as const) : null), (k) => { if (k) void reloadList(k[0]); }));
+  const sharedBases = createMemo(() => (tab() ? basesIndex(modelOf(tab()!.repo.repoId).listing?.stashes ?? []) : undefined));
+  const toastNow = (text: string, undoId: string | null = null) => {
+    clearTimeout(toastTimer);
+    setToast({ text, repoId: tab().repo.repoId, undoId });
+    toastTimer = window.setTimeout(() => setToast(null), 10000);
+  };
+  /** Runs a network operation on the shared stash, then re-reads the mirrors. */
+  async function sharedOp(op: () => Promise<unknown>, toast: string | ((out: OpOutcome) => string), graph = false) {
+    const repoId = tab().repo.repoId;
+    const ok = await run(op, { graph, toast });
+    await reloadList(repoId);
+    return ok;
+  }
+  async function publish(stash: StashInfo, title: string, remote: string) {
+    const repoId = tab().repo.repoId;
+    setSharing(true);
+    const ok = await sharedOp(() => api.sharedStashPublish(repoId, stash.sha, title, remote), (out) => {
+      const big = out?.shared_stash?.large_bytes;
+      return big ? t("toast.ssSharedLarge", { remote, size: formatBytes(big) }) : t("toast.ssShared", { s: remote });
+    });
+    setSharing(false);
+    // Failures show in the error banner, which a dialog would cover.
+    setShareStash(null);
+    if (ok) setSideView("shared");
+  }
+  const sharedActions = (): SharedActions => {
+    const repoId = tab().repo.repoId;
+    return {
+      apply: (s) => void sharedOp(() => api.sharedStashApply(repoId, s.id, s.remote), (out) => (out?.shared_stash?.index_dropped ? t("toast.ssAppliedNoIndex") : t("toast.ssApplied")), true),
+      branch: (s, name) => void sharedOp(() => api.sharedStashBranch(repoId, s.id, s.remote, name), t("toast.ssBranch", { s: name }), true),
+      update: (s, sha, title) => void sharedOp(() => api.sharedStashUpdate(repoId, s.id, s.remote, sha, title), t("toast.ssUpdated")),
+      rename: (s, title) => void sharedOp(() => api.sharedStashUpdate(repoId, s.id, s.remote, null, title), t("toast.ssRenamed")),
+      unshare: (s) => void sharedOp(() => api.sharedStashUnshare(repoId, s.id, s.remote), t("toast.ssUnshared")),
+    };
+  };
+  const reshare = (k: KeptSharedStash) => {
+    const remote = k.remote ?? modelOf(tab().repo.repoId).listing?.defaultRemote;
+    if (remote) void sharedOp(() => api.sharedStashReshare(tab().repo.repoId, k.id, remote), t("toast.ssReshared"));
+  };
+  const discardKept = (k: KeptSharedStash) => void sharedOp(() => api.sharedStashDiscardKeep(tab().repo.repoId, k.id), t("toast.ssDiscarded"));
+  const retryCheck = async (remote: string) => {
+    try {
+      await api.sharedStashProbeReset(tab().repo.repoId, remote);
+      await reloadList(tab().repo.repoId);
+      toastNow(t("ss.checkCleared", { s: remote }));
+    } catch (e) {
+      fail(e);
+    }
+  };
+  /** Row click: the stash commit shows in the details panel; its files open as read-only diffs. */
+  const openShared = (s: SharedStashInfo) => patch({ wip: false, selected: null, sha: s.stash, diffPath: null });
+
   function fail(e: unknown) {
     setShowDetail(false);
     setError(typeof e === "object" && e && "code" in e ? (e as UiError) : { code: "UNKNOWN", message: String(e) });
@@ -104,17 +177,17 @@ export function App() {
   }
 
   /** Runs an operation, then brings status (and optionally history) up to date. */
-  async function run(op: () => Promise<unknown>, opts: { graph?: boolean; toast?: string } = {}): Promise<boolean> {
+  async function run(op: () => Promise<unknown>, opts: { graph?: boolean; toast?: string | ((out: OpOutcome) => string) } = {}): Promise<boolean> {
     const repoId = tab().repo.repoId;
     try {
-      const out = (await op()) as { id?: string | null; conflicted?: boolean } | undefined;
+      const out = (await op()) as OpOutcome | undefined;
       if (out?.conflicted) opts = { graph: true, toast: t("toast.opConflicts") };
       setError(null);
       if (opts.graph) await refreshRepo(repoId);
       await loadStatus(repoId);
       if (opts.toast) {
         clearTimeout(toastTimer);
-        setToast({ text: opts.toast, repoId, undoId: out?.id ?? null });
+        setToast({ text: typeof opts.toast === "function" ? opts.toast(out as OpOutcome) : opts.toast, repoId, undoId: out?.id ?? null });
         toastTimer = window.setTimeout(() => setToast(null), 10000);
       }
       return true;
@@ -179,6 +252,7 @@ export function App() {
   }
 
   function closeTab(i: number) {
+    forget(tabs()[i].repo.repoId);
     api.close(tabs()[i].repo.repoId);
     setTabs(tabs().filter((_, k) => k !== i));
     setActive(Math.max(0, Math.min(active(), tabs().length - 1)));
@@ -215,7 +289,8 @@ export function App() {
     if (!tab()?.status) return "";
     return wipCount() ? t("wip.changes", { n: wipCount() }) : t("wip.clean");
   };
-  const wipCount = () => (tab()?.status ? changeCount(groupStatus(tab()!.status!.entries)) : 0);
+  const wipGroups = createMemo(() => groupStatus(tab()?.status?.entries ?? []));
+  const wipCount = () => (tab()?.status ? changeCount(wipGroups()) : 0);
 
   const [details] = createResource(
     () => (tab()?.sha ? ([tab()!.repo.repoId, tab()!.sha!] as const) : null),
@@ -289,6 +364,26 @@ export function App() {
       >
         <div class="body" style={{ "--left-w": `${leftW()}px`, "--right-w": `${rightW()}px` }}>
           <aside class="left" aria-label={t("panel.refs")}>
+            <div class="seg side-tabs" role="group" aria-label={t("ss.tabs")}>
+              <button aria-pressed={sideView() === "refs"} onClick={() => setSideView("refs")}><GitBranch size={14} aria-hidden="true" />{t("ss.tabRefs")}</button>
+              <button aria-pressed={sideView() === "shared"} onClick={() => setSideView("shared")}><Share2 size={14} aria-hidden="true" />{t("ss.tab")}</button>
+            </div>
+            <Show when={sideView() === "shared"}>
+              {/* Keyed on the repository: each opens (and fetches) on its own. */}
+              <For each={[tab()!.repo.repoId]}>{(repoId) => (
+              <SharedStashPanel
+                repoId={repoId}
+                readOnly={!!tab()!.repo.readOnlyReason}
+                openSha={tab()!.sha}
+                onOpen={openShared}
+                onMenu={(stash, x, y) => setSharedMenu({ x, y, stash })}
+                onReshare={reshare}
+                onDiscard={discardKept}
+                onRetryCheck={(r) => void retryCheck(r)}
+              />
+              )}</For>
+            </Show>
+            <Show when={sideView() === "refs"}>
             <div class="search"><Search size={14} aria-hidden="true" /><input class="ref-filter" type="search" placeholder={t("panel.filter")} aria-label={t("panel.filter")}
               value={refFilter()} onInput={(e) => setRefFilter(e.currentTarget.value)} /></div>
             <For each={[["head", "panel.local"], ["remote", "panel.remote"], ["tag", "panel.tags"]] as const}>
@@ -332,21 +427,12 @@ export function App() {
                 );
               }}
             </For>
-            <StashPanel repoId={tab()!.repo.repoId} rev={tab()!.diffRev} run={run} />
+            <StashPanel repoId={tab()!.repo.repoId} rev={tab()!.diffRev} run={run} onMenu={tab()!.repo.readOnlyReason ? undefined : (stash, x, y) => setLocalMenu({ x, y, stash })} />
+            </Show>
           </aside>
           <Splitter label={t("split.left")} axis="x" value={leftW()} min={140} max={420} onChange={setLeftW} onCommit={saveLeftW} />
 
           <main class="center" style={{ "--diff-h": `${diffH()}px` }}>
-            <button
-              class="wip-row"
-              classList={{ active: tab()!.wip }}
-              onClick={() => patch({ wip: true, selected: null, sha: null, diffPath: null })}
-            >
-              <strong>{t("wip.row")}</strong>
-              <span class="muted">
-                {wipLabel()}
-              </span>
-            </button>
             <Show when={tab()!.graphRev} keyed>
               {(_) => (
                 <GraphView
@@ -354,6 +440,9 @@ export function App() {
                   selected={tab()!.selected}
                   onSelect={(row, sha) => patch({ selected: row, sha, diffPath: null, wip: false })}
                   onMenu={tab()!.repo.readOnlyReason ? undefined : (sha, x, y) => setCommitMenu({ sha, x, y })}
+                  shared={glyphOn() ? sharedBases() : undefined}
+                  wip={tab()!.status ? { staged: wipGroups().staged.length, unstaged: wipGroups().unstaged.length, conflicted: wipGroups().conflicted.length, active: tab()!.wip } : undefined}
+                  onWip={() => patch({ wip: true, selected: null, sha: null, diffPath: null })}
                 />
               )}
             </Show>
@@ -494,6 +583,17 @@ export function App() {
       <Show when={tab() && commitMenu()} keyed>
         {(m) => <CommitMenu repoId={tab()!.repo.repoId} menu={m} run={run} onClose={() => setCommitMenu(null)}
           onToast={(text) => setToast({ text, repoId: tab()!.repo.repoId, undoId: null })} onRebase={setRebaseOnto} />}
+      </Show>
+      <Show when={tab() && sharedMenu()} keyed>
+        {(m) => <SharedStashMenu repoId={tab()!.repo.repoId} menu={m} actions={sharedActions()} onClose={() => setSharedMenu(null)} />}
+      </Show>
+      <Show when={tab() && localMenu()} keyed>
+        {(m) => <LocalStashMenu menu={m} onClose={() => setLocalMenu(null)} onShare={setShareStash}
+          onApply={(x) => void run(() => api.stash(tab().repo.repoId, "apply", x.index), { graph: true, toast: t("toast.stashApplied") })}
+          onPop={(x) => void run(() => api.stash(tab().repo.repoId, "pop", x.index), { graph: true, toast: t("toast.stashPopped") })} />}
+      </Show>
+      <Show when={tab() && shareStash()} keyed>
+        {(st) => <ShareDialog repoId={tab()!.repo.repoId} stash={st} busy={sharing()} onSubmit={(title, remote) => void publish(st, title, remote)} onCancel={() => setShareStash(null)} />}
       </Show>
       <Show when={creds()[0]} keyed>
         {(c) => <NameDialog label={c.prompt || t("creds.title")} secret={c.secret} onSubmit={(v) => answerCreds(c.id, v)} onCancel={() => answerCreds(c.id, null)} />}

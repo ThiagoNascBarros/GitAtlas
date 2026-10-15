@@ -119,9 +119,6 @@ select { appearance: none; background-color: var(--ak-color-bg-raised); color: v
 .perf { position: absolute; right: 12px; bottom: 12px; font: 12px/1.5 var(--font-mono); padding: 6px 10px; border-radius: 6px; background: var(--ak-color-bg-overlay); border: 1px solid var(--ak-color-border-strong); color: var(--ak-color-text-primary); pointer-events: none; }
 
 .center { flex-direction: column; }
-.wip-row { display: flex; gap: 12px; align-items: baseline; padding: 6px 12px; text-align: left; border-bottom: 1px solid var(--ak-color-border-default); background: var(--ak-color-bg-surface); }
-.wip-row:hover { background: var(--ak-color-bg-overlay); }
-.wip-row.active { background: var(--ak-color-bg-selected); box-shadow: inset 3px 0 0 var(--ak-color-accent-default); }
 .wip { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 12px; align-content: start; }
 .wip h3 { font-size: 12px; font-weight: 600; margin: 8px 0 4px; color: var(--ak-color-text-secondary); }
 .wip .files-head { margin-top: 4px; }
@@ -160,7 +157,6 @@ select { appearance: none; background-color: var(--ak-color-bg-raised); color: v
 .toast button { color: var(--ak-color-accent-default); font-weight: 600; }
 /* In the column layout a flex child would grow to its content (millions of px for 100k rows). */
 .center > .graph, .center > .diff { flex: 1 1 0; min-height: 0; }
-.wip-row { flex: none; }
 
 .modal-back { position: fixed; inset: 0; background: rgb(0 0 0 / .4); display: grid; place-items: center; z-index: 10; }
 /* `dialog` defaults (absolute position, Canvas/CanvasText colors) would ignore the theme. */
@@ -259,10 +255,6 @@ input:not([type="checkbox"]):not([type="radio"]), .commit-form textarea { border
 .files .dir { display: flex; align-items: center; gap: 6px; min-height: var(--row-h); }
 
 /* "Working directory" reads as the commit being drafted: the first row of history. */
-.wip-row { height: 36px; align-items: center; padding: 0 var(--s3); background: var(--ak-color-bg-canvas); border-bottom: 1px solid var(--ak-color-border-default); }
-.wip-row::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 2px dashed var(--ak-color-text-muted); flex: none; }
-.wip-row.active { background: var(--ak-color-bg-selected); box-shadow: inset 2px 0 0 var(--ak-color-accent-default); }
-.wip-row.active::before { border-color: var(--ak-color-accent-default); }
 
 /* Diff opens in a split below the graph, so history stays in view. */
 .center > .graph { flex: 1 1 55%; }
@@ -472,3 +464,78 @@ menu.ctx button:focus svg { color: currentColor; }
 .rebase-list li { display: grid; grid-template-columns: 200px 64px 1fr auto auto; gap: 8px; align-items: center; }
 .rebase-list li.dropped .msg { text-decoration: line-through; color: var(--ak-color-text-muted); }
 .rebase-list .msg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Shared stash (features/shared-stash) */
+.side-tabs { display: flex; margin-bottom: var(--s2); }
+.side-tabs button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: var(--ctl-h); padding: 0 6px; font-size: 12px; white-space: nowrap; }
+.ss-head { display: grid; gap: var(--s1); margin-bottom: var(--s2); }
+.ss-bar { display: flex; align-items: center; gap: 2px; }
+.icon[aria-pressed="true"] { color: var(--ak-color-accent-default); }
+.ss-mode button { flex: 1; font-size: 12px; padding: 2px var(--s2); }
+.ss-last { flex: 1; font-size: 12px; padding-left: var(--s1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ss-loading { display: flex; align-items: center; gap: 6px; padding: var(--s1); font-size: 12px; color: var(--ak-color-text-secondary); }
+.ss-loading .mini { margin-left: auto; }
+.spin { animation: ss-spin 1s linear infinite; }
+@keyframes ss-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+.ss-note { display: flex; gap: 6px; align-items: flex-start; margin: var(--s1) 0; padding: 6px var(--s2); border-radius: var(--r-m); font-size: 12px; background: var(--ak-color-bg-overlay); border: 1px solid var(--ak-color-border-default); }
+.ss-note > svg { flex: none; margin-top: 2px; }
+.ss-note > div { flex: 1; display: grid; gap: 4px; justify-items: start; }
+.ss-note p { margin: 0; }
+.ss-note.warn > svg { color: var(--ak-color-status-modified); }
+.ss-note.warn { border-color: var(--ak-color-status-modified); }
+.ss-note.error { border-color: var(--ak-color-status-deleted); }
+.ss-note.error > svg { color: var(--ak-color-status-deleted); }
+.modal .ss-note { font-size: 13px; }
+.ss-remote summary h2 { text-transform: none; }
+.ss-sub { margin: var(--s2) 0 2px var(--s1); font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--ak-color-text-muted); }
+.ss-empty, .ss-hint { margin: var(--s1); font-size: 12px; }
+.left li button.ss-row { display: grid; gap: 2px; height: auto; min-height: 44px; padding: 5px var(--s2); white-space: normal; align-content: center; }
+.left li button.ss-row.active { background: var(--ak-color-bg-selected); box-shadow: inset 2px 0 0 var(--ak-color-accent-default); }
+.left li button.ss-row.invalid { color: var(--ak-color-text-muted); cursor: default; font-style: italic; }
+.ss-line { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.ss-line time { flex: none; margin-left: auto; font-size: 11px; color: var(--ak-color-text-muted); font-weight: 400; }
+.ss-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.ss-meta { display: flex; flex-wrap: nowrap; align-items: center; gap: 8px; min-width: 0; font-size: 11.5px; color: var(--ak-color-text-secondary); font-weight: 400; }
+.ss-row.invalid .ss-meta { color: var(--ak-color-text-muted); }
+.ss-meta svg { vertical-align: -2px; margin-right: 3px; }
+.ss-author, .ss-base { display: inline-flex; align-items: center; min-width: 0; flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ss-badge { display: inline-flex; align-items: center; gap: 3px; padding: 0 6px; border-radius: 999px; font-size: 10.5px; border: 1px solid var(--ak-color-border-strong); }
+.ss-badge svg { margin: 0; vertical-align: 0; }
+.ss-badge.verified { color: var(--ak-color-status-added); border-color: var(--ak-color-status-added); }
+.ss-badge.claimed { color: var(--ak-color-text-secondary); }
+.ss-badge.bad { color: var(--ak-color-status-deleted); border-color: var(--ak-color-status-deleted); }
+.ss-kept { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 3px 0 3px var(--s2); }
+.ss-kept .path { flex: 1 1 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ak-color-text-secondary); }
+.ss-note .mini { justify-self: start; }
+.modal select { height: var(--ctl-h); border-radius: var(--r-m); border: 1px solid var(--ak-color-border-default); background: var(--ak-color-bg-raised); color: var(--ak-color-text-primary); padding: 0 var(--s2); }
+.modal input[type="text"] { height: var(--ctl-h); }
+.ss-verified { display: inline-flex; color: var(--ak-color-status-added); margin-left: -4px; }
+.ss-verified svg { margin: 0; }
+.ss-remote summary h2 .muted { font-weight: 400; }
+.ss-author { flex: 0 1 auto; max-width: 55%; }
+.ss-base { flex: 1 1 0; }
+.ss-ellip { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ss-meta svg { flex: none; }
+
+.wip-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding-bottom: var(--s2); border-bottom: 1px solid var(--ak-color-border-default); margin-bottom: var(--s1); }
+.wip-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.wip-head .muted { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+.wip-hint { margin: 0 0 4px; font-size: 11.5px; line-height: 1.35; }
+.wip-why { text-align: center; margin-top: 4px; }
+/* Unstaged and staged read as two separate boxes, each tinted by its status colour. */
+.wip-sec + .wip-sec { margin-top: var(--s2); padding-top: var(--s3); border-top: 1px solid var(--ak-color-border-default); }
+.wip-sec.unstaged h3 svg { color: var(--ak-color-status-modified); }
+.wip-sec.staged h3 svg { color: var(--ak-color-status-added); }
+/* Many changes: the file sections share the panel and scroll on their own; the commit form stays put. */
+.right:has(> .wip) { overflow: hidden; }
+.right > .wip { flex: 1 1 0; min-height: 0; overflow: hidden; }
+.right > .wip > .wip-sec { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 96px; }
+.right > .wip > .wip-sec.closed { flex: none; min-height: 0; }
+.right > .wip > .wip-sec > .wip-list { flex: 0 1 auto; min-height: 0; overflow: auto; }
+.right > .wip > .wip-sec > .files-head, .right > .wip > .wip-sec > .wip-hint { flex: none; }
+.right > .wip > .commit-form { position: static; flex: none; margin-top: auto; background: var(--ak-color-bg-surface); }
+.sec-toggle { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; border-radius: var(--r-s); }
+.sec-toggle:hover { color: var(--ak-color-text-primary); }
+.sec-toggle:focus-visible { outline: 2px solid var(--ak-color-accent-default); outline-offset: 1px; }
+.sec-toggle > svg:first-child { color: var(--ak-color-text-muted); }

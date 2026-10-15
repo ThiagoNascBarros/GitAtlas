@@ -5,6 +5,7 @@
 //! - `In` segments come from the top edge at `from` lane into the node,
 //! - `Out` segments leave the node toward the bottom edge at `to` lane,
 //! - `Pass` segments cross the cell vertically on a lane not touching the node.
+//!
 //! A parent edge from row i to row j is therefore `Out(i)` + `Pass` on every
 //! row strictly between + `In(j)`, all on the same lane.
 
