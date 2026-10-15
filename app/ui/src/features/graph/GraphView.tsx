@@ -19,6 +19,12 @@ interface Chunk { rows: GraphRow[]; meta: RowMeta[] }
 // Survives remounts (graph reload after commit/undo/redo) so the view keeps its place.
 const savedScroll = new Map<number, number>();
 
+function refLabel(ref: RefInfo): string {
+  if (ref.kind === "tag") return `◆ ${ref.name}`;
+  if (ref.kind === "stash") return `⧉ ${ref.name}`;
+  return ref.isHead ? `✓ ${ref.name}` : ref.name;
+}
+
 export function GraphView(props: {
   repo: OpenedRepo;
   selected: number | null;
@@ -169,10 +175,10 @@ export function GraphView(props: {
       // Ref labels
       let rx = 8;
       for (const ref of refs.get(i) ?? []) {
-        const label = ref.kind === "tag" ? `◆ ${ref.name}` : ref.isHead ? `✓ ${ref.name}` : ref.name;
+        const label = refLabel(ref);
         const tw = Math.min(ctx.measureText(label).width + 12, widths().refs - rx - 8);
         if (tw < 24) break;
-        ctx.fillStyle = ref.isHead ? token("color.accent.default") : token("color.bg.raised");
+        ctx.fillStyle = ref.isHead ? token("color.accent.default") : ref.kind === "stash" ? token("color.accent.muted") : token("color.bg.raised");
         ctx.fillRect(rx, y + 4, tw, ROW_H - 8);
         ctx.fillStyle = ref.isHead ? token("color.text.onAccent") : token("color.text.primary");
         ctx.save();

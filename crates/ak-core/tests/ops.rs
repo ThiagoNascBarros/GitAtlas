@@ -547,6 +547,7 @@ fn stash_push_pop_leaves_tree_identical_and_drop_is_undoable() {
     assert_eq!(code(e.run(&Operation::StashPush { message: None, include_untracked: false }).and_then(|_| e.run(&Operation::StashPush { message: None, include_untracked: false }))), "NOTHING_TO_STASH");
     assert_eq!(git(&d, &["diff"]), "");
     assert_eq!(e.stashes().unwrap().len(), 1);
+    assert_eq!(e.stashes().unwrap()[0].base, git(&d, &["rev-parse", "HEAD"]));
     e.run(&Operation::StashPop { index: 0 }).unwrap();
     assert_eq!(git(&d, &["diff"]), before);
     assert!(e.stashes().unwrap().is_empty());
