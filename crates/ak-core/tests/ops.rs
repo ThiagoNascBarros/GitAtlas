@@ -757,3 +757,69 @@ fn pull_without_upstream_and_missing_remote() {
     git(&d, &["remote", "add", "origin", "/nonexistent/repo.git"]);
     assert_eq!(code(e.run(&Operation::Fetch)), "NO_REMOTE");
 }
+
+fn commit_file(d: &Path, file: &str, text: &str, msg: &str) {
+    write(d, file, text);
+    git(d, &["add", file]);
+    git(d, &["commit", "-qm", msg]);
+}
+
+#[test]
+fn rebase_onto_main_with_undo_redo() {
+    let (d, e) = base_repo();
+    git(&d, &["checkout", "-q", "-b", "feat"]);
+    commit_file(&d, "f.txt", "f", "feat work");
+    git(&d, &["checkout", "-q", "main"]);
+    commit_file(&d, "m.txt", "m", "main work");
+    git(&d, &["checkout", "-q", "feat"]);
+    let before = git(&d, &["rev-parse", "HEAD"]);
+    let r = e.run(&Operation::Rebase { onto: "main".into(), todo: None }).unwrap();
+    assert_eq!(git(&d, &["rev-parse", "HEAD~1"]), git(&d, &["rev-parse", "main"]));
+    e.undo(r.id.as_deref().unwrap()).unwrap();
+    assert_eq!(git(&d, &["rev-parse", "HEAD"]), before);
+    e.redo_last().unwrap();
+    assert!(d.join("m.txt").exists() && d.join("f.txt").exists());
+}
+
+#[test]
+fn interactive_rebase_reword_squash_drop() {
+    let (d, e) = base_repo();
+    let base = git(&d, &["rev-parse", "HEAD"]);
+    commit_file(&d, "1.txt", "1", "first");
+    commit_file(&d, "2.txt", "2", "second");
+    commit_file(&d, "3.txt", "3", "third");
+    let mut todo = e.rebase_todo(&base).unwrap();
+    assert_eq!(todo.iter().map(|i| i.message.as_str()).collect::<Vec<_>>(), ["first", "second", "third"]);
+    todo[0].action = "reword".into();
+    todo[0].message = "Renamed 'first' commit".into();
+    todo[1].action = "squash".into();
+    todo[2].action = "drop".into();
+    e.run(&Operation::Rebase { onto: base.clone(), todo: Some(todo) }).unwrap();
+    assert_eq!(git(&d, &["rev-list", "--count", &format!("{base}..HEAD")]), "1");
+    let msg = git(&d, &["log", "-1", "--format=%B"]);
+    assert!(msg.starts_with("Renamed 'first' commit") && msg.contains("second"), "{msg}");
+    assert!(d.join("2.txt").exists() && !d.join("3.txt").exists());
+    let bad = vec![ak_core::ops::TodoItem { sha: "zz".into(), action: "pick".into(), message: String::new() }];
+    assert_eq!(code(e.run(&Operation::Rebase { onto: base, todo: Some(bad) })), "INVALID_TODO");
+}
+
+#[test]
+fn rebase_conflict_continue_and_merges_refused() {
+    let (d, e) = base_repo();
+    git(&d, &["checkout", "-q", "-b", "feat"]);
+    commit_file(&d, "a.txt", "feat\n", "feat edit");
+    git(&d, &["checkout", "-q", "main"]);
+    commit_file(&d, "a.txt", "main\n", "main edit");
+    git(&d, &["checkout", "-q", "feat"]);
+    assert!(e.run(&Operation::Rebase { onto: "main".into(), todo: None }).unwrap().conflicted);
+    assert_eq!(e.in_progress(), Some("rebase"));
+    write(&d, "a.txt", "both\n");
+    stage(&e, &["a.txt"]);
+    let done = e.run(&Operation::RebaseContinue).unwrap();
+    assert!(e.in_progress().is_none() && done.id.is_some());
+    assert_eq!(git(&d, &["log", "-1", "--format=%s"]), "feat edit");
+    // A range containing a merge is not offered to the editor.
+    git(&d, &["checkout", "-q", "-b", "m2", "main"]);
+    git(&d, &["merge", "-q", "--no-ff", "--no-edit", "feat"]);
+    assert_eq!(code(e.rebase_todo("HEAD~2").map(|_| ak_core::ops::OpOutcome::default())), "UNSUPPORTED_REBASE");
+}

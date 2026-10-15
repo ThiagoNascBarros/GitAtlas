@@ -6,9 +6,11 @@ mod branch;
 mod history;
 mod merge;
 mod remote;
+mod rebase;
 mod stash;
 
 pub use merge::{ConflictVersions, MergePreview};
+pub use rebase::TodoItem;
 pub use stash::StashInfo;
 pub mod journal;
 pub mod lock;
@@ -125,6 +127,9 @@ pub enum Operation {
     Fetch,
     Pull,
     Push { force: bool },
+    /// Rebase the current branch onto `onto`; interactive when `todo` is given (oldest first).
+    Rebase { onto: String, todo: Option<Vec<TodoItem>> },
+    RebaseContinue,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -263,6 +268,8 @@ impl Engine {
             Operation::Reset { sha, mode } => self.reset(sha, mode),
             Operation::TagCreate { name, at, message } => self.tag_create(name, at, message.as_deref()),
             Operation::TagDelete { name } => self.tag_delete(name),
+            Operation::Rebase { onto, todo } => self.rebase(onto, todo.as_deref()),
+            Operation::RebaseContinue => self.rebase_continue(),
         }
     }
 

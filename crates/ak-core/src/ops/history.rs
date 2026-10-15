@@ -13,7 +13,7 @@ fn moved() -> OpError {
 }
 
 impl Engine {
-    fn commit_sha(&self, rev: &str) -> Result<String, OpError> {
+    pub(super) fn commit_sha(&self, rev: &str) -> Result<String, OpError> {
         let spec = format!("{rev}^{{commit}}");
         self.git
             .run(&self.root, ["rev-parse", "-q", "--verify", spec.as_str()])
