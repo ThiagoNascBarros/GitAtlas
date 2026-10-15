@@ -11,7 +11,7 @@ cat >"$file" <<EOF
 Type=Application
 Name=AtlasKraken
 Comment=Git client
-Exec=$root/scripts/run.sh --release
+Exec=$root/scripts/launch.sh
 Path=$root
 Icon=$root/app/src-tauri/icons/icon.png
 Terminal=false
