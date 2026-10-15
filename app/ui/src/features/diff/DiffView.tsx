@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // File diff: unified (hunk) or split view (roadmap T1.9).
-import { X } from "lucide-solid";
-import { createResource, createSignal, For, Show } from "solid-js";
+import { Maximize2, Minimize2, X } from "lucide-solid";
+import { createEffect, createResource, createSignal, For, onCleanup, Show } from "solid-js";
 import { api } from "../../api";
 import { t } from "../../i18n";
 import { parseUnified, toSplit } from "./parse";
@@ -13,6 +13,14 @@ export type DiffSource =
 
 export function DiffView(props: { repoId: number; source: DiffSource; path: string; onClose: () => void }) {
   const [mode, setMode] = createSignal<"unified" | "split">("unified");
+  const [full, setFull] = createSignal(false);
+  // Escape leaves full screen (and only that, so it does not also close dialogs underneath).
+  createEffect(() => {
+    if (!full()) return;
+    const key = (e: KeyboardEvent) => e.key === "Escape" && setFull(false);
+    document.addEventListener("keydown", key);
+    onCleanup(() => document.removeEventListener("keydown", key));
+  });
   const [patch] = createResource(
     () => [props.repoId, props.source, props.path, props.source.kind === "wip" ? props.source.rev : 0] as const,
     ([r, src, p]) => (src.kind === "commit" ? api.diff(r, src.sha, p) : api.worktreeDiff(r, p, src.staged, src.untracked)),
@@ -22,13 +30,16 @@ export function DiffView(props: { repoId: number; source: DiffSource; path: stri
   const no = (n: number | null) => (n === null ? "" : String(n));
 
   return (
-    <section class="diff" aria-label={t("diff.label", { path: props.path })}>
+    <section class="diff" classList={{ full: full() }} aria-label={t("diff.label", { path: props.path })}>
       <header class="diff-bar">
         <strong class="diff-path">{props.path}</strong>
         <div class="seg" role="group" aria-label={t("diff.mode")}>
           <button aria-pressed={mode() === "unified"} onClick={() => setMode("unified")}>{t("diff.unified")}</button>
           <button aria-pressed={mode() === "split"} onClick={() => setMode("split")}>{t("diff.split")}</button>
         </div>
+        <button class="icon" onClick={() => setFull(!full())} aria-pressed={full()} aria-label={full() ? t("diff.exitFull") : t("diff.full")} title={full() ? t("diff.exitFull") : t("diff.full")}>
+          {full() ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+        </button>
         <button class="icon" onClick={props.onClose} aria-label={t("diff.close")}><X size={16} /></button>
       </header>
       <div class="diff-body">
