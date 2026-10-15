@@ -63,7 +63,7 @@ export function WipPanel(props: {
       return;
     }
     setConfirm(null);
-    props.run(() => api.discard(id, [item.path]), { toast: t("toast.discarded", { s: item.path }) });
+    void props.run(() => api.discard(id, [item.path]), { toast: t("toast.discarded", { s: item.path }) });
   }
 
   const row = (item: WipItem, staged: boolean) => (
@@ -120,7 +120,7 @@ export function WipPanel(props: {
         class="commit-form"
         onSubmit={(e) => {
           e.preventDefault();
-          doCommit();
+          void doCommit();
         }}
       >
         <label>

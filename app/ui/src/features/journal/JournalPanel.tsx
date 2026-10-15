@@ -17,8 +17,8 @@ export function JournalPanel(props: { repoId: number; onClose: () => void; onErr
     }
   }
   return (
-    <div class="modal-back" onClick={props.onClose}>
-      <div class="modal" role="dialog" aria-label={t("journal.title")} onClick={(e) => e.stopPropagation()}>
+    <div class="modal-back">
+      <dialog open class="modal" aria-label={t("journal.title")} onKeyDown={(e) => e.key === "Escape" && props.onClose()}>
         <h2>{t("journal.title")}</h2>
         <Show when={(entries() ?? []).length} fallback={<p class="muted">{t("journal.empty")}</p>}>
           <ul class="journal">
@@ -40,7 +40,7 @@ export function JournalPanel(props: { repoId: number; onClose: () => void; onErr
           <button onClick={prune} title={t("journal.pruneTitle", { n: KEEP })}>{t("journal.prune", { n: KEEP })}</button>
           <button class="primary" onClick={props.onClose}>{t("journal.close")}</button>
         </div>
-      </div>
+      </dialog>
     </div>
   );
 }

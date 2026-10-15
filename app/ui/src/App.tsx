@@ -51,8 +51,11 @@ export function App() {
       if (status.oid !== cur.repo.head || status.branch !== cur.repo.branch) await refreshRepo(repoId);
       patchRepo(repoId, () => ({ status }));
       const g = groupStatus(status.entries);
-      const still = (f: WipFile | null) =>
-        f && (f.staged ? g.staged : g.unstaged).some((i) => i.path === f.path) ? f : null;
+      const still = (f: WipFile | null) => {
+        if (!f) return null;
+        const list = f.staged ? g.staged : g.unstaged;
+        return list.some((i) => i.path === f.path) ? f : null;
+      };
       patchRepo(repoId, (x) => ({ wipFile: still(x.wipFile), diffRev: x.diffRev + 1 }));
     } catch (e) {
       fail(e);
@@ -127,7 +130,7 @@ export function App() {
       setActive(tabs().length - 1);
       await loadStatus(repo.repoId);
       const st = tabs().find((x) => x.repo.repoId === repo.repoId)?.status;
-      if (st && st.entries.length) patchRepo(repo.repoId, () => ({ wip: true }));
+      if (st?.entries.length) patchRepo(repo.repoId, () => ({ wip: true }));
     } catch (e) {
       setError(e as UiError);
     }
@@ -149,8 +152,8 @@ export function App() {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target as HTMLElement)?.tagName ?? "");
       if (e.ctrlKey && !typing && e.key.toLowerCase() === "z" && tab()) {
         e.preventDefault();
-        if (e.shiftKey) redo(tab().repo.repoId);
-        else undo(tab().repo.repoId, null);
+        if (e.shiftKey) void redo(tab().repo.repoId);
+        else void undo(tab().repo.repoId, null);
       } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "p") {
         e.preventDefault();
         togglePerf();
@@ -168,6 +171,10 @@ export function App() {
     if (p) openPath(p);
   });
 
+  const wipLabel = () => {
+    if (!tab()?.status) return "";
+    return wipCount() ? t("wip.changes", { n: wipCount() }) : t("wip.clean");
+  };
   const wipCount = () => (tab()?.status ? changeCount(groupStatus(tab()!.status!.entries)) : 0);
 
   const [details] = createResource(
@@ -263,7 +270,7 @@ export function App() {
             >
               <strong>{t("wip.row")}</strong>
               <span class="muted">
-                {tab()!.status ? (wipCount() ? t("wip.changes", { n: wipCount() }) : t("wip.clean")) : ""}
+                {wipLabel()}
               </span>
             </button>
             <Show
@@ -392,12 +399,12 @@ export function App() {
         <JournalPanel repoId={tab()!.repo.repoId} onClose={() => setShowJournal(false)} onError={(e) => fail(e)} />
       </Show>
       <Show when={toast()}>
-        <div class="toast" role="status">
+        <output class="toast">
           <span>{toast()!.text}</span>
           <Show when={toast()!.undoId}>
-            <button onClick={() => { const x = toast()!; setToast(null); undo(x.repoId, x.undoId); }}>{t("toast.undo")}</button>
+            <button onClick={() => { const x = toast()!; setToast(null); void undo(x.repoId, x.undoId); }}>{t("toast.undo")}</button>
           </Show>
-        </div>
+        </output>
       </Show>
 
       <footer class="statusbar">

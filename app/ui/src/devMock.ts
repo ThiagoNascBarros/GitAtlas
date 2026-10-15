@@ -7,6 +7,8 @@ import { mockIPC } from "@tauri-apps/api/mocks";
 
 interface Fixture { open: any; rows: any[]; window: number[]; details: Record<string, any>; diffs: Record<string, string> }
 
+const uiError = (code: string, message: string) => Object.assign(new Error(message), { code });
+
 export async function installDevMock(first: string, next = "hubbi") {
   const repos = new Map<number, Fixture>();
   let nextId = 0;
@@ -57,13 +59,13 @@ export async function installDevMock(first: string, next = "hubbi") {
         return { id: null, head: null };
       }
       case "op_commit":
-        if (!args.message.trim()) throw { code: "EMPTY_MESSAGE", message: "empty" };
-        if (!wt.some((e) => e.index !== ".")) throw { code: "NOTHING_TO_COMMIT", message: "none" };
+        if (!args.message.trim()) throw uiError("EMPTY_MESSAGE", "empty");
+        if (!wt.some((e) => e.index !== ".")) throw uiError("NOTHING_TO_COMMIT", "none");
         for (const e of wt) e.index = ".";
         return { id: "demo-undo", head: null };
       case "op_discard": for (const p of args.paths) wt.splice(wt.findIndex((e) => e.path === p), 1); return { id: "d1", head: null };
       case "op_stage_hunk": return { id: null, head: null };
-      case "op_redo": throw { code: "NOTHING_TO_REDO", message: "none" };
+      case "op_redo": throw uiError("NOTHING_TO_REDO", "none");
       case "op_undo": return { id: null, head: null };
       case "journal_list": return [];
       case "journal_prune": return 0;
