@@ -37,6 +37,7 @@ AtlasGit users of the same repo can see it and apply it.
 **Non-goals**
 - Server-side enforcement of permissions (impossible with plain Git; see §7).
 - Export/import to file, expiration, comments/reviews, notifications.
+- Sharing directly from WIP without a local stash (future).
 - Sharing with people outside the remote (no third-party service).
 
 ## 4. Storage model
@@ -47,7 +48,7 @@ Each shared stash is one Git ref on the remote, in a namespace that hosts don't 
 refs/atlasgit/shared-stash/<author-key>/<id>
 ```
 
-- `<author-key>`: lowercase hex of the first 12 chars of SHA-1 of the normalized author email (`user.email`, trimmed, lowercased). Avoids leaking emails in ref names and illegal ref characters.
+- `<author-key>`: **readable slug** of the author's `user.name` (lowercase ASCII, accents stripped, spaces and invalid ref characters → `-`, collapsed, max 40 chars; falls back to the email local-part if the name is empty), e.g. `thiago-barros`. The slug is for display/grouping only: authorship is decided by the `AtlasGit-Author-Email` trailer (§7), so two people with the same name never get each other's rights, and `<id>` keeps refs unique.
 - `<id>`: ULID-like id (reuse `new_id()`), unique per stash.
 - The ref points to a **wrapper commit** (created with `git commit-tree`, no working-tree touch):
   - tree: empty tree;
@@ -72,7 +73,7 @@ All new `Operation` variants go through `Engine::run_with_env` (askpass env for 
 | Operation | Who | Git commands (sketch) | Journal / undo |
 |---|---|---|---|
 | `SharedStashList` (read) | anyone | `git for-each-ref refs/atlasgit/remotes/<r>/shared-stash` + parse trailers | — |
-| `SharedStashFetch` | anyone | `git fetch <r> +refs/atlasgit/shared-stash/*:refs/atlasgit/remotes/<r>/shared-stash/*` (also run as part of normal Fetch/Pull, prune stale) | no |
+| `SharedStashFetch { remote: Option }` | anyone | `git fetch --prune <r> +refs/atlasgit/shared-stash/*:refs/atlasgit/remotes/<r>/shared-stash/*`, for **every remote** when `remote` is None | no |
 | `SharedStashPublish { index, title }` | author | `commit-tree` wrapper → `git push <r> <sha>:refs/atlasgit/shared-stash/<key>/<id>` | journaled; undo = delete (author) |
 | `SharedStashUpdate { id, index, title }` | **author only** | new wrapper → push with `--force-with-lease` | journaled; undo = push previous sha with lease |
 | `SharedStashDelete { id }` | **author only** | `git push <r> --force-with-lease=<ref>:<sha> :<ref>` | journaled; undo = re-push the old sha (kept locally) |
@@ -80,6 +81,10 @@ All new `Operation` variants go through `Engine::run_with_env` (askpass env for 
 | `SharedStashBranch { id, name }` | anyone | `git stash branch`-equivalent: `branch <name> <AtlasGit-Base>` + checkout + apply, all-or-nothing | journaled like BranchCreate |
 
 Rules:
+- **When shared stashes are fetched** — user setting `sharedStash.fetchMode` (Preferences, per repo with global default):
+  - `panel` (**default**): fetched only while the "Shared stash" sidebar tab is open (on opening it, on its refresh button, and on Fetch/Pull while it is open);
+  - `always`: fetched together with every Fetch/Pull, even with the tab closed.
+- Only a **local stash** can be shared; sharing straight from WIP is out of scope (future).
 - Publish requires a configured `user.email` and a remote (default: upstream of current branch, else `origin`; picker if ambiguous).
 - Locks: `Lock::Index` for apply/branch; a new `Lock::Remote` (or existing network lock) for publish/update/delete.
 - Base missing locally (consumer hasn't fetched that history): fetch the base first; if still missing, apply is refused with a clear `OpError` ("Base commit not available — fetch the branch it was made on").
@@ -87,21 +92,21 @@ Rules:
 
 ## 6. UI
 
-- **Left panel → "Shared stashes"** section under Stashes, grouped "Mine" / "Team"; each row: title, author name, base branch, relative time.
+- **Sidebar → new tab "Shared stash"**, next to the existing "Local" and "Remote" tabs. Lists shared stashes from **all remotes**, grouped by remote, then "Mine" / "Team"; each row: title, author name, base branch, relative time. Header has a refresh button and a quick toggle for the fetch mode (`panel` / `always`). Remotes whose host rejected the namespace show a short notice instead of rows.
 - **Graph:** shared stashes shown as a distinct stash glyph on their base commit (toggle in view menu, default on; reuse stash-row rendering).
-- **Local stash context menu:** "Share stash…" (title prefilled with stash message, remote picker).
+- **Local stash context menu:** "Share stash…" (title prefilled with stash message, remote picker; default = upstream remote, else `origin`). No share action on WIP.
 - **Shared stash context menu:**
   - author: Apply, Create branch…, Update from local stash…, Rename, Delete (confirm);
   - others: Apply, Create branch… only (other actions not shown).
 - Click a row → diff view of the stash vs its base (reuse diff panel, read-only).
-- Fetch/Pull refresh the list; credentials go through the existing askpass bridge.
+- Fetch/Pull refresh the list according to the fetch mode; credentials go through the existing askpass bridge.
 - All strings via `i18n.ts` (pt-BR comes in Phase 5).
 
 ## 7. Security & trust
 
 - "Author-only" is **enforced by the client**, by comparing the trailer `AtlasGit-Author-Email` (and the wrapper commit's committer email) with local `user.email`. Anyone with push access can still rewrite the ref with plain Git; the UI says so in the docs. Signed wrapper commits (if the user has `commit.gpgsign`) are honored and shown as "verified".
 - Applying someone else's stash only changes the working tree; never runs hooks or scripts from it.
-- No emails in ref names (hashed key). Emails remain visible inside commits, like any commit.
+- Ref names carry the author's readable name slug (owner decision); emails stay only inside commits, like any commit. Names are never trusted for permissions.
 - If the host rejects pushes outside `refs/heads|tags` → `REMOTE_REJECTED` with hint; feature gracefully hidden for that remote.
 
 ## 8. Compatibility
@@ -114,7 +119,8 @@ Rules:
 
 E2E with **one local bare remote and two clones (A, B)**, distinct `user.email`:
 1. A stashes changes (incl. an untracked file with `-u`) and shares it → ref exists on the bare remote.
-2. B fetches → sees the stash under "Team" with A's name, title, base branch.
+2. B opens the "Shared stash" tab (default `panel` mode) → it fetches and shows the stash under "Team" with A's name, title, base branch; ref name contains A's readable slug. With the tab closed and mode `panel`, a plain Fetch does **not** download it; with mode `always` it does.
+2b. With a second bare remote, stashes from both remotes are listed, grouped by remote.
 3. B applies → B's working tree equals A's stashed changes (tracked + untracked).
 4. B creates a branch from it → branch at the base commit, changes applied, nothing else touched.
 5. B does not see Update/Delete; calling the engine directly returns `NOT_AUTHOR`.
@@ -133,9 +139,9 @@ E2E with **one local bare remote and two clones (A, B)**, distinct `user.email`:
 
 Branch: `feature/shared-stash` from `develop`, PR to `develop`.
 
-## 11. Open questions
+## 11. Resolved decisions (owner, 2026-10-15)
 
-1. Hashed author key vs readable slug in ref names?
-2. Should normal Fetch/Pull always fetch shared stashes, or only when the panel is open (bandwidth on big teams)?
-3. Allow sharing changes directly from WIP (without creating a local stash first)?
-4. Multi-remote repos: list shared stashes from all remotes or only the default one?
+1. Ref names use a **readable name slug**, not a hash.
+2. Fetch mode is a user choice: **`panel` (default)** or `always`.
+3. Only local stashes can be shared; sharing from WIP comes later.
+4. Shared stashes from **all remotes**, in a new sidebar tab "Shared stash" beside "Local" and "Remote".
