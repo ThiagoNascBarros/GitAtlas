@@ -527,3 +527,15 @@ menu.ctx button:focus svg { color: currentColor; }
 .wip-sec + .wip-sec { margin-top: var(--s2); padding-top: var(--s3); border-top: 1px solid var(--ak-color-border-default); }
 .wip-sec.unstaged h3 svg { color: var(--ak-color-status-modified); }
 .wip-sec.staged h3 svg { color: var(--ak-color-status-added); }
+/* Many changes: the file sections share the panel and scroll on their own; the commit form stays put. */
+.right:has(> .wip) { overflow: hidden; }
+.right > .wip { flex: 1 1 0; min-height: 0; overflow: hidden; }
+.right > .wip > .wip-sec { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 96px; }
+.right > .wip > .wip-sec.closed { flex: none; min-height: 0; }
+.right > .wip > .wip-sec > .wip-list { flex: 0 1 auto; min-height: 0; overflow: auto; }
+.right > .wip > .wip-sec > .files-head, .right > .wip > .wip-sec > .wip-hint { flex: none; }
+.right > .wip > .commit-form { position: static; flex: none; margin-top: auto; background: var(--ak-color-bg-surface); }
+.sec-toggle { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 0; border: 0; background: none; font: inherit; color: inherit; cursor: pointer; border-radius: var(--r-s); }
+.sec-toggle:hover { color: var(--ak-color-text-primary); }
+.sec-toggle:focus-visible { outline: 2px solid var(--ak-color-accent-default); outline-offset: 1px; }
+.sec-toggle > svg:first-child { color: var(--ak-color-text-muted); }

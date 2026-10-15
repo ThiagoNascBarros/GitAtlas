@@ -31,6 +31,9 @@ export async function installDevMock(first: string, next = "hubbi") {
     { path: "README.md", index: "M", worktree: "." },
     { path: "notes/todo.txt", index: ".", worktree: "?", untracked: true },
   ];
+  // ?files=N: a large working directory, to check the panel with many changes.
+  const many = Number(new URLSearchParams(location.search).get("files") ?? 0);
+  for (let i = 0; i < many; i++) wt.push({ path: `src/module${i % 7}/file${i}.ts`, index: i % 3 === 0 ? "M" : ".", worktree: i % 3 === 0 ? "." : "M" });
   const entry = (e: any) => ({ path: e.path, orig_path: null, index: e.index, worktree: e.worktree, conflicted: false, untracked: !!e.untracked });
   const demoDiff = "diff --git a/f b/f\n--- a/f\n+++ b/f\n@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three\n@@ -20,2 +20,3 @@\n x\n+added\n y\n";
   // Local stashes and the Shared stash tab (two remotes, one that rejects custom refs), mutated by the mocked ops.

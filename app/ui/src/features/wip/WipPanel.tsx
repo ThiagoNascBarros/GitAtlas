@@ -5,7 +5,16 @@ import { api, OpenedRepo, StatusReport, UiError } from "../../api";
 import { t } from "../../i18n";
 import { groupStatus, WipItem } from "./status";
 import { ConflictEditor } from "../conflict/ConflictEditor";
-import { Check, FileCheck2, FilePen, GitBranch, Minus, Plus, TriangleAlert, X } from "lucide-solid";
+import { Check, ChevronDown, ChevronRight, FileCheck2, FilePen, GitBranch, Minus, Plus, TriangleAlert, X } from "lucide-solid";
+
+const OPEN_KEY = "atlasgit.wip.sections";
+function loadOpen(): { unstaged: boolean; staged: boolean } {
+  try {
+    const v = JSON.parse(localStorage.getItem(OPEN_KEY) ?? "null");
+    if (v && typeof v.unstaged === "boolean" && typeof v.staged === "boolean") return v;
+  } catch { /* storage unavailable or corrupt */ }
+  return { unstaged: true, staged: true };
+}
 
 export interface WipFile { path: string; staged: boolean; untracked: boolean }
 
@@ -42,6 +51,13 @@ export function WipPanel(props: {
     }),
   );
 
+  // Collapsed sections, remembered across repositories and restarts.
+  const [open, setOpen] = createSignal<{ unstaged: boolean; staged: boolean }>(loadOpen());
+  const toggle = (k: "unstaged" | "staged") => {
+    const next = { ...open(), [k]: !open()[k] };
+    setOpen(next);
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify(next)); } catch { /* storage unavailable */ }
+  };
   const commitLabel = () => {
     if (amend()) return t("wip.commitAmend");
     const n = groups().staged.length;
@@ -129,25 +145,39 @@ export function WipPanel(props: {
           </li>}</For></ul>
         </section>
       </Show>
-      <section class="wip-sec unstaged">
+      <section class="wip-sec unstaged" classList={{ closed: !open().unstaged }}>
         <div class="files-head">
-          <h3><FilePen size={14} aria-hidden="true" />{t("wip.unstaged")} <span class="muted">{groups().unstaged.length}</span></h3>
+          <h3>
+            <button class="sec-toggle" aria-expanded={open().unstaged} onClick={() => toggle("unstaged")}>
+              <Show when={open().unstaged} fallback={<ChevronRight size={14} aria-hidden="true" />}><ChevronDown size={14} aria-hidden="true" /></Show>
+              <FilePen size={14} aria-hidden="true" />{t("wip.unstaged")} <span class="muted">{groups().unstaged.length}</span>
+            </button>
+          </h3>
           <Show when={groups().unstaged.length}>
             <button class="mini" onClick={() => props.run(() => api.stage(id, groups().unstaged.map((i) => i.path)))}><Plus size={14} aria-hidden="true" />{t("wip.stageAll")}</button>
           </Show>
         </div>
+        <Show when={open().unstaged}>
         <p class="wip-hint muted">{t("wip.unstagedHint")}</p>
         <ul class="files wip-list"><For each={groups().unstaged} fallback={<li class="muted pad-s">{t("wip.empty")}</li>}>{(i) => row(i, false)}</For></ul>
+        </Show>
       </section>
-      <section class="wip-sec staged">
+      <section class="wip-sec staged" classList={{ closed: !open().staged }}>
         <div class="files-head">
-          <h3><FileCheck2 size={14} aria-hidden="true" />{t("wip.staged")} <span class="muted">{groups().staged.length}</span></h3>
+          <h3>
+            <button class="sec-toggle" aria-expanded={open().staged} onClick={() => toggle("staged")}>
+              <Show when={open().staged} fallback={<ChevronRight size={14} aria-hidden="true" />}><ChevronDown size={14} aria-hidden="true" /></Show>
+              <FileCheck2 size={14} aria-hidden="true" />{t("wip.staged")} <span class="muted">{groups().staged.length}</span>
+            </button>
+          </h3>
           <Show when={groups().staged.length}>
             <button class="mini" onClick={() => props.run(() => api.unstage(id, groups().staged.map((i) => i.path)))}><Minus size={14} aria-hidden="true" />{t("wip.unstageAll")}</button>
           </Show>
         </div>
+        <Show when={open().staged}>
         <p class="wip-hint muted">{t("wip.stagedHint")}</p>
         <ul class="files wip-list"><For each={groups().staged} fallback={<li class="muted pad-s">{t("wip.empty")}</li>}>{(i) => row(i, true)}</For></ul>
+        </Show>
       </section>
       <form
         class="commit-form"
