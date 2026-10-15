@@ -119,9 +119,6 @@ select { appearance: none; background-color: var(--ak-color-bg-raised); color: v
 .perf { position: absolute; right: 12px; bottom: 12px; font: 12px/1.5 var(--font-mono); padding: 6px 10px; border-radius: 6px; background: var(--ak-color-bg-overlay); border: 1px solid var(--ak-color-border-strong); color: var(--ak-color-text-primary); pointer-events: none; }
 
 .center { flex-direction: column; }
-.wip-row { display: flex; gap: 12px; align-items: baseline; padding: 6px 12px; text-align: left; border-bottom: 1px solid var(--ak-color-border-default); background: var(--ak-color-bg-surface); }
-.wip-row:hover { background: var(--ak-color-bg-overlay); }
-.wip-row.active { background: var(--ak-color-bg-selected); box-shadow: inset 3px 0 0 var(--ak-color-accent-default); }
 .wip { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; padding: 12px; align-content: start; }
 .wip h3 { font-size: 12px; font-weight: 600; margin: 8px 0 4px; color: var(--ak-color-text-secondary); }
 .wip .files-head { margin-top: 4px; }
@@ -160,7 +157,6 @@ select { appearance: none; background-color: var(--ak-color-bg-raised); color: v
 .toast button { color: var(--ak-color-accent-default); font-weight: 600; }
 /* In the column layout a flex child would grow to its content (millions of px for 100k rows). */
 .center > .graph, .center > .diff { flex: 1 1 0; min-height: 0; }
-.wip-row { flex: none; }
 
 .modal-back { position: fixed; inset: 0; background: rgb(0 0 0 / .4); display: grid; place-items: center; z-index: 10; }
 /* `dialog` defaults (absolute position, Canvas/CanvasText colors) would ignore the theme. */
@@ -259,10 +255,6 @@ input:not([type="checkbox"]):not([type="radio"]), .commit-form textarea { border
 .files .dir { display: flex; align-items: center; gap: 6px; min-height: var(--row-h); }
 
 /* "Working directory" reads as the commit being drafted: the first row of history. */
-.wip-row { height: 36px; align-items: center; padding: 0 var(--s3); background: var(--ak-color-bg-canvas); border-bottom: 1px solid var(--ak-color-border-default); }
-.wip-row::before { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 2px dashed var(--ak-color-text-muted); flex: none; }
-.wip-row.active { background: var(--ak-color-bg-selected); box-shadow: inset 2px 0 0 var(--ak-color-accent-default); }
-.wip-row.active::before { border-color: var(--ak-color-accent-default); }
 
 /* Diff opens in a split below the graph, so history stays in view. */
 .center > .graph { flex: 1 1 55%; }
@@ -526,21 +518,6 @@ menu.ctx button:focus svg { color: currentColor; }
 .ss-ellip { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ss-meta svg { flex: none; }
 
-/* Uncommitted changes: the row on top of history must read as "work waiting for you", not as a header. */
-.wip-row { gap: 10px; }
-.wip-row::before { display: none; }
-.wip-row .wip-ico { flex: none; color: var(--ak-color-text-muted); }
-.wip-row.dirty { background: color-mix(in srgb, var(--ak-color-status-modified) 9%, var(--ak-color-bg-canvas)); box-shadow: inset 3px 0 0 var(--ak-color-status-modified); }
-.wip-row.dirty .wip-ico { color: var(--ak-color-status-modified); }
-.wip-row.dirty:hover { background: color-mix(in srgb, var(--ak-color-status-modified) 15%, var(--ak-color-bg-canvas)); }
-.wip-row.active, .wip-row.dirty.active { background: var(--ak-color-bg-selected); box-shadow: inset 3px 0 0 var(--ak-color-accent-default); }
-.wip-row.active .wip-ico { color: var(--ak-color-accent-default); }
-.wip-chips { display: inline-flex; gap: 6px; min-width: 0; }
-.wip-chip { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; border: 1px solid currentColor; }
-.wip-chip.unstaged { color: var(--ak-color-status-modified); }
-.wip-chip.staged { color: var(--ak-color-status-added); }
-.wip-chip.conflict { color: var(--ak-color-status-deleted); }
-.wip-cta { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 600; color: var(--ak-color-accent-default); white-space: nowrap; }
 .wip-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; padding-bottom: var(--s2); border-bottom: 1px solid var(--ak-color-border-default); margin-bottom: var(--s1); }
 .wip-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
 .wip-head .muted { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }

@@ -16,6 +16,9 @@ import { columns, ColumnWidths, loadWidths, saveWidths, clampWidth, resolveWidth
 
 interface Chunk { rows: GraphRow[]; meta: RowMeta[] }
 
+// Lucide "pencil-line" (ISC), drawn on the canvas for the uncommitted-changes row.
+const PENCIL = typeof Path2D === "undefined" ? null : new Path2D("M13 21h8 M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z M15 5l4 4");
+
 // Survives remounts (graph reload after commit/undo/redo) so the view keeps its place.
 const savedScroll = new Map<number, number>();
 
@@ -33,6 +36,9 @@ export function GraphView(props: {
   onMenu?: (sha: string, x: number, y: number) => void;
   /** Shared stashes by base commit; a glyph is drawn on those rows (view toggle off: undefined). */
   shared?: Map<string, SharedStashInfo[]>;
+  /** Uncommitted changes, drawn as a virtual first row above HEAD (none: no row). */
+  wip?: { staged: number; unstaged: number; conflicted: number; active: boolean };
+  onWip?: () => void;
 }) {
   let scroller!: HTMLDivElement;
   let canvas!: HTMLCanvasElement;
@@ -115,8 +121,8 @@ export function GraphView(props: {
     ctx.fillStyle = token("color.bg.canvas");
     ctx.fillRect(0, 0, w, h);
 
-    const top = scrollTop();
-    const first = Math.floor(top / ROW_H);
+    const top = scrollTop() - off();
+    const first = Math.max(0, Math.floor(top / ROW_H));
     const last = Math.min(props.repo.rowCount - 1, Math.ceil((top + h) / ROW_H));
     for (let c = Math.floor(first / CHUNK); c <= Math.floor(last / CHUNK); c++) ensure(c);
 
@@ -230,10 +236,99 @@ export function GraphView(props: {
       ctx.fillText(r.m.sha.slice(0, 7), col.shaX, cy);
       ctx.font = "13px Inter, Cantarell, system-ui, sans-serif";
     }
+    if (props.wip) drawWip(ctx, w, top, laneX);
     recordDraw(drawStart, painted);
   }
 
   createEffect(draw);
+
+  /** Height of the uncommitted-changes row (0 when there is none). */
+  const off = () => (props.wip ? ROW_H : 0);
+  const headRow = () => props.repo.refs.find((x) => x.isHead)?.row ?? null;
+
+  /** Hollow node in HEAD's lane and colour, dotted line down to HEAD, label and counts. */
+  function drawWip(ctx: CanvasRenderingContext2D, w: number, top: number, laneX: (l: number) => number) {
+    const wip = props.wip!;
+    const y = -ROW_H - top, cy = y + ROW_H / 2;
+    const hr = headRow();
+    const head = hr === null ? undefined : rowAt(hr);
+    const lane = head?.g.lane ?? 0;
+    const color = head ? laneColor(head.g.color) : token("color.text.muted");
+    const nx = laneX(lane);
+    const gx = widths().refs - 8;
+    ctx.save();
+    if (y + ROW_H > 0) {
+      if (wip.active) {
+        ctx.fillStyle = token("color.bg.selected");
+        ctx.fillRect(0, y, w, ROW_H);
+      }
+    }
+    // Dotted line from the WIP node to HEAD's node, over the rows in between.
+    ctx.beginPath();
+    ctx.rect(gx, 0, graphW(), size().h);
+    ctx.clip();
+    if (hr !== null) {
+      const hy = hr * ROW_H - top + ROW_H / 2;
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(nx, cy + 6);
+      ctx.lineTo(nx, hy - 6);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+    ctx.beginPath();
+    ctx.arc(nx, cy, 6, 0, Math.PI * 2);
+    ctx.fillStyle = token(wip.active ? "color.bg.selected" : "color.bg.canvas");
+    ctx.fill();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.restore();
+    if (y + ROW_H <= 0) return;
+    // Message column: icon, label, then one pill per non-empty count.
+    const col = columns(w, graphW(), widths());
+    let x = col.msgX;
+    if (PENCIL) {
+      ctx.save();
+      ctx.translate(x, cy - 7);
+      ctx.scale(14 / 24, 14 / 24);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.stroke(PENCIL);
+      ctx.restore();
+      x += 20;
+    }
+    ctx.font = "600 13px Inter, Cantarell, system-ui, sans-serif";
+    ctx.fillStyle = token("color.text.primary");
+    const label = t("wip.row");
+    ctx.fillText(label, x, cy);
+    x += ctx.measureText(label).width + 10;
+    ctx.font = "600 11.5px Inter, Cantarell, system-ui, sans-serif";
+    const pills: [number, string, string][] = [
+      [wip.conflicted, t("wip.chipConflicts", { n: wip.conflicted }), token("color.status.deleted")],
+      [wip.unstaged, t("wip.chipUnstaged", { n: wip.unstaged }), token("color.status.modified")],
+      [wip.staged, t("wip.chipStaged", { n: wip.staged }), token("color.status.added")],
+    ];
+    if (!wip.conflicted && !wip.unstaged && !wip.staged) pills.push([1, t("wip.clean"), token("color.text.muted")]);
+    for (const [n, text, c] of pills) {
+      if (!n) continue;
+      const pw = ctx.measureText(text).width + 14;
+      if (x + pw > col.shaX - 8) break;
+      ctx.strokeStyle = c;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(x + 0.5, cy - 9.5, pw - 1, 19, 9.5);
+      ctx.stroke();
+      ctx.fillStyle = c;
+      ctx.fillText(text, x + 7, cy + 0.5);
+      x += pw + 6;
+    }
+    ctx.font = "13px Inter, Cantarell, system-ui, sans-serif";
+  }
 
 
   // New repo in this view (tab switch) or reload: restore the saved position, else the top.
@@ -250,7 +345,7 @@ export function GraphView(props: {
     const r = rowAt(i);
     if (!r) return ensure(Math.floor(i / CHUNK));
     props.onSelect(i, r.m.sha);
-    const y = i * ROW_H;
+    const y = i * ROW_H + off();
     if (y < scroller.scrollTop) scroller.scrollTop = y;
     else if (y + ROW_H > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = y + ROW_H - scroller.clientHeight;
   }
@@ -261,6 +356,10 @@ export function GraphView(props: {
     const next = { ArrowDown: cur + 1, ArrowUp: cur - 1, PageDown: cur + page, PageUp: cur - page, Home: 0, End: props.repo.rowCount - 1 }[e.key];
     if (next === undefined) return;
     e.preventDefault();
+    if (props.wip && props.onWip && (next < 0 || e.key === "Home")) {
+      scroller.scrollTop = 0;
+      return props.onWip();
+    }
     select(Math.max(0, Math.min(props.repo.rowCount - 1, next)));
   }
 
@@ -307,11 +406,15 @@ export function GraphView(props: {
         onKeyDown={onKey}
         onClick={(e) => {
           const rect = scroller.getBoundingClientRect();
-          select(Math.floor((e.clientY - rect.top + scroller.scrollTop) / ROW_H));
+          const yy = e.clientY - rect.top + scroller.scrollTop - off();
+          if (yy < 0) return props.onWip?.();
+          select(Math.floor(yy / ROW_H));
         }}
         onContextMenu={(e) => {
           const rect = scroller.getBoundingClientRect();
-          const i = Math.floor((e.clientY - rect.top + scroller.scrollTop) / ROW_H);
+          const yy = e.clientY - rect.top + scroller.scrollTop - off();
+          if (yy < 0) return;
+          const i = Math.floor(yy / ROW_H);
           const r = rowAt(i);
           if (!r || !props.onMenu) return;
           e.preventDefault();
@@ -320,7 +423,7 @@ export function GraphView(props: {
         }}
       >
         <canvas ref={canvas} class="graph-canvas" style={{ width: `${size().w}px`, height: `${size().h}px` }} />
-        <div style={{ height: `${Math.max(0, props.repo.rowCount * ROW_H - size().h)}px` }} />
+        <div style={{ height: `${Math.max(0, props.repo.rowCount * ROW_H + off() - size().h)}px` }} />
       </div>
       {/* Accessible shadow of the canvas: announces the selected commit. */}
       {loadError() && <div class="graph-error" role="alert">{loadError()}</div>}
@@ -333,7 +436,7 @@ export function GraphView(props: {
         </div>
       )}
       <div class="sr-only" aria-live="polite" role="status">
-        {selectedMeta() ? `${selectedMeta()!.summary}, ${selectedMeta()!.author}, ${selectedMeta()!.sha.slice(0, 7)}${(props.shared?.get(selectedMeta()!.sha) ?? []).map((x) => `, ${t("ss.glyphTitle", { s: x.title })}`).join("")}` : ""}
+        {props.wip?.active ? `${t("wip.row")}: ${t("wip.chipUnstaged", { n: props.wip.unstaged })}, ${t("wip.chipStaged", { n: props.wip.staged })}` : selectedMeta() ? `${selectedMeta()!.summary}, ${selectedMeta()!.author}, ${selectedMeta()!.sha.slice(0, 7)}${(props.shared?.get(selectedMeta()!.sha) ?? []).map((x) => `, ${t("ss.glyphTitle", { s: x.title })}`).join("")}` : ""}
       </div>
     </div>
   );

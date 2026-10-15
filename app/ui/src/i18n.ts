@@ -55,7 +55,6 @@ const en = {
   "wip.chipUnstaged": "{n} unstaged",
   "wip.chipStaged": "{n} staged",
   "wip.chipConflicts": "{n} conflicted",
-  "wip.cta": "Review and commit",
   "wip.panelTitle": "Commit changes",
   "wip.onBranch": "on {s}",
   "wip.detached": "detached HEAD",

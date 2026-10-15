@@ -19,7 +19,7 @@ import { WipFile, WipPanel } from "./features/wip/WipPanel";
 import { changeCount, groupStatus } from "./features/wip/status";
 import { toTreeRows, visibleRows } from "./features/files/tree";
 import { markOpenStart, togglePerf } from "./features/graph/perf";
-import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Laptop, List, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Share2, FilePen } from "lucide-solid";
+import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Laptop, List, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Share2 } from "lucide-solid";
 import { Dynamic } from "solid-js/web";
 import { Splitter, storedSize } from "./features/split/Splitter";
 import { SharedStashPanel } from "./features/shared-stash/SharedStashPanel";
@@ -433,23 +433,6 @@ export function App() {
           <Splitter label={t("split.left")} axis="x" value={leftW()} min={140} max={420} onChange={setLeftW} onCommit={saveLeftW} />
 
           <main class="center" style={{ "--diff-h": `${diffH()}px` }}>
-            <button
-              class="wip-row"
-              classList={{ active: tab()!.wip, dirty: wipCount() > 0 }}
-              aria-label={`${t("wip.row")}: ${wipLabel()}`}
-              onClick={() => patch({ wip: true, selected: null, sha: null, diffPath: null })}
-            >
-              <FilePen size={15} class="wip-ico" aria-hidden="true" />
-              <strong>{t("wip.row")}</strong>
-              <Show when={wipCount()} fallback={<span class="muted">{wipLabel()}</span>}>
-                <span class="wip-chips">
-                  <Show when={wipGroups().conflicted.length}><span class="wip-chip conflict">{t("wip.chipConflicts", { n: wipGroups().conflicted.length })}</span></Show>
-                  <Show when={wipGroups().unstaged.length}><span class="wip-chip unstaged">{t("wip.chipUnstaged", { n: wipGroups().unstaged.length })}</span></Show>
-                  <Show when={wipGroups().staged.length}><span class="wip-chip staged">{t("wip.chipStaged", { n: wipGroups().staged.length })}</span></Show>
-                </span>
-                <Show when={!tab()!.wip}><span class="wip-cta">{t("wip.cta")}<ChevronRight size={14} aria-hidden="true" /></span></Show>
-              </Show>
-            </button>
             <Show when={tab()!.graphRev} keyed>
               {(_) => (
                 <GraphView
@@ -458,6 +441,8 @@ export function App() {
                   onSelect={(row, sha) => patch({ selected: row, sha, diffPath: null, wip: false })}
                   onMenu={tab()!.repo.readOnlyReason ? undefined : (sha, x, y) => setCommitMenu({ sha, x, y })}
                   shared={glyphOn() ? sharedBases() : undefined}
+                  wip={tab()!.status ? { staged: wipGroups().staged.length, unstaged: wipGroups().unstaged.length, conflicted: wipGroups().conflicted.length, active: tab()!.wip } : undefined}
+                  onWip={() => patch({ wip: true, selected: null, sha: null, diffPath: null })}
                 />
               )}
             </Show>
