@@ -1,14 +1,21 @@
 // SPDX-License-Identifier: Apache-2.0
-import { createResource, For, Show } from "solid-js";
+import { createResource, createSignal, For, Show } from "solid-js";
 import { api } from "../../api";
 import { t } from "../../i18n";
+import { useOverlay } from "../overlay";
 
 const KEEP = 50;
 
 /** Operation journal: what AtlasKraken did, with the exact Git commands, plus opt-in cleanup. */
 export function JournalPanel(props: { repoId: number; onClose: () => void; onError: (e: unknown) => void }) {
   const [entries, { refetch }] = createResource(() => api.journal(props.repoId));
+  let close: HTMLButtonElement | undefined;
+  useOverlay(() => props.onClose(), () => close);
+  const [confirm, setConfirm] = createSignal(false);
   async function prune() {
+    // Pruning cannot be undone: ask for a second click.
+    if (!confirm()) return setConfirm(true);
+    setConfirm(false);
     try {
       await api.pruneJournal(props.repoId, KEEP);
       refetch();
@@ -17,8 +24,8 @@ export function JournalPanel(props: { repoId: number; onClose: () => void; onErr
     }
   }
   return (
-    <div class="modal-back">
-      <dialog open class="modal" aria-label={t("journal.title")} onKeyDown={(e) => e.key === "Escape" && props.onClose()}>
+    <div class="modal-back" onClick={props.onClose}>
+      <dialog open class="modal" aria-label={t("journal.title")} onClick={(e) => e.stopPropagation()}>
         <h2>{t("journal.title")}</h2>
         <Show when={(entries() ?? []).length} fallback={<p class="muted">{t("journal.empty")}</p>}>
           <ul class="journal">
@@ -37,8 +44,10 @@ export function JournalPanel(props: { repoId: number; onClose: () => void; onErr
           </ul>
         </Show>
         <div class="modal-actions">
-          <button onClick={prune} title={t("journal.pruneTitle", { n: KEEP })}>{t("journal.prune", { n: KEEP })}</button>
-          <button class="primary" onClick={props.onClose}>{t("journal.close")}</button>
+          <button classList={{ danger: confirm() }} onClick={prune} onBlur={() => setConfirm(false)} title={t("journal.pruneTitle", { n: KEEP })}>
+            {confirm() ? t("journal.pruneConfirm") : t("journal.prune", { n: KEEP })}
+          </button>
+          <button ref={close} class="primary" onClick={props.onClose}>{t("journal.close")}</button>
         </div>
       </dialog>
     </div>
