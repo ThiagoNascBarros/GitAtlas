@@ -12,7 +12,7 @@ const CHUNK = 200;
 /** Lanes shown before the graph column stops growing (the rest is clipped). */
 const MAX_VISIBLE_LANES = 12;
 import { perfEnabled, perfStats, recordDraw } from "./perf";
-import { columns, ColumnWidths, loadWidths, saveWidths, clampWidth } from "./columns";
+import { columns, ColumnWidths, loadWidths, saveWidths, clampWidth, resolveWidths } from "./columns";
 
 interface Chunk { rows: GraphRow[]; meta: RowMeta[] }
 
@@ -34,16 +34,18 @@ export function GraphView(props: {
   const [tick, setTick] = createSignal(0);
   const [size, setSize] = createSignal({ w: 800, h: 600 });
   const [scrollTop, setScrollTop] = createSignal(0);
-  const [widths, setWidths] = createSignal<ColumnWidths>(loadWidths());
+  const [stored, setWidths] = createSignal<ColumnWidths>(loadWidths());
+  // Effective widths: an unset refs width follows the available space.
+  const widths = () => resolveWidths(stored(), size().w, graphW());
 
   /** Drag a header edge to resize a column (refs grows to the right; author/date grow to the left). */
   function startResize(e: PointerEvent, col: keyof ColumnWidths) {
     e.preventDefault();
     const x0 = e.clientX, w0 = widths()[col];
     const dir = col === "refs" ? 1 : -1;
-    const move = (ev: PointerEvent) => setWidths({ ...widths(), [col]: clampWidth(col, w0 + dir * (ev.clientX - x0)) });
+    const move = (ev: PointerEvent) => setWidths({ ...stored(), refs: widths().refs, [col]: clampWidth(col, w0 + dir * (ev.clientX - x0)) });
     const up = () => {
-      saveWidths(widths());
+      saveWidths(stored());
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
