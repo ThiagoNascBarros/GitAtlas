@@ -19,7 +19,7 @@ import { WipFile, WipPanel } from "./features/wip/WipPanel";
 import { changeCount, groupStatus } from "./features/wip/status";
 import { toTreeRows, visibleRows } from "./features/files/tree";
 import { markOpenStart, togglePerf } from "./features/graph/perf";
-import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Laptop, List, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Share2 } from "lucide-solid";
+import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Laptop, List, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Share2, FilePen } from "lucide-solid";
 import { Dynamic } from "solid-js/web";
 import { Splitter, storedSize } from "./features/split/Splitter";
 import { SharedStashPanel } from "./features/shared-stash/SharedStashPanel";
@@ -289,7 +289,8 @@ export function App() {
     if (!tab()?.status) return "";
     return wipCount() ? t("wip.changes", { n: wipCount() }) : t("wip.clean");
   };
-  const wipCount = () => (tab()?.status ? changeCount(groupStatus(tab()!.status!.entries)) : 0);
+  const wipGroups = createMemo(() => groupStatus(tab()?.status?.entries ?? []));
+  const wipCount = () => (tab()?.status ? changeCount(wipGroups()) : 0);
 
   const [details] = createResource(
     () => (tab()?.sha ? ([tab()!.repo.repoId, tab()!.sha!] as const) : null),
@@ -434,13 +435,20 @@ export function App() {
           <main class="center" style={{ "--diff-h": `${diffH()}px` }}>
             <button
               class="wip-row"
-              classList={{ active: tab()!.wip }}
+              classList={{ active: tab()!.wip, dirty: wipCount() > 0 }}
+              aria-label={`${t("wip.row")}: ${wipLabel()}`}
               onClick={() => patch({ wip: true, selected: null, sha: null, diffPath: null })}
             >
+              <FilePen size={15} class="wip-ico" aria-hidden="true" />
               <strong>{t("wip.row")}</strong>
-              <span class="muted">
-                {wipLabel()}
-              </span>
+              <Show when={wipCount()} fallback={<span class="muted">{wipLabel()}</span>}>
+                <span class="wip-chips">
+                  <Show when={wipGroups().conflicted.length}><span class="wip-chip conflict">{t("wip.chipConflicts", { n: wipGroups().conflicted.length })}</span></Show>
+                  <Show when={wipGroups().unstaged.length}><span class="wip-chip unstaged">{t("wip.chipUnstaged", { n: wipGroups().unstaged.length })}</span></Show>
+                  <Show when={wipGroups().staged.length}><span class="wip-chip staged">{t("wip.chipStaged", { n: wipGroups().staged.length })}</span></Show>
+                </span>
+                <Show when={!tab()!.wip}><span class="wip-cta">{t("wip.cta")}<ChevronRight size={14} aria-hidden="true" /></span></Show>
+              </Show>
             </button>
             <Show when={tab()!.graphRev} keyed>
               {(_) => (

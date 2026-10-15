@@ -5,7 +5,7 @@ import { api, OpenedRepo, StatusReport, UiError } from "../../api";
 import { t } from "../../i18n";
 import { groupStatus, WipItem } from "./status";
 import { ConflictEditor } from "../conflict/ConflictEditor";
-import { Check, FileCheck2, FilePen, Minus, Plus, TriangleAlert, X } from "lucide-solid";
+import { Check, FileCheck2, FilePen, GitBranch, Minus, Plus, TriangleAlert, X } from "lucide-solid";
 
 export interface WipFile { path: string; staged: boolean; untracked: boolean }
 
@@ -42,6 +42,13 @@ export function WipPanel(props: {
     }),
   );
 
+  const commitLabel = () => {
+    if (amend()) return t("wip.commitAmend");
+    const n = groups().staged.length;
+    const b = props.repo.branch;
+    if (!n || !b) return t("wip.commit");
+    return n === 1 ? t("wip.commitOneTo", { s: b }) : t("wip.commitTo", { n, s: b });
+  };
   const canCommit = () => !busy() && summary().trim() !== "" && (amend() || groups().staged.length > 0);
   const message = () => (body().trim() ? `${summary().trim()}\n\n${body().trim()}` : summary().trim());
 
@@ -95,6 +102,10 @@ export function WipPanel(props: {
 
   return (
     <div class="wip">
+      <header class="wip-head">
+        <h2>{t("wip.panelTitle")}</h2>
+        <span class="muted"><GitBranch size={13} aria-hidden="true" />{props.repo.branch ? t("wip.onBranch", { s: props.repo.branch }) : t("wip.detached")}</span>
+      </header>
       <Show when={editing()}>
         {(p) => <ConflictEditor repoId={id} path={p()} run={props.run} onClose={() => setEditing(null)} onError={(e) => props.onError(e as UiError)} />}
       </Show>
@@ -125,6 +136,7 @@ export function WipPanel(props: {
             <button class="mini" onClick={() => props.run(() => api.stage(id, groups().unstaged.map((i) => i.path)))}><Plus size={14} aria-hidden="true" />{t("wip.stageAll")}</button>
           </Show>
         </div>
+        <p class="wip-hint muted">{t("wip.unstagedHint")}</p>
         <ul class="files wip-list"><For each={groups().unstaged} fallback={<li class="muted pad-s">{t("wip.empty")}</li>}>{(i) => row(i, false)}</For></ul>
       </section>
       <section>
@@ -134,6 +146,7 @@ export function WipPanel(props: {
             <button class="mini" onClick={() => props.run(() => api.unstage(id, groups().staged.map((i) => i.path)))}><Minus size={14} aria-hidden="true" />{t("wip.unstageAll")}</button>
           </Show>
         </div>
+        <p class="wip-hint muted">{t("wip.stagedHint")}</p>
         <ul class="files wip-list"><For each={groups().staged} fallback={<li class="muted pad-s">{t("wip.empty")}</li>}>{(i) => row(i, true)}</For></ul>
       </section>
       <form
@@ -169,8 +182,11 @@ export function WipPanel(props: {
           {t("wip.amend")}
         </label>
         <button type="submit" class="primary wide" disabled={!canCommit()}>
-          <Check size={16} aria-hidden="true" />{amend() ? t("wip.commitAmend") : t("wip.commit")}
+          <Check size={16} aria-hidden="true" />{commitLabel()}
         </button>
+        <Show when={!busy() && !canCommit()}>
+          <p class="wip-hint wip-why muted">{!amend() && !groups().staged.length ? t("wip.needStaged") : t("wip.needSummary")}</p>
+        </Show>
       </form>
     </div>
   );
