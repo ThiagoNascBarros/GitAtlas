@@ -89,13 +89,23 @@ These are fixed for every agent. Changing one requires going back to the coordin
 
 | Agent | May create/modify | Must not touch |
 |---|---|---|
-| `i18n-pt-br` | `app/ui/src/i18n.ts`, `app/ui/src/locales/**`, `app/ui/src/App.tsx`, `app/ui/src/features/**` (only to route strings/dates through i18n), `app/ui/src/styles.css` (language picker only), `app/ui/src/*.test.ts`, `app/ui/src/devMock.ts` (only if needed), its spec's notes section | `crates/**`, `app/src-tauri/**`, `.github/**`, `packaging/**`, `docs/user/**` |
-| `packaging` | `packaging/**` (new), `app/src-tauri/tauri.conf.json` (bundle section only), `app/src-tauri/icons/**` (sizes generated from the existing icon), `.github/workflows/**`, `scripts/` (new packaging scripts only), its spec's notes section | `app/ui/**`, `crates/**`, `app/src-tauri/src/**`, existing scripts' behaviour |
-| `accessibility` | `app/ui/src/**`, `docs/a11y/**` (new), its spec's notes section | `crates/**`, `app/src-tauri/**`, `packaging/**`, `.github/**` |
-| `release-docs` | `docs/user/**`, `docs/release/**` (new), `CHANGELOG.md` (new), `README.md`, `docs/HANDOFF.md`, its spec's notes section | all code, other specs |
+| `i18n-pt-br` | `app/ui/src/i18n.ts`, `app/ui/src/locales/**`, `app/ui/src/App.tsx`, `app/ui/src/features/**` (only to route strings/dates through i18n), `app/ui/src/styles.css` (language picker only), `app/ui/src/*.test.ts`, `app/ui/src/devMock.ts` (only if needed), its spec's notes section, `docs/screenshots/phase5/<module>/` | `crates/**`, `app/src-tauri/**`, `.github/**`, `packaging/**`, `docs/user/**` |
+| `packaging` | `packaging/**` (new), `app/src-tauri/tauri.conf.json` (bundle section only), `app/src-tauri/icons/**` (sizes generated from the existing icon), `.github/workflows/**`, `scripts/` (new packaging scripts only), its spec's notes section, `docs/screenshots/phase5/<module>/` | `app/ui/**`, `crates/**`, `app/src-tauri/src/**`, existing scripts' behaviour |
+| `accessibility` | `app/ui/src/**`, `docs/a11y/**` (new), its spec's notes section, `docs/screenshots/phase5/<module>/` | `crates/**`, `app/src-tauri/**`, `packaging/**`, `.github/**` |
+| `release-docs` | `docs/user/**`, `docs/release/**` (new), `CHANGELOG.md` (new), `README.md`, `docs/HANDOFF.md`, its spec's notes section, `docs/screenshots/phase5/<module>/` | all code, other specs |
 
 Each agent works in its own git worktree and commits there; the coordinator merges into the
 session branch in build order. Agents never push.
+
+## 5.1 Screenshots (owner requirement, 2026-10-15)
+
+Every module delivers **exactly 5 PNG screenshots** of what it implemented, committed under
+`docs/screenshots/phase5/<module-id>/01-….png` … `05-….png` (this path is part of each agent's
+ownership). UI shots come from the dev mock (`pnpm --dir app/ui exec vite` + `devMock.ts`)
+driven by Playwright/Chromium at 1280×800, or from the real app under Xvfb; command output is
+rendered to an image. The agent checks each image matches its caption and lists them in its
+report; the coordinator re-checks them before merging. Playwright is not added to the project
+(helper scripts stay outside the repo).
 
 ## 6. Integration and validation (coordinator, after each wave)
 
@@ -107,8 +117,9 @@ session branch in build order. Agents never push.
    - `cargo build -p atlasgit --features custom-protocol`
    - wave 1+: `desktop-file-validate` and `appstreamcli validate --no-net` on the packaging files
 3. Check every acceptance criterion of the merged specs against the code, not the agent report.
-4. Check no file outside the agent's ownership changed (`git diff --stat <base>..<branch>`).
-5. Regression: test counts never go down; baseline in §1.
+4. Check the 5 screenshots exist and show the module's work (§5.1).
+5. Check no file outside the agent's ownership changed (`git diff --stat <base>..<branch>`).
+6. Regression: test counts never go down; baseline in §1.
 
 ## 7. Risks
 

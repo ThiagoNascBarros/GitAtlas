@@ -180,6 +180,7 @@ same `rowAt` data. Overlay behaviour is centralized in `overlay.ts`. No Tauri/co
 - [ ] Perf numbers before/after recorded; no regression.
 - [ ] New strings in en and pt-BR; contrast check passes; Tauri crate builds.
 - [ ] No file outside the ownership list changed; no new dependency.
+- [ ] 5 screenshots in `docs/screenshots/phase5/accessibility/`: graph focused with the selected row and its hidden-row DOM/accessibility tree, commit menu opened with Shift+F10, ref or stash menu opened from the keyboard, modal dialog with focus inside, focus ring visible in the light theme.
 
 ## 11. Implementation notes
 

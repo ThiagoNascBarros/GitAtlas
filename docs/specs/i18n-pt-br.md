@@ -184,6 +184,7 @@ sizes).
       output and the language name "English".
 - [ ] `node scripts/contrast.mjs` and `cargo build -p atlasgit --features custom-protocol` pass.
 - [ ] No files outside the ownership list in `mvp-phase5.md` §5 changed; no new dependency.
+- [ ] 5 screenshots in `docs/screenshots/phase5/i18n-pt-br/` (picker, main window pt-BR, WIP pt-BR, dates pt-BR, error text pt-BR).
 - [ ] §12 "Implementation notes" filled with decisions taken where the spec was silent.
 
 ## 12. Implementation notes

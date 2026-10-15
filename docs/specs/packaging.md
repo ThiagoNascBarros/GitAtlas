@@ -181,6 +181,7 @@ Adds a `packaging/` tree and two scripts; changes only the `bundle` section of
 - [ ] AppImage and Flatpak: built, or manifest validated plus the exact blocking reason recorded.
 - [ ] Release workflow exists, never publishes, uploads the three artifacts.
 - [ ] No change outside the ownership list in `mvp-phase5.md` §5; no new dependency.
+- [ ] 5 screenshots in `docs/screenshots/phase5/packaging/` (app from the .deb, AppImage, Flatpak, validators, deb metadata).
 - [ ] §12 filled: Tauri keys used, runtime version, Git/ssh availability in the sandbox,
       finish-args kept, validator warnings, what was not verified.
 

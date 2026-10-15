@@ -108,6 +108,7 @@ Documentation only.
 - [ ] Guide pages, checklist and CHANGELOG exist; README/HANDOFF updated.
 - [ ] §6 checks pass and are reported with their output.
 - [ ] No code file changed.
+- [ ] 5 screenshots in `docs/screenshots/phase5/release-docs/`: rendered user guide index, one feature page, keyboard page, release checklist, README status/Install section (Markdown rendered to HTML, captured with Playwright).
 
 ## 10. Instructions for the implementing agent
 
