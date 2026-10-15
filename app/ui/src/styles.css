@@ -458,3 +458,10 @@ menu.ctx button:focus svg { color: currentColor; }
 .conflict-chunk { display: flex; gap: 4px; align-items: center; }
 .conflict-result { display: grid; gap: 4px; }
 .conflict-result textarea { min-height: 30vh; resize: vertical; background: var(--ak-color-bg-canvas); color: var(--ak-color-text-primary); border: 1px solid var(--ak-color-border-default); border-radius: var(--r-m, 6px); padding: 8px; }
+.tool .count { min-width: 16px; padding: 0 4px; border-radius: 8px; font-size: 11px; background: var(--ak-color-accent-muted); color: var(--ak-color-text-primary); }
+.tool[aria-busy="true"] { opacity: .7; cursor: progress; }
+.modal.rebase { width: min(820px, 95vw); }
+.rebase-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.rebase-list li { display: grid; grid-template-columns: 200px 64px 1fr auto auto; gap: 8px; align-items: center; }
+.rebase-list li.dropped .msg { text-decoration: line-through; color: var(--ak-color-text-muted); }
+.rebase-list .msg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

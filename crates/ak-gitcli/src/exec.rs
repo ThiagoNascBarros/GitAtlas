@@ -142,6 +142,20 @@ impl Git {
         ))
     }
 
+    /// [`run_status`](Self::run_status) with extra environment variables (askpass for network commands).
+    pub fn run_status_env<I, S>(&self, repo: &Path, args: I, env: &[(String, String)]) -> Result<(Option<i32>, String, String), GitError>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let out = self.command(repo, args)?.envs(env.iter().map(|(k, v)| (k, v))).output()?;
+        Ok((
+            out.status.code(),
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).trim().to_owned(),
+        ))
+    }
+
     /// Runs git and returns stdout bytes; non-zero exit becomes `GitError::Failed`.
     pub fn run<I, S>(&self, repo: &Path, args: I) -> Result<Vec<u8>, GitError>
     where

@@ -100,7 +100,10 @@ export function WipPanel(props: {
       </Show>
       <Show when={props.status?.merging}>
         <div class="merge-banner" role="alert">
-          <span>{t("merge.banner")}</span>
+          <span>{t("merge.banner", { s: props.status?.in_progress ?? "merge" })}</span>
+          <Show when={props.status?.in_progress === "rebase"}>
+            <button class="mini" onClick={() => void props.run(() => api.rebaseContinue(id), { graph: true, toast: t("toast.rebased") })}>{t("rebase.continue")}</button>
+          </Show>
           <button class="mini danger" onClick={() => void props.run(() => api.mergeAbort(id), { graph: true, toast: t("toast.mergeAborted") })}><X size={14} aria-hidden="true" />{t("merge.abort")}</button>
         </div>
       </Show>

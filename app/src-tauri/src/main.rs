@@ -4,6 +4,8 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod askpass;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -12,7 +14,7 @@ use std::time::Duration;
 use ak_core::cache;
 use ak_core::graph::{self, Layout, Topology};
 use ak_core::ops::journal::JournalEntry;
-use ak_core::ops::{ConflictVersions, MergePreview, StashInfo};
+use ak_core::ops::{ConflictVersions, MergePreview, StashInfo, TodoItem};
 use ak_core::ops::{Engine, OpError, OpOutcome, Operation};
 use ak_core::read::{CliReader, CommitDetails, RepoReader, RowText};
 use ak_core::read_gix::GixReader;
@@ -37,6 +39,7 @@ struct Repo {
 #[derive(Default)]
 struct AppState {
     repos: Mutex<HashMap<u32, Arc<Repo>>>,
+    askpass: Arc<askpass::Pending>,
     next_id: Mutex<u32>,
     initial_path: Option<PathBuf>,
 }
@@ -361,7 +364,8 @@ async fn diff_worktree(
 async fn status_get(repo_id: u32, state: State<'_, AppState>) -> Result<StatusWithMerge> {
     let r = get(&state, repo_id)?;
     let status = r.reader.status().map_err(|e| UiError::new("READ_FAILED", e))?;
-    Ok(StatusWithMerge { status, merging: engine(&r)?.merge_in_progress() })
+    let in_progress = engine(&r)?.in_progress();
+    Ok(StatusWithMerge { status, merging: in_progress.is_some(), in_progress })
 }
 
 #[derive(Serialize)]
@@ -369,6 +373,8 @@ struct StatusWithMerge {
     #[serde(flatten)]
     status: StatusReport,
     merging: bool,
+    /// "merge", "cherry-pick", "revert" or "rebase" while one is stopped on conflicts.
+    in_progress: Option<&'static str>,
 }
 
 #[tauri::command]
@@ -476,6 +482,61 @@ async fn op_checkout(repo_id: u32, target: String, is_branch: bool, state: State
     run_op(&state, repo_id, Operation::Checkout { target, is_branch })
 }
 
+/// Fetch, pull or push. Runs off the async runtime (it can wait on the network and on the user
+/// answering a credentials prompt, which arrives through `credentials_answer`).
+#[tauri::command]
+async fn op_net(repo_id: u32, action: String, force: bool, name: Option<String>, app: AppHandle, state: State<'_, AppState>) -> Result<OpOutcome> {
+    let r = get(&state, repo_id)?;
+    let pending = state.askpass.clone();
+    let op = match action.as_str() {
+        "fetch" => Operation::Fetch,
+        "pull" => Operation::Pull,
+        "push" => Operation::Push { force },
+        "push-tag" => Operation::PushTag { name: name.unwrap_or_default() },
+        _ => return Err(UiError::new("GIT_FAILED", "unknown network action")),
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let e = engine(&r)?;
+        Ok(askpass::with_bridge(&app, pending, repo_id, |env| e.run_with_env(&op, env))?)
+    })
+    .await
+    .map_err(|e| UiError::new("GIT_FAILED", e))?
+}
+
+#[tauri::command]
+fn credentials_answer(id: u64, value: Option<String>, state: State<'_, AppState>) {
+    state.askpass.answer(id, value);
+}
+
+#[tauri::command]
+async fn op_history(repo_id: u32, action: String, sha: String, mode: Option<String>, name: Option<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
+    let op = match action.as_str() {
+        "cherry-pick" => Operation::CherryPick { sha },
+        "revert" => Operation::Revert { sha },
+        "reset" => Operation::Reset { sha, mode: mode.unwrap_or_default() },
+        "tag" => Operation::TagCreate { name: name.unwrap_or_default(), at: sha, message: mode },
+        "tag-delete" => Operation::TagDelete { name: name.unwrap_or_default() },
+        _ => return Err(UiError::new("GIT_FAILED", "unknown history action")),
+    };
+    run_op(&state, repo_id, op)
+}
+
+#[tauri::command]
+async fn rebase_todo(repo_id: u32, onto: String, state: State<'_, AppState>) -> Result<Vec<TodoItem>> {
+    let r = get(&state, repo_id)?;
+    Ok(engine(&r)?.rebase_todo(&onto)?)
+}
+
+#[tauri::command]
+async fn op_rebase(repo_id: u32, onto: String, todo: Option<Vec<TodoItem>>, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::Rebase { onto, todo })
+}
+
+#[tauri::command]
+async fn op_rebase_continue(repo_id: u32, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::RebaseContinue)
+}
+
 #[tauri::command]
 async fn op_undo(repo_id: u32, id: String, state: State<'_, AppState>) -> Result<OpOutcome> {
     let r = get(&state, repo_id)?;
@@ -501,6 +562,10 @@ async fn journal_prune(repo_id: u32, keep: usize, state: State<'_, AppState>) ->
 }
 
 fn main() {
+    // Started by Git/ssh as the askpass program: forward the prompt to the running app and exit.
+    if let Ok(sock) = std::env::var(askpass::SOCK_ENV) {
+        std::process::exit(askpass::client(&sock));
+    }
     let initial_path = std::env::args_os().nth(1).map(PathBuf::from);
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -533,6 +598,12 @@ fn main() {
             conflict_versions,
             op_resolve_with,
             op_stash,
+            op_history,
+            op_net,
+            credentials_answer,
+            rebase_todo,
+            op_rebase,
+            op_rebase_continue,
             op_undo,
             op_redo,
             journal_list,
