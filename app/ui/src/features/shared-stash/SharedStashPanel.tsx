@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Sidebar tab "Shared stash": stashes published to the remotes, grouped by remote, then Mine / Team.
-import { AlertTriangle, ArchiveRestore, Cloud, GitBranch, Layers, Loader2, RefreshCw, ShieldCheck, ShieldQuestion, User } from "lucide-solid";
+import { AlertTriangle, ArchiveRestore, Cloud, GitBranch, Layers, Loader2, RefreshCw, ShieldCheck, User } from "lucide-solid";
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { KeptSharedStash, SharedStashInfo } from "../../api";
 import { errorText, t } from "../../i18n";
@@ -65,18 +65,18 @@ export function SharedStashPanel(props: SharedStashPanelProps) {
           onContextMenu={(e) => open(e, e.currentTarget)}
           onKeyDown={(e) => { if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) open(e, e.currentTarget); }}
         >
-          <span class="ss-title">{s.title || s.id}</span>
-          <span class="ss-meta">
-            <span class="ss-author"><User size={12} aria-hidden="true" />{s.author_name}</span>
-            <Show when={s.valid} fallback={<span class="ss-badge bad">{t("ss.invalid")}</span>}>
-              <Show when={s.verified} fallback={<span class="ss-badge claimed" title={t("ss.claimedTitle")}><ShieldQuestion size={11} aria-hidden="true" />{t("ss.claimed")}</span>}>
-                <span class="ss-badge verified" title={t("ss.verifiedTitle")}><ShieldCheck size={11} aria-hidden="true" />{t("ss.verified")}</span>
-              </Show>
-            </Show>
-            <Show when={s.valid}>
-              <span class="ss-base" title={s.base}><GitBranch size={12} aria-hidden="true" />{s.base_branch || t("ss.noBranch")}</span>
-            </Show>
+          <span class="ss-line">
+            <span class="ss-title">{s.title || s.id}</span>
             <time datetime={new Date(s.updated * 1000).toISOString()}>{relativeTime(now(), s.updated)}</time>
+          </span>
+          <span class="ss-meta">
+            <span class="ss-author" title={s.valid && !s.verified ? t("ss.claimedTitle") : undefined}><User size={12} aria-hidden="true" /><span class="ss-ellip">{s.author_name}</span></span>
+            <Show when={s.valid} fallback={<span class="ss-badge bad">{t("ss.invalid")}</span>}>
+              <Show when={s.verified} fallback={<span class="sr-only">{t("ss.claimed")}</span>}>
+                <span class="ss-verified" title={t("ss.verifiedTitle")} aria-label={t("ss.verified")}><ShieldCheck size={12} /></span>
+              </Show>
+              <span class="ss-base" title={s.base}><GitBranch size={12} aria-hidden="true" /><span class="ss-ellip">{s.base_branch || t("ss.noBranch")}</span></span>
+            </Show>
           </span>
         </button>
       </li>
@@ -100,7 +100,7 @@ export function SharedStashPanel(props: SharedStashPanelProps) {
         <Show when={g().probe === "rejected"}>
           <div class="ss-note warn" role="status">
             <AlertTriangle size={14} aria-hidden="true" />
-            <div><span>{t("ss.rejected", { s: g().remote })}</span>
+            <div><span title={t("ss.rejectedTitle", { s: g().remote })}>{t("ss.rejected")}</span>
               <button class="mini" disabled={props.readOnly} onClick={() => props.onRetryCheck(g().remote)}>{t("ss.retryCheck")}</button></div>
           </div>
         </Show>
@@ -144,7 +144,9 @@ export function SharedStashPanel(props: SharedStashPanelProps) {
     <section class="ss" aria-label={t("ss.title")}>
       <header class="ss-head">
         <div class="ss-bar">
-          <strong>{t("ss.title")}</strong>
+          <span class="ss-last muted">
+            {m().fetch.lastFetched ? t("ss.lastFetched", { s: relativeTime(now(), m().fetch.lastFetched!) }) : t("ss.neverFetched")}
+          </span>
           <button class="icon" aria-pressed={glyphOn()} title={t("ss.glyphToggle")} aria-label={t("ss.glyphToggle")} onClick={() => setGlyph(!glyphOn())}><Layers size={15} /></button>
           <button class="icon" disabled={m().fetch.loading || props.readOnly} title={t("ss.refresh")} aria-label={t("ss.refresh")} onClick={() => void fetchShared(props.repoId)}>
             <RefreshCw size={15} classList={{ spin: m().fetch.loading }} />
@@ -154,9 +156,6 @@ export function SharedStashPanel(props: SharedStashPanelProps) {
           <button aria-pressed={mode() === "panel"} title={t("ss.modePanelHint")} onClick={() => void setFetchMode(props.repoId, "panel")}>{t("ss.modePanel")}</button>
           <button aria-pressed={mode() === "always"} title={t("ss.modeAlwaysHint")} onClick={() => void setFetchMode(props.repoId, "always")}>{t("ss.modeAlways")}</button>
         </div>
-        <p class="ss-last muted">
-          {m().fetch.lastFetched ? t("ss.lastFetched", { s: relativeTime(now(), m().fetch.lastFetched!) }) : t("ss.neverFetched")}
-        </p>
       </header>
       <Show when={m().fetch.loading}>
         <div class="ss-loading" role="status"><Loader2 size={14} class="spin" aria-hidden="true" />{t("ss.loading")}

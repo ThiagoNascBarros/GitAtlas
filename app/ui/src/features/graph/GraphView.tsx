@@ -180,24 +180,27 @@ export function GraphView(props: {
       let rx = 8;
       const sharedHere = props.shared?.get(r.m.sha);
       if (sharedHere && widths().refs > 48) {
-        const count = sharedHere.length > 1 ? String(sharedHere.length) : "";
-        const tw = 26 + (count ? ctx.measureText(count).width + 4 : 0);
-        ctx.fillStyle = token("color.bg.raised");
+        // Same shape as the stash ref labels, so it reads as a label and not as a button.
+        const label = sharedHere.length > 1 ? t("ss.glyphMany", { n: String(sharedHere.length) }) : t("ss.glyphOne");
+        const tw = Math.min(ctx.measureText(label).width + 26, widths().refs - rx - 8);
+        ctx.fillStyle = token("color.accent.muted");
         ctx.fillRect(rx, y + 4, tw, ROW_H - 8);
+        // Arrow leaving a tray: "shared out of this commit".
+        const ax = rx + 11, ay = cy;
         ctx.strokeStyle = token("color.accent.default");
-        ctx.lineWidth = 1;
-        ctx.strokeRect(rx + 0.5, y + 4.5, tw - 1, ROW_H - 9);
-        // Tray with an arrow leaving it: "shared out of this commit".
-        const ax = rx + 13, ay = cy;
+        ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.moveTo(ax, ay + 3); ctx.lineTo(ax, ay - 5);
-        ctx.moveTo(ax - 3.5, ay - 1.5); ctx.lineTo(ax, ay - 5); ctx.lineTo(ax + 3.5, ay - 1.5);
-        ctx.moveTo(ax - 5, ay + 6); ctx.lineTo(ax + 5, ay + 6);
+        ctx.moveTo(ax, ay + 2); ctx.lineTo(ax, ay - 5);
+        ctx.moveTo(ax - 3, ay - 2); ctx.lineTo(ax, ay - 5); ctx.lineTo(ax + 3, ay - 2);
+        ctx.moveTo(ax - 4.5, ay + 5); ctx.lineTo(ax + 4.5, ay + 5);
         ctx.stroke();
-        if (count) {
-          ctx.fillStyle = token("color.accent.default");
-          ctx.fillText(count, rx + 22, cy);
-        }
+        ctx.fillStyle = token("color.text.primary");
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(rx, y, tw - 4, ROW_H);
+        ctx.clip();
+        ctx.fillText(label, rx + 20, cy);
+        ctx.restore();
         rx += tw + 4;
       }
       for (const ref of refs.get(i) ?? []) {

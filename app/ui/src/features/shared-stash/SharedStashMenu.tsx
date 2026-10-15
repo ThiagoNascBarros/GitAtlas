@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Right-click menu of a shared stash and the small dialogs it opens (branch name, rename, update, unshare).
-import { Archive, ArchiveX, GitBranchPlus, Pencil, RefreshCw, Upload } from "lucide-solid";
+import { ArchiveRestore, CloudOff, GitBranchPlus, Pencil, RefreshCw, Upload } from "lucide-solid";
 import { createResource, createSignal, For, onMount, Show } from "solid-js";
 import { api, SharedStashInfo } from "../../api";
 import { t } from "../../i18n";
@@ -55,11 +55,11 @@ export function SharedStashMenu(props: { repoId: number; menu: SharedMenuState; 
       <div class="menu-back">
         <button type="button" class="backdrop" tabindex="-1" aria-label={t("refmenu.cancel")} onClick={props.onClose} onContextMenu={(e) => { e.preventDefault(); props.onClose(); }} />
         <menu ref={menuEl} class="ctx" role="menu" aria-label={s().title} style={{ left: `${pos().x}px`, top: `${pos().y}px` }} onKeyDown={menuKeys}>
-          <Show when={allowed().includes("apply")}>{item(<Archive size={14} aria-hidden="true" />, t("ss.menu.apply"), () => done(() => props.actions.apply(s())))}</Show>
+          <Show when={allowed().includes("apply")}>{item(<ArchiveRestore size={14} aria-hidden="true" />, t("ss.menu.apply"), () => done(() => props.actions.apply(s())))}</Show>
           <Show when={allowed().includes("branch")}>{item(<GitBranchPlus size={14} aria-hidden="true" />, t("ss.menu.branch"), () => setAsk("branch"))}</Show>
           <Show when={allowed().includes("update")}>{item(<Upload size={14} aria-hidden="true" />, t("ss.menu.update"), () => setAsk("update"))}</Show>
           <Show when={allowed().includes("rename")}>{item(<Pencil size={14} aria-hidden="true" />, t("ss.menu.rename"), () => setAsk("rename"))}</Show>
-          <Show when={allowed().includes("unshare")}>{item(<ArchiveX size={14} aria-hidden="true" />, t("ss.menu.unshare"), () => setAsk("unshare"))}</Show>
+          <Show when={allowed().includes("unshare")}>{item(<CloudOff size={14} aria-hidden="true" />, t("ss.menu.unshare"), () => setAsk("unshare"))}</Show>
         </menu>
       </div>
     </Show>
