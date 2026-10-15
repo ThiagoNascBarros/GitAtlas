@@ -12,7 +12,7 @@ use std::time::Duration;
 use ak_core::cache;
 use ak_core::graph::{self, Layout, Topology};
 use ak_core::ops::journal::JournalEntry;
-use ak_core::ops::{MergePreview, StashInfo};
+use ak_core::ops::{ConflictVersions, MergePreview, StashInfo};
 use ak_core::ops::{Engine, OpError, OpOutcome, Operation};
 use ak_core::read::{CliReader, CommitDetails, RepoReader, RowText};
 use ak_core::read_gix::GixReader;
@@ -385,6 +385,17 @@ async fn op_merge_abort(repo_id: u32, state: State<'_, AppState>) -> Result<OpOu
 }
 
 #[tauri::command]
+async fn conflict_versions(repo_id: u32, path: String, state: State<'_, AppState>) -> Result<ConflictVersions> {
+    let r = get(&state, repo_id)?;
+    Ok(engine(&r)?.conflict_versions(&path)?)
+}
+
+#[tauri::command]
+async fn op_resolve_with(repo_id: u32, path: String, content: String, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::ResolveWith { path, content })
+}
+
+#[tauri::command]
 async fn op_resolve(repo_id: u32, path: String, theirs: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
     run_op(&state, repo_id, Operation::ResolveConflict { path, theirs })
 }
@@ -510,6 +521,8 @@ fn main() {
             op_merge,
             op_merge_abort,
             op_resolve,
+            conflict_versions,
+            op_resolve_with,
             op_stash,
             op_undo,
             op_redo,

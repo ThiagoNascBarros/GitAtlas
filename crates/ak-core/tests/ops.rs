@@ -587,3 +587,16 @@ fn resolve_conflict_with_theirs_takes_the_merged_branch_version() {
     git(&d, &["commit", "-q", "--no-edit"]);
     assert_eq!(git(&d, &["log", "-1", "--format=%P"]).split(' ').count(), 2);
 }
+
+#[test]
+fn conflict_versions_and_resolve_with_edited_content() {
+    let (d, e) = conflict_repo();
+    e.run(&Operation::Merge { source: "feature/conflict".into() }).unwrap();
+    let v = e.conflict_versions("a.txt").unwrap();
+    assert_eq!((v.ours.as_deref(), v.theirs.as_deref()), (Some("main\n"), Some("feature\n")));
+    assert!(v.merged.contains("<<<<<<<") && v.base.is_some());
+    e.run(&Operation::ResolveWith { path: "a.txt".into(), content: "both\n".into() }).unwrap();
+    assert_eq!(git(&d, &["diff", "--name-only", "--diff-filter=U"]), "");
+    assert_eq!(git(&d, &["show", ":a.txt"]), "both");
+    assert_eq!(code(e.run(&Operation::ResolveWith { path: "../x".into(), content: String::new() })), "INVALID_PATH");
+}
