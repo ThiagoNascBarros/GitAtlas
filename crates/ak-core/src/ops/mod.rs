@@ -2,6 +2,12 @@
 //! Operation engine (SDD §1.4): every working-directory change goes through
 //! here so it is locked, journaled, undoable and reported with a stable error code.
 
+mod branch;
+mod merge;
+mod stash;
+
+pub use merge::MergePreview;
+pub use stash::StashInfo;
 pub mod journal;
 pub mod lock;
 
@@ -31,6 +37,11 @@ pub struct OpError {
 impl OpError {
     fn new(code: &'static str, message: &str, suggestion: Option<&str>) -> Self {
         Self { code, message: message.to_owned(), detail: None, suggestion: suggestion.map(str::to_owned) }
+    }
+
+    fn with_detail(mut self, detail: String) -> Self {
+        self.detail = Some(detail);
+        self
     }
 
     fn from_git(e: GitError) -> Self {
@@ -84,6 +95,22 @@ pub enum Operation {
     StageHunk { path: String, hunk: usize, unstage: bool },
     /// Throw away working-tree changes. A backup is kept so Undo can restore them.
     Discard { paths: Vec<String> },
+    /// New local branch at `at` (default HEAD); it is not checked out.
+    BranchCreate { name: String, at: Option<String> },
+    BranchRename { old: String, new: String },
+    /// `force` deletes even if the branch is not merged (the tip stays recoverable via Undo).
+    BranchDelete { name: String, force: bool },
+    /// Switch to a local branch, or detach HEAD at a commit when `is_branch` is false.
+    Checkout { target: String, is_branch: bool },
+    /// Merge `source` into the current branch. Conflicts leave the merge open (see `MergeAbort`).
+    Merge { source: String },
+    MergeAbort,
+    /// Resolve one conflicted file by taking our or their version and staging it.
+    ResolveConflict { path: String, theirs: bool },
+    StashPush { message: Option<String>, include_untracked: bool },
+    StashApply { index: usize },
+    StashPop { index: usize },
+    StashDrop { index: usize },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -91,6 +118,8 @@ pub struct OpOutcome {
     /// Journal id when the operation can be undone.
     pub id: Option<String>,
     pub head: Option<String>,
+    /// The operation stopped on conflicts that need resolving (merge / stash apply).
+    pub conflicted: bool,
 }
 
 pub struct Engine {
@@ -195,6 +224,17 @@ impl Engine {
             Operation::Commit { message, amend } => self.commit(message, *amend),
             Operation::StageHunk { path, hunk, unstage } => self.stage_hunk(path, *hunk, *unstage),
             Operation::Discard { paths } => self.discard(paths),
+            Operation::BranchCreate { name, at } => self.branch_create(name, at.as_deref()),
+            Operation::BranchRename { old, new } => self.branch_rename(old, new),
+            Operation::BranchDelete { name, force } => self.branch_delete(name, *force),
+            Operation::Checkout { target, is_branch } => self.checkout(target, *is_branch),
+            Operation::Merge { source } => self.merge(source),
+            Operation::MergeAbort => self.merge_abort(),
+            Operation::ResolveConflict { path, theirs } => self.resolve_conflict(path, *theirs),
+            Operation::StashPush { message, include_untracked } => self.stash_push(message.as_deref(), *include_untracked),
+            Operation::StashApply { index } => self.stash_apply(*index, false),
+            Operation::StashPop { index } => self.stash_apply(*index, true),
+            Operation::StashDrop { index } => self.stash_drop(*index),
         }
     }
 
@@ -273,8 +313,9 @@ impl Engine {
             undone_at: 0,
             paths: vec![],
             untracked: vec![],
+            args: vec![],
         })?;
-        Ok(OpOutcome { id: Some(id), head: head_after })
+        Ok(OpOutcome { id: Some(id), head: head_after, ..Default::default() })
     }
 
     /// Reverts a journaled commit, keeping its changes staged.
@@ -292,7 +333,12 @@ impl Engine {
         if entry.kind == "discard" {
             self.undo_discard(&entry)?;
             self.journal.set_undone(id, true, now_ns())?;
-            return Ok(OpOutcome { id: None, head: self.head() });
+            return Ok(OpOutcome { id: None, head: self.head(), ..Default::default() });
+        }
+        if branch::is_ref_kind(&entry.kind) {
+            self.apply_ref_entry(&entry, false)?;
+            self.journal.set_undone(id, true, now_ns())?;
+            return Ok(OpOutcome { id: None, head: self.head(), ..Default::default() });
         }
         if !matches!(entry.kind.as_str(), "commit" | "commit_amend") {
             return Err(OpError::new("UNDO_NOT_SUPPORTED", "This operation cannot be undone.", None));
@@ -320,7 +366,7 @@ impl Engine {
             self.git.run(&self.root, ["update-ref", format!("{SNAPSHOT_PREFIX}{id}-redo").as_str(), after.as_str()])?;
         }
         self.journal.set_undone(id, true, now_ns())?;
-        Ok(OpOutcome { id: None, head: self.head() })
+        Ok(OpOutcome { id: None, head: self.head(), ..Default::default() })
     }
 
     /// The operation Redo would bring back: the most recently undone one, as long
@@ -338,6 +384,8 @@ impl Engine {
         let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
         if entry.kind == "discard" {
             self.redo_discard(&entry)?;
+        } else if branch::is_ref_kind(&entry.kind) {
+            self.apply_ref_entry(&entry, true)?;
         } else {
             let moved = || {
                 OpError::new(
@@ -361,7 +409,7 @@ impl Engine {
             }
         }
         self.journal.set_undone(&entry.id, false, 0)?;
-        Ok(OpOutcome { id: Some(entry.id), head: self.head() })
+        Ok(OpOutcome { id: Some(entry.id), head: self.head(), ..Default::default() })
     }
 
     fn redo_discard(&self, e: &JournalEntry) -> Result<(), OpError> {
@@ -486,8 +534,9 @@ impl Engine {
             undone_at: 0,
             paths: keep_tracked,
             untracked: keep_untracked,
+            args: vec![],
         })?;
-        Ok(OpOutcome { id: Some(id), head: self.head() })
+        Ok(OpOutcome { id: Some(id), head: self.head(), ..Default::default() })
     }
 
     fn undo_discard(&self, e: &JournalEntry) -> Result<(), OpError> {

@@ -12,6 +12,7 @@ use std::time::Duration;
 use ak_core::cache;
 use ak_core::graph::{self, Layout, Topology};
 use ak_core::ops::journal::JournalEntry;
+use ak_core::ops::{MergePreview, StashInfo};
 use ak_core::ops::{Engine, OpError, OpOutcome, Operation};
 use ak_core::read::{CliReader, CommitDetails, RepoReader, RowText};
 use ak_core::read_gix::GixReader;
@@ -30,7 +31,7 @@ struct Repo {
     shas: Vec<String>,
     topo: Topology,
     layout: Layout,
-    _watcher: Option<notify::RecommendedWatcher>,
+    _watcher: Option<SharedWatcher>,
 }
 
 #[derive(Default)]
@@ -113,37 +114,86 @@ fn relevant(path: &Path, root: &Path) -> bool {
     }
 }
 
-/// Watches the working tree and tells the UI (debounced) when it changed.
-fn start_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<notify::RecommendedWatcher> {
-    let (tx, rx) = std::sync::mpsc::channel::<()>();
+type SharedWatcher = Arc<Mutex<notify::RecommendedWatcher>>;
+
+enum WatchMsg {
+    Changed,
+    NewDir(PathBuf),
+}
+
+/// Watches the working tree and tells the UI (debounced) when it changed; emits `watch-failed` (repo id) when it cannot be set up.
+fn start_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<SharedWatcher> {
+    let w = setup_watcher(app.clone(), repo_id, root);
+    if w.is_none() {
+        let _ = app.emit("watch-failed", repo_id);
+    }
+    w
+}
+
+fn is_ignored_dir(root: &Path, name: &str) -> bool {
+    std::process::Command::new("git")
+        .current_dir(root)
+        .args(["check-ignore", "-q", "--", &format!("{name}/")])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+fn setup_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<SharedWatcher> {
+    let (tx, rx) = std::sync::mpsc::channel::<WatchMsg>();
     let base = root.to_path_buf();
-    let mut w = notify::recommended_watcher(move |ev: notify::Result<notify::Event>| {
+    let w = notify::recommended_watcher(move |ev: notify::Result<notify::Event>| {
         if let Ok(ev) = ev {
+            // A new top-level directory: the root is watched non-recursively, so add it later
+            // (not here: adding a watch from inside the event callback can deadlock the backend).
+            if matches!(ev.kind, notify::EventKind::Create(_)) {
+                for p in ev.paths.iter().filter(|p| p.parent() == Some(base.as_path()) && p.is_dir()) {
+                    let _ = tx.send(WatchMsg::NewDir(p.clone()));
+                }
+            }
             if ev.paths.iter().any(|p| relevant(p, &base)) {
-                let _ = tx.send(());
+                let _ = tx.send(WatchMsg::Changed);
             }
         }
     })
     .ok()?;
+    let w = Arc::new(Mutex::new(w));
     // Watch each top-level entry except ignored dirs (node_modules, target...): saves inotify watches.
-    // shortcut: dirs created after open are not watched, re-open the repo to pick them up.
     let ignored: Vec<String> = std::process::Command::new("git")
         .current_dir(root)
         .args(["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"])
         .output()
         .map(|o| String::from_utf8_lossy(&o.stdout).split('\0').map(|d| d.trim_end_matches('/').to_string()).collect())
         .unwrap_or_default();
-    w.watch(root, RecursiveMode::NonRecursive).ok()?;
-    for e in std::fs::read_dir(root).ok()?.flatten() {
-        let name = e.file_name().to_string_lossy().to_string();
-        if e.path().is_dir() && !ignored.contains(&name) {
-            w.watch(&e.path(), RecursiveMode::Recursive).ok()?;
+    {
+        let mut g = w.lock().unwrap();
+        g.watch(root, RecursiveMode::NonRecursive).ok()?;
+        for e in std::fs::read_dir(root).ok()?.flatten() {
+            let name = e.file_name().to_string_lossy().to_string();
+            if e.path().is_dir() && !ignored.contains(&name) {
+                g.watch(&e.path(), RecursiveMode::Recursive).ok()?;
+            }
         }
     }
+    let weak = Arc::downgrade(&w);
+    let root = root.to_path_buf();
     std::thread::spawn(move || {
-        while rx.recv().is_ok() {
+        let handle = |m: WatchMsg| {
+            if let WatchMsg::NewDir(p) = m {
+                let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                if name != ".git" && !is_ignored_dir(&root, &name) {
+                    if let Some(w) = weak.upgrade() {
+                        let _ = w.lock().unwrap().watch(&p, RecursiveMode::Recursive);
+                    }
+                }
+            }
+        };
+        while let Ok(m) = rx.recv() {
+            handle(m);
             // Collapse bursts (checkout, build output) into one refresh.
-            while rx.recv_timeout(Duration::from_millis(350)).is_ok() {}
+            while let Ok(m) = rx.recv_timeout(Duration::from_millis(350)) {
+                handle(m);
+            }
             let _ = app.emit("repo-changed", repo_id);
         }
     });
@@ -299,8 +349,55 @@ async fn diff_worktree(
 }
 
 #[tauri::command]
-async fn status_get(repo_id: u32, state: State<'_, AppState>) -> Result<StatusReport> {
-    get(&state, repo_id)?.reader.status().map_err(|e| UiError::new("READ_FAILED", e))
+async fn status_get(repo_id: u32, state: State<'_, AppState>) -> Result<StatusWithMerge> {
+    let r = get(&state, repo_id)?;
+    let status = r.reader.status().map_err(|e| UiError::new("READ_FAILED", e))?;
+    Ok(StatusWithMerge { status, merging: engine(&r)?.merge_in_progress() })
+}
+
+#[derive(Serialize)]
+struct StatusWithMerge {
+    #[serde(flatten)]
+    status: StatusReport,
+    merging: bool,
+}
+
+#[tauri::command]
+async fn merge_preview(repo_id: u32, source: String, state: State<'_, AppState>) -> Result<MergePreview> {
+    let r = get(&state, repo_id)?;
+    Ok(engine(&r)?.merge_preview(&source)?)
+}
+
+#[tauri::command]
+async fn stash_list(repo_id: u32, state: State<'_, AppState>) -> Result<Vec<StashInfo>> {
+    let r = get(&state, repo_id)?;
+    Ok(engine(&r)?.stashes()?)
+}
+
+#[tauri::command]
+async fn op_merge(repo_id: u32, source: String, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::Merge { source })
+}
+
+#[tauri::command]
+async fn op_merge_abort(repo_id: u32, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::MergeAbort)
+}
+
+#[tauri::command]
+async fn op_resolve(repo_id: u32, path: String, theirs: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::ResolveConflict { path, theirs })
+}
+
+#[tauri::command]
+async fn op_stash(repo_id: u32, action: String, index: usize, message: Option<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
+    let op = match action.as_str() {
+        "push" => Operation::StashPush { message, include_untracked: true },
+        "apply" => Operation::StashApply { index },
+        "pop" => Operation::StashPop { index },
+        _ => Operation::StashDrop { index },
+    };
+    run_op(&state, repo_id, op)
 }
 
 fn run_op(state: &AppState, repo_id: u32, op: Operation) -> Result<OpOutcome> {
@@ -337,6 +434,26 @@ async fn op_discard(repo_id: u32, paths: Vec<String>, state: State<'_, AppState>
 #[tauri::command]
 async fn op_commit(repo_id: u32, message: String, amend: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
     run_op(&state, repo_id, Operation::Commit { message, amend })
+}
+
+#[tauri::command]
+async fn op_branch_create(repo_id: u32, name: String, at: Option<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::BranchCreate { name, at })
+}
+
+#[tauri::command]
+async fn op_branch_rename(repo_id: u32, old: String, new: String, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::BranchRename { old, new })
+}
+
+#[tauri::command]
+async fn op_branch_delete(repo_id: u32, name: String, force: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::BranchDelete { name, force })
+}
+
+#[tauri::command]
+async fn op_checkout(repo_id: u32, target: String, is_branch: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::Checkout { target, is_branch })
 }
 
 #[tauri::command]
@@ -384,6 +501,16 @@ fn main() {
             op_stage_hunk,
             op_discard,
             op_commit,
+            op_branch_create,
+            op_branch_rename,
+            op_branch_delete,
+            op_checkout,
+            merge_preview,
+            stash_list,
+            op_merge,
+            op_merge_abort,
+            op_resolve,
+            op_stash,
             op_undo,
             op_redo,
             journal_list,

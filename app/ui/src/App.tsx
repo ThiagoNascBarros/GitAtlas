@@ -8,7 +8,11 @@ import { GraphView } from "./features/graph/GraphView";
 import { DiffView } from "./features/diff/DiffView";
 import { setTheme, themeChoice, ThemeChoice } from "./theme/theme";
 import { errorFix, errorText, t } from "./i18n";
+import { StashPanel } from "./features/stash/StashPanel";
+import { RefMenu, RefMenuState } from "./features/refs/RefMenu";
 import { JournalPanel } from "./features/journal/JournalPanel";
+import { NameDialog } from "./features/refs/NameDialog";
+import { filterRefs } from "./features/refs/filter";
 import { WipFile, WipPanel } from "./features/wip/WipPanel";
 import { changeCount, groupStatus } from "./features/wip/status";
 import { toTreeRows } from "./features/files/tree";
@@ -29,7 +33,10 @@ export function App() {
   const [fileView, setFileView] = createSignal<"path" | "tree">("path");
   const [toast, setToast] = createSignal<Toast | null>(null);
   const [refFilter, setRefFilter] = createSignal("");
+  const [refMenu, setRefMenu] = createSignal<RefMenuState | null>(null);
   const [showJournal, setShowJournal] = createSignal(false);
+  const [watchFailed, setWatchFailed] = createSignal<number[]>([]);
+  const [askName, setAskName] = createSignal<"branch" | "stash" | null>(null);
   const [showDetail, setShowDetail] = createSignal(false);
   let toastTimer: number | undefined;
   const tab = () => tabs()[active()];
@@ -71,7 +78,8 @@ export function App() {
   async function run(op: () => Promise<unknown>, opts: { graph?: boolean; toast?: string } = {}): Promise<boolean> {
     const repoId = tab().repo.repoId;
     try {
-      const out = (await op()) as { id?: string | null } | undefined;
+      const out = (await op()) as { id?: string | null; conflicted?: boolean } | undefined;
+      if (out?.conflicted) opts = { graph: true, toast: t("toast.mergeConflicts") };
       setError(null);
       if (opts.graph) await refreshRepo(repoId);
       await loadStatus(repoId);
@@ -165,6 +173,7 @@ export function App() {
     try {
       // The core watches the working tree and emits this (debounced) on any change.
       await listen<number>("repo-changed", (e) => loadStatus(e.payload));
+      await listen<number>("watch-failed", (e) => setWatchFailed([...watchFailed().filter((id) => id !== e.payload), e.payload]));
       window.addEventListener("focus", () => tab() && loadStatus(tab().repo.repoId));
     } catch { /* no event bridge (plain browser) */ }
     const p = await api.initialPath();
@@ -184,12 +193,12 @@ export function App() {
 
   return (
     <div class="app">
-      <nav class="tabbar" role="tablist" aria-label="Repositories">
+      <nav class="tabbar" role="tablist" aria-label={t("tabs.label")}>
         <For each={tabs()}>
           {(x, i) => (
             <div class="tab" role="tab" aria-selected={i() === active()} classList={{ active: i() === active() }}>
               <button class="tab-name" onClick={() => setActive(i())}>{x.repo.name}</button>
-              <button class="icon" aria-label={`Close ${x.repo.name}`} onClick={() => closeTab(i())}>✕</button>
+              <button class="icon" aria-label={t("tabs.close", { s: x.repo.name })} onClick={() => closeTab(i())}>✕</button>
             </div>
           )}
         </For>
@@ -202,9 +211,12 @@ export function App() {
           <Show when={tab()?.repo.branch}><span class="muted">›</span><span>{tab()!.repo.branch}</span></Show>
         </div>
         <Show when={tab()?.repo.readOnlyReason}><span class="badge">{t("toolbar.readOnly")}</span></Show>
-        <button disabled={!tab()} title={t("toolbar.undoTitle")} onClick={() => undo(tab().repo.repoId, null)}>↶ {t("toolbar.undo")}</button>
-        <button disabled={!tab()} title={t("toolbar.redoTitle")} onClick={() => redo(tab().repo.repoId)}>↷ {t("toolbar.redo")}</button>
-        <button disabled={!tab()} title={t("toolbar.journalTitle")} onClick={() => setShowJournal(true)}>{t("toolbar.journal")}</button>
+        <button class="tool" disabled={!tab()} title={t("toolbar.undoTitle")} onClick={() => undo(tab().repo.repoId, null)}>↶ {t("toolbar.undo")}</button>
+        <button class="tool" disabled={!tab()} title={t("toolbar.redoTitle")} onClick={() => redo(tab().repo.repoId)}>↷ {t("toolbar.redo")}</button>
+        <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.stashTitle")}
+          onClick={() => setAskName("stash")}>{t("toolbar.stash")}</button>
+        <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.newBranchTitle")} onClick={() => setAskName("branch")}>{t("toolbar.newBranch")}</button>
+        <button class="tool" disabled={!tab()} title={t("toolbar.journalTitle")} onClick={() => setShowJournal(true)}>{t("toolbar.journal")}</button>
         <label class="theme-pick">
           {t("toolbar.theme")}
           <select value={themeChoice()} onChange={(e) => setTheme(e.currentTarget.value as ThemeChoice)}>
@@ -235,7 +247,7 @@ export function App() {
               value={refFilter()} onInput={(e) => setRefFilter(e.currentTarget.value)} />
             <For each={[["head", "panel.local"], ["remote", "panel.remote"], ["tag", "panel.tags"]] as const}>
               {([kind, label]) => {
-                const items = () => tab()!.repo.refs.filter((r) => r.kind === kind && r.name.toLowerCase().includes(refFilter().toLowerCase()));
+                const items = () => filterRefs(tab()!.repo.refs, kind, refFilter());
                 return (
                   <Show when={items().length}>
                     <details open={kind !== "remote" || !!refFilter()}>
@@ -246,8 +258,11 @@ export function App() {
                           <li>
                             <button
                               classList={{ head: r.isHead }}
-                              disabled={r.row === null}
+                              aria-disabled={r.row === null}
+                              title={r.row === null ? t("panel.refHidden") : undefined}
                               onClick={() => r.row !== null && patch({ selected: r.row, sha: null })}
+                              onDblClick={() => r.kind === "head" && !r.isHead && void run(() => api.checkout(tab().repo.repoId, r.name, true), { graph: true, toast: t("toast.checkedOut", { s: r.name }) })}
+                              onContextMenu={(e) => { e.preventDefault(); setRefMenu({ x: e.clientX, y: e.clientY, ref: r }); }}
                             >
                               {r.name}
                             </button>
@@ -260,6 +275,7 @@ export function App() {
                 );
               }}
             </For>
+            <StashPanel repoId={tab()!.repo.repoId} rev={tab()!.diffRev} run={run} />
           </aside>
 
           <main class="center">
@@ -314,7 +330,7 @@ export function App() {
             </Show>
           </main>
 
-          <aside class="right" aria-label="Commit details">
+          <aside class="right" aria-label={t("details.label")}>
             <Show when={tab()!.wip}>
               <WipPanel
                 repo={tab()!.repo}
@@ -384,6 +400,12 @@ export function App() {
         </div>
       </Show>
 
+      <Show when={tab() && watchFailed().includes(tab()!.repo.repoId)}>
+        <output class="banner">
+          <div>{t("watch.failed")}</div>
+          <button class="mini" onClick={() => setWatchFailed(watchFailed().filter((id) => id !== tab()!.repo.repoId))}>{t("err.dismiss")}</button>
+        </output>
+      </Show>
       <Show when={error() && tab()}>
         <div class="banner error" role="alert">
           <div>
@@ -391,9 +413,24 @@ export function App() {
             <Show when={errorFix(error()!)}><p>{errorFix(error()!)}</p></Show>
             <Show when={showDetail() && error()!.detail}><pre class="mono">{error()!.detail}</pre></Show>
           </div>
-          <Show when={error()!.detail}><button onClick={() => setShowDetail(!showDetail())}>{t("err.details")}</button></Show>
-          <button onClick={() => setError(null)}>{t("err.dismiss")}</button>
+          <Show when={error()!.detail}><button class="mini" onClick={() => setShowDetail(!showDetail())}>{t("err.details")}</button></Show>
+          <button class="mini" onClick={() => setError(null)}>{t("err.dismiss")}</button>
         </div>
+      </Show>
+      {/* Keyed: the menu's actions still read their ref after closing it (refMenu() is null by then). */}
+      <Show when={tab() && refMenu()} keyed>
+        {(m) => <RefMenu repoId={tab()!.repo.repoId} menu={m} run={run} onClose={() => setRefMenu(null)} onError={(e) => fail(e)} />}
+      </Show>
+      <Show when={tab() && askName()} keyed>
+        {(kind) => {
+          const repoId = tab()!.repo.repoId;
+          const done = (v: string) => {
+            setAskName(null);
+            if (kind === "stash") void run(() => api.stash(repoId, "push", 0, v || null), { graph: true, toast: t("toast.stashed") });
+            else void run(() => api.branchCreate(repoId, v, null), { graph: true, toast: t("toast.branchCreated", { s: v }) });
+          };
+          return <NameDialog label={kind === "stash" ? t("stash.messagePrompt") : t("refmenu.namePrompt")} optional={kind === "stash"} onSubmit={done} onCancel={() => setAskName(null)} />;
+        }}
       </Show>
       <Show when={showJournal() && tab()}>
         <JournalPanel repoId={tab()!.repo.repoId} onClose={() => setShowJournal(false)} onError={(e) => fail(e)} />

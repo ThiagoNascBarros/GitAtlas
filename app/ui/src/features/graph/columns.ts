@@ -26,19 +26,26 @@ export function columns(width: number, graphW: number, w: ColumnWidths = DEFAULT
   return { msgX, msgW: right - msgX - 12, authorX, showAuthor, dateX, showDate, shaX };
 }
 
+/** `refs: 0` means "auto": the default refs width, shrunk so the message keeps ≥ MIN_MESSAGE_W. */
+export function resolveWidths(w: ColumnWidths, width: number, graphW: number): ColumnWidths {
+  if (w.refs > 0) return w;
+  const room = width - 8 - SHA_W - 12 - MIN_MESSAGE_W - graphW;
+  return { ...w, refs: clampWidth("refs", Math.min(DEFAULT_WIDTHS.refs, room)) };
+}
+
 // Widths are a per-machine convenience: storage may be unavailable, so fall back to defaults.
 export function loadWidths(): ColumnWidths {
   try {
     const v = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "null");
     if (v && typeof v === "object") {
       return {
-        refs: clampWidth("refs", Number(v.refs) || DEFAULT_WIDTHS.refs),
+        refs: Number(v.refs) > 0 ? clampWidth("refs", Number(v.refs)) : 0,
         author: clampWidth("author", Number(v.author) || DEFAULT_WIDTHS.author),
         date: clampWidth("date", Number(v.date) || DEFAULT_WIDTHS.date),
       };
     }
   } catch {}
-  return { ...DEFAULT_WIDTHS };
+  return { ...DEFAULT_WIDTHS, refs: 0 };
 }
 
 export function saveWidths(w: ColumnWidths) {

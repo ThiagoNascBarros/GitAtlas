@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
-import { clampWidth, columns, DEFAULT_WIDTHS, MIN_MESSAGE_W } from "./columns";
+import { clampWidth, columns, DEFAULT_WIDTHS, MIN_MESSAGE_W, resolveWidths } from "./columns";
 
 describe("columns", () => {
   it("shows every column when wide", () => {
@@ -27,5 +27,19 @@ describe("columns", () => {
     expect(c.dateX - c.authorX).toBe(200);
     expect(clampWidth("refs", 5)).toBe(60);
     expect(clampWidth("author", 9999)).toBe(320);
+  });
+});
+
+describe("resolveWidths", () => {
+  it("shrinks an auto refs column so the message stays readable", () => {
+    const auto = { ...DEFAULT_WIDTHS, refs: 0 };
+    expect(resolveWidths(auto, 1400, 64).refs).toBe(DEFAULT_WIDTHS.refs);
+    const narrow = resolveWidths(auto, 400, 64);
+    expect(narrow.refs).toBeLessThan(DEFAULT_WIDTHS.refs);
+    expect(columns(400, 64, narrow).msgW + 12).toBeGreaterThanOrEqual(MIN_MESSAGE_W);
+    expect(resolveWidths(auto, 100, 64).refs).toBe(60);
+  });
+  it("keeps a manual refs width", () => {
+    expect(resolveWidths({ ...DEFAULT_WIDTHS, refs: 300 }, 520, 64).refs).toBe(300);
   });
 });

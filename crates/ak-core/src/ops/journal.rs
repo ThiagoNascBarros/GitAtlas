@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JournalEntry {
     pub id: String,
     pub time: i64,
@@ -31,6 +31,9 @@ pub struct JournalEntry {
     /// Discard: untracked files that were deleted (restored on undo).
     #[serde(default)]
     pub untracked: Vec<String>,
+    /// Ref operations (`branch_*`, `checkout`): the parameters needed to undo and redo them.
+    #[serde(default)]
+    pub args: Vec<String>,
 }
 
 pub struct Journal {

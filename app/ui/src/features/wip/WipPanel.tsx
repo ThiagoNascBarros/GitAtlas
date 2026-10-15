@@ -92,10 +92,20 @@ export function WipPanel(props: {
 
   return (
     <div class="wip">
+      <Show when={props.status?.merging}>
+        <div class="merge-banner" role="alert">
+          <span>{t("merge.banner")}</span>
+          <button class="mini danger" onClick={() => void props.run(() => api.mergeAbort(id), { graph: true, toast: t("toast.mergeAborted") })}>{t("merge.abort")}</button>
+        </div>
+      </Show>
       <Show when={groups().conflicted.length}>
         <section>
           <h3>{t("wip.conflicts")} <span class="muted">{groups().conflicted.length}</span></h3>
-          <ul class="files wip-list"><For each={groups().conflicted}>{(i) => <li><span class="st st-D">U</span><span class="path">{i.path}</span></li>}</For></ul>
+          <ul class="files wip-list"><For each={groups().conflicted}>{(i) => <li>
+            <span class="st st-conflict">U</span><span class="path">{i.path}</span>
+            <button class="mini" onClick={() => void props.run(() => api.resolve(id, i.path, false))}>{t("merge.ours")}</button>
+            <button class="mini" onClick={() => void props.run(() => api.resolve(id, i.path, true))}>{t("merge.theirs")}</button>
+          </li>}</For></ul>
         </section>
       </Show>
       <section>

@@ -17,8 +17,10 @@ export interface UiError { code: string; message: string; detail?: string; sugge
 export interface StatusEntry {
   path: string; orig_path: string | null; index: string; worktree: string; conflicted: boolean; untracked: boolean;
 }
-export interface StatusReport { branch: string | null; oid: string | null; entries: StatusEntry[] }
-export interface OpOutcome { id: string | null; head: string | null }
+export interface StatusReport { branch: string | null; oid: string | null; entries: StatusEntry[]; merging?: boolean }
+export interface MergePreview { up_to_date: boolean; fast_forward: boolean; conflicts: string[] | null }
+export interface StashInfo { index: number; sha: string; message: string; time: number }
+export interface OpOutcome { id: string | null; head: string | null; conflicted?: boolean }
 export interface JournalEntry {
   id: string; time: number; kind: string; summary: string; undone: boolean; commands: string[]; paths: string[]; untracked: string[];
 }
@@ -36,6 +38,17 @@ export const api = {
     invoke<OpOutcome>("op_stage_hunk", { repoId, path, hunk, unstage }),
   discard: (repoId: number, paths: string[]) => invoke<OpOutcome>("op_discard", { repoId, paths }),
   commit: (repoId: number, message: string, amend: boolean) => invoke<OpOutcome>("op_commit", { repoId, message, amend }),
+  branchCreate: (repoId: number, name: string, at: string | null) => invoke<OpOutcome>("op_branch_create", { repoId, name, at }),
+  branchRename: (repoId: number, old: string, newName: string) => invoke<OpOutcome>("op_branch_rename", { repoId, old, new: newName }),
+  branchDelete: (repoId: number, name: string, force: boolean) => invoke<OpOutcome>("op_branch_delete", { repoId, name, force }),
+  checkout: (repoId: number, target: string, isBranch: boolean) => invoke<OpOutcome>("op_checkout", { repoId, target, isBranch }),
+  mergePreview: (repoId: number, source: string) => invoke<MergePreview>("merge_preview", { repoId, source }),
+  merge: (repoId: number, source: string) => invoke<OpOutcome>("op_merge", { repoId, source }),
+  mergeAbort: (repoId: number) => invoke<OpOutcome>("op_merge_abort", { repoId }),
+  resolve: (repoId: number, path: string, theirs: boolean) => invoke<OpOutcome>("op_resolve", { repoId, path, theirs }),
+  stashList: (repoId: number) => invoke<StashInfo[]>("stash_list", { repoId }),
+  stash: (repoId: number, action: "push" | "apply" | "pop" | "drop", index = 0, message: string | null = null) =>
+    invoke<OpOutcome>("op_stash", { repoId, action, index, message }),
   undo: (repoId: number, id: string) => invoke<OpOutcome>("op_undo", { repoId, id }),
   redo: (repoId: number) => invoke<OpOutcome>("op_redo", { repoId }),
   journal: (repoId: number) => invoke<JournalEntry[]>("journal_list", { repoId }),
