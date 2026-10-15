@@ -7,10 +7,12 @@ mod history;
 mod merge;
 mod remote;
 mod rebase;
+pub mod shared_stash;
 mod stash;
 
 pub use merge::{ConflictVersions, MergePreview};
 pub use rebase::TodoItem;
+pub use shared_stash::{InvalidShared, SharedStashInfo, SharedStashMeta, ValidShared};
 pub use stash::StashInfo;
 pub mod journal;
 pub mod lock;
