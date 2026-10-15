@@ -6,7 +6,7 @@ mod branch;
 mod merge;
 mod stash;
 
-pub use merge::MergePreview;
+pub use merge::{ConflictVersions, MergePreview};
 pub use stash::StashInfo;
 pub mod journal;
 pub mod lock;
@@ -107,6 +107,8 @@ pub enum Operation {
     MergeAbort,
     /// Resolve one conflicted file by taking our or their version and staging it.
     ResolveConflict { path: String, theirs: bool },
+    /// Resolve one conflicted file with content edited by the user, then stage it.
+    ResolveWith { path: String, content: String },
     StashPush { message: Option<String>, include_untracked: bool },
     StashApply { index: usize },
     StashPop { index: usize },
@@ -231,6 +233,7 @@ impl Engine {
             Operation::Merge { source } => self.merge(source),
             Operation::MergeAbort => self.merge_abort(),
             Operation::ResolveConflict { path, theirs } => self.resolve_conflict(path, *theirs),
+            Operation::ResolveWith { path, content } => self.resolve_with(path, content),
             Operation::StashPush { message, include_untracked } => self.stash_push(message.as_deref(), *include_untracked),
             Operation::StashApply { index } => self.stash_apply(*index, false),
             Operation::StashPop { index } => self.stash_apply(*index, true),

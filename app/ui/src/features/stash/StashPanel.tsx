@@ -9,7 +9,7 @@ type Run = (op: () => Promise<unknown>, opts?: { graph?: boolean; toast?: string
 export function StashPanel(props: { repoId: number; rev: number; run: Run }) {
   const [list] = createResource(() => [props.repoId, props.rev] as const, ([id]) => api.stashList(id));
   const act = (action: "apply" | "pop" | "drop", index: number, toast: string) =>
-    void props.run(() => api.stash(props.repoId, action, index), { toast });
+    void props.run(() => api.stash(props.repoId, action, index), { graph: true, toast });
   // Dropping asks for a second click (Undo can still bring it back).
   const [confirmDrop, setConfirmDrop] = createSignal<string | null>(null);
   const drop = (sha: string, index: number) => {
