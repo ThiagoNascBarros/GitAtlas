@@ -34,15 +34,32 @@ pub fn client(sock: &str) -> i32 {
     0
 }
 
-/// Answers waiting for the user, by request id.
+struct Waiter {
+    repo_id: u32,
+    tx: mpsc::Sender<Option<String>>,
+}
+
+/// Answers waiting for the user, by request id (with the repository that asked).
 #[derive(Default)]
-pub struct Pending(Mutex<HashMap<u64, mpsc::Sender<Option<String>>>>);
+pub struct Pending(Mutex<HashMap<u64, Waiter>>);
 
 impl Pending {
     pub fn answer(&self, id: u64, value: Option<String>) {
-        if let Some(tx) = self.0.lock().unwrap().remove(&id) {
-            let _ = tx.send(value);
+        if let Some(w) = self.0.lock().unwrap().remove(&id) {
+            let _ = w.tx.send(value);
         }
+    }
+
+    /// Cancels every question `repo_id` is waiting on (Git then fails with an auth error); returns their ids.
+    pub fn cancel_repo(&self, repo_id: u32) -> Vec<u64> {
+        let mut map = self.0.lock().unwrap();
+        let ids: Vec<u64> = map.iter().filter(|(_, w)| w.repo_id == repo_id).map(|(id, _)| *id).collect();
+        for id in &ids {
+            if let Some(w) = map.remove(id) {
+                let _ = w.tx.send(None);
+            }
+        }
+        ids
     }
 }
 
@@ -117,7 +134,7 @@ fn serve(app: &AppHandle, pending: &Pending, current: &Mutex<Option<u64>>, repo_
     let prompt = prompt.trim_end().to_owned();
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     let (tx, rx) = mpsc::channel();
-    pending.0.lock().unwrap().insert(id, tx);
+    pending.0.lock().unwrap().insert(id, Waiter { repo_id, tx });
     *current.lock().unwrap() = Some(id);
     let _ = app.emit("credentials-request", Request { id, repo_id, secret: is_secret(&prompt), prompt });
     let answer = rx.recv_timeout(ANSWER_TIMEOUT).ok().flatten();

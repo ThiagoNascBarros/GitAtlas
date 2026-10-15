@@ -22,7 +22,27 @@ export interface MergePreview { up_to_date: boolean; fast_forward: boolean; conf
 export interface ConflictVersions { base: string | null; ours: string | null; theirs: string | null; merged: string }
 export interface TodoItem { sha: string; action: "pick" | "reword" | "squash" | "fixup" | "drop"; message: string }
 export interface StashInfo { index: number; sha: string; message: string; time: number }
-export interface OpOutcome { id: string | null; head: string | null; conflicted?: boolean }
+export interface OpOutcome { id: string | null; head: string | null; conflicted?: boolean; shared_stash?: SharedStashOutcome | null }
+export interface OpErrorInfo { code: string; message: string; detail?: string | null; suggestion?: string | null }
+export interface SharedStashInfo {
+  remote: string; slug: string; id: string; ref_name: string; wrapper: string; stash: string; title: string;
+  author_name: string; author_email: string; base: string; base_branch: string; created: number; updated: number;
+  has_untracked: boolean; mine: boolean; verified: boolean; valid: boolean; invalid_reason: string | null;
+}
+export interface KeptSharedStash {
+  id: string; remote: string | null; slug: string; wrapper: string; stash: string; title: string;
+  base_branch: string; created: number; updated: number; unshared_at: number;
+}
+export interface RemoteStatus { name: string; probe: "ok" | "rejected" | null }
+export interface SharedStashOutcome {
+  id: string | null; remote: string | null; large_bytes: number | null; index_dropped: boolean;
+  fetched: { remote: string; error: OpErrorInfo | null }[];
+}
+export type FetchMode = "panel" | "always";
+export interface SharedStashListing {
+  stashes: SharedStashInfo[]; kept: KeptSharedStash[]; remotes: RemoteStatus[]; defaultRemote: string | null; fetchMode: FetchMode;
+}
+export interface FetchModeSettings { effective: FetchMode; repo: FetchMode | null; global: FetchMode | null }
 export interface JournalEntry {
   id: string; time: number; kind: string; summary: string; undone: boolean; commands: string[]; paths: string[]; untracked: string[];
 }
@@ -57,6 +77,24 @@ export const api = {
     invoke<OpOutcome>("op_history", { repoId, action, sha, mode: opts.mode ?? null, name: opts.name ?? null }),
   net: (repoId: number, action: "fetch" | "pull" | "push" | "push-tag", force = false, name: string | null = null) =>
     invoke<OpOutcome>("op_net", { repoId, action, force, name }),
+  sharedStashList: (repoId: number) => invoke<SharedStashListing>("shared_stash_list", { repoId }),
+  sharedStashFetch: (repoId: number, remote: string | null = null) => invoke<OpOutcome>("shared_stash_fetch", { repoId, remote }),
+  sharedStashPublish: (repoId: number, stashSha: string, title: string, remote: string | null = null) =>
+    invoke<OpOutcome>("shared_stash_publish", { repoId, stashSha, title, remote }),
+  sharedStashUpdate: (repoId: number, id: string, remote: string, stashSha: string | null = null, title: string | null = null) =>
+    invoke<OpOutcome>("shared_stash_update", { repoId, id, remote, stashSha, title }),
+  sharedStashUnshare: (repoId: number, id: string, remote: string) => invoke<OpOutcome>("shared_stash_unshare", { repoId, id, remote }),
+  sharedStashReshare: (repoId: number, id: string, remote: string) => invoke<OpOutcome>("shared_stash_reshare", { repoId, id, remote }),
+  sharedStashDiscardKeep: (repoId: number, id: string) => invoke<OpOutcome>("shared_stash_discard_keep", { repoId, id }),
+  sharedStashApply: (repoId: number, id: string, remote: string) => invoke<OpOutcome>("shared_stash_apply", { repoId, id, remote }),
+  sharedStashBranch: (repoId: number, id: string, remote: string, name: string) =>
+    invoke<OpOutcome>("shared_stash_branch", { repoId, id, remote, name }),
+  sharedStashProbeReset: (repoId: number, remote: string | null = null) => invoke<void>("shared_stash_probe_reset", { repoId, remote }),
+  sharedStashTabOpen: (repoId: number, open: boolean) => invoke<void>("shared_stash_tab_open", { repoId, open }),
+  sharedStashCancel: (repoId: number) => invoke<void>("shared_stash_cancel", { repoId }),
+  sharedStashSettings: (repoId: number) => invoke<FetchModeSettings>("shared_stash_settings_get", { repoId }),
+  setSharedStashFetchMode: (repoId: number, scope: "repo" | "global", mode: FetchMode | null) =>
+    invoke<FetchModeSettings>("shared_stash_settings_set", { repoId, scope, mode }),
   credentialsAnswer: (id: number, value: string | null) => invoke<void>("credentials_answer", { id, value }),
   rebaseTodo: (repoId: number, onto: string) => invoke<TodoItem[]>("rebase_todo", { repoId, onto }),
   rebase: (repoId: number, onto: string, todo: TodoItem[] | null = null) => invoke<OpOutcome>("op_rebase", { repoId, onto, todo }),

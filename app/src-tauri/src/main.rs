@@ -5,8 +5,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod askpass;
+mod settings;
+mod shared_stash;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -40,6 +42,8 @@ struct Repo {
 struct AppState {
     repos: Mutex<HashMap<u32, Arc<Repo>>>,
     askpass: Arc<askpass::Pending>,
+    /// Repositories whose "Shared stash" tab is open (reported by the UI).
+    shared_tab_open: Mutex<HashSet<u32>>,
     next_id: Mutex<u32>,
     initial_path: Option<PathBuf>,
 }
@@ -111,10 +115,7 @@ fn relevant(path: &Path, root: &Path) -> bool {
     if parts.next().as_deref() != Some(".git") {
         return true;
     }
-    match parts.next().as_deref() {
-        Some("index") | Some("HEAD") | Some("refs") | Some("MERGE_HEAD") => true,
-        _ => false,
-    }
+    matches!(parts.next().as_deref(), Some("index") | Some("HEAD") | Some("refs") | Some("MERGE_HEAD"))
 }
 
 type SharedWatcher = Arc<Mutex<notify::RecommendedWatcher>>;
@@ -310,6 +311,7 @@ async fn repo_refresh(repo_id: u32, app: AppHandle, state: State<'_, AppState>) 
 #[tauri::command]
 fn repo_close(repo_id: u32, state: State<'_, AppState>) {
     state.repos.lock().unwrap().remove(&repo_id);
+    state.shared_tab_open.lock().unwrap().remove(&repo_id);
 }
 
 fn get(state: &AppState, repo_id: u32) -> Result<Arc<Repo>> {
@@ -495,9 +497,18 @@ async fn op_net(repo_id: u32, action: String, force: bool, name: Option<String>,
         "push-tag" => Operation::PushTag { name: name.unwrap_or_default() },
         _ => return Err(UiError::new("GIT_FAILED", "unknown network action")),
     };
+    // Fetch/Pull also download shared stashes when `sharedStash.fetchMode` is `always`, or the tab is open.
+    let shared = matches!(action.as_str(), "fetch" | "pull")
+        && engine(&r).map(|e| shared_stash::wants_fetch_with_net_op(&app, &state, repo_id, e)).unwrap_or(false);
     tauri::async_runtime::spawn_blocking(move || {
         let e = engine(&r)?;
-        Ok(askpass::with_bridge(&app, pending, repo_id, |env| e.run_with_env(&op, env))?)
+        Ok(askpass::with_bridge(&app, pending, repo_id, |env| {
+            let mut out = e.run_with_env(&op, env)?;
+            if shared && !out.conflicted {
+                out.shared_stash = shared_stash::fetch_after_net_op(e, env, &app, repo_id);
+            }
+            Ok::<OpOutcome, OpError>(out)
+        })?)
     })
     .await
     .map_err(|e| UiError::new("GIT_FAILED", e))?
@@ -607,7 +618,21 @@ fn main() {
             op_undo,
             op_redo,
             journal_list,
-            journal_prune
+            journal_prune,
+            shared_stash::shared_stash_list,
+            shared_stash::shared_stash_fetch,
+            shared_stash::shared_stash_publish,
+            shared_stash::shared_stash_update,
+            shared_stash::shared_stash_unshare,
+            shared_stash::shared_stash_reshare,
+            shared_stash::shared_stash_discard_keep,
+            shared_stash::shared_stash_apply,
+            shared_stash::shared_stash_branch,
+            shared_stash::shared_stash_probe_reset,
+            shared_stash::shared_stash_tab_open,
+            shared_stash::shared_stash_cancel,
+            shared_stash::shared_stash_settings_get,
+            shared_stash::shared_stash_settings_set
         ])
         .run(tauri::generate_context!())
         .expect("error while running AtlasGit");
