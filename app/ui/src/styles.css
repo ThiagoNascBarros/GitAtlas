@@ -463,3 +463,5 @@ menu.ctx button:focus svg { color: currentColor; }
 .files li.dir button { display: flex; gap: 4px; align-items: center; color: var(--ak-color-text-secondary); }
 .files li button .st { margin-left: auto; }
 .right .files-head { flex-wrap: wrap; row-gap: 4px; }
+.files li button.tree-file { gap: 4px; }
+.files li.dir { padding: 0; }

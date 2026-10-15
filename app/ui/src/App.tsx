@@ -405,7 +405,7 @@ export function App() {
                         {(r) =>
                           r.kind === "dir" ? (
                             <li class="dir">
-                              <button style={{ "padding-left": `${8 + r.depth * 14}px` }} aria-expanded={!collapsed().has(r.path)} onClick={() => toggleDir(r.path)}>
+                              <button style={{ "padding-left": `${8 + r.depth * 16}px` }} aria-expanded={!collapsed().has(r.path)} onClick={() => toggleDir(r.path)}>
                                 {collapsed().has(r.path) ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
                                 {collapsed().has(r.path) ? <FolderClosed size={14} aria-hidden="true" /> : <FolderOpen size={14} aria-hidden="true" />}
                                 <span class="path">{r.name}</span>
@@ -414,7 +414,8 @@ export function App() {
                           ) : (
                             <li>
                               <button
-                                style={{ "padding-left": `${8 + r.depth * 14}px` }}
+                                class="tree-file"
+                                style={{ "padding-left": `${8 + r.depth * 16 + 18}px` }}
                                 classList={{ active: tab()!.diffPath === r.file.path }}
                                 onClick={() => patch({ diffPath: r.file.path })}
                                 title={r.file.path}
