@@ -125,7 +125,21 @@ fn start_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<notify::Re
         }
     })
     .ok()?;
-    w.watch(root, RecursiveMode::Recursive).ok()?;
+    // Watch each top-level entry except ignored dirs (node_modules, target...): saves inotify watches.
+    // shortcut: dirs created after open are not watched, re-open the repo to pick them up.
+    let ignored: Vec<String> = std::process::Command::new("git")
+        .current_dir(root)
+        .args(["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).split('\0').map(|d| d.trim_end_matches('/').to_string()).collect())
+        .unwrap_or_default();
+    w.watch(root, RecursiveMode::NonRecursive).ok()?;
+    for e in std::fs::read_dir(root).ok()?.flatten() {
+        let name = e.file_name().to_string_lossy().to_string();
+        if e.path().is_dir() && !ignored.contains(&name) {
+            w.watch(&e.path(), RecursiveMode::Recursive).ok()?;
+        }
+    }
     std::thread::spawn(move || {
         while rx.recv().is_ok() {
             // Collapse bursts (checkout, build output) into one refresh.
