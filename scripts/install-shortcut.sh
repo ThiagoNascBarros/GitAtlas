@@ -5,13 +5,17 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 file="$HOME/.local/share/applications/atlaskraken.desktop"
+bin="$HOME/.local/bin/atlaskraken-launch"
+mkdir -p "$(dirname "$bin")"
+sed "s|^root=.*|root=\"$root\"|" "$root/scripts/launch.sh" >"$bin"
+chmod +x "$bin"
 mkdir -p "$(dirname "$file")"
 cat >"$file" <<EOF
 [Desktop Entry]
 Type=Application
 Name=AtlasKraken
 Comment=Git client
-Exec=$root/scripts/launch.sh
+Exec=$bin
 Path=$root
 Icon=$root/app/src-tauri/icons/icon.png
 Terminal=false

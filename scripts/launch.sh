@@ -3,7 +3,9 @@
 # Desktop launcher entry: opens AtlasKraken with no repository. Desktop sessions do not load the
 # shell profile, so tool paths are added here; output goes to ~/.cache/atlaskraken/launch.log.
 set -uo pipefail
-root="$(cd "$(dirname "$0")/.." && pwd)"
+# The installer copies this file to ~/.local/bin and bakes the project path into ATLASKRAKEN_ROOT,
+# so the shortcut keeps working whichever Git branch is checked out.
+root="${ATLASKRAKEN_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$(ls -d "$HOME"/.nvm/versions/node/*/bin 2>/dev/null | tail -1):$PATH"
 log="$HOME/.cache/atlaskraken/launch.log"
 mkdir -p "$(dirname "$log")"
