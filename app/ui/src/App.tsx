@@ -28,6 +28,7 @@ export function App() {
   const [error, setError] = createSignal<UiError | null>(null);
   const [fileView, setFileView] = createSignal<"path" | "tree">("path");
   const [toast, setToast] = createSignal<Toast | null>(null);
+  const [refFilter, setRefFilter] = createSignal("");
   const [showJournal, setShowJournal] = createSignal(false);
   const [showDetail, setShowDetail] = createSignal(false);
   let toastTimer: number | undefined;
@@ -223,12 +224,15 @@ export function App() {
       >
         <div class="body">
           <aside class="left" aria-label={t("panel.refs")}>
+            <input class="ref-filter" type="search" placeholder={t("panel.filter")} aria-label={t("panel.filter")}
+              value={refFilter()} onInput={(e) => setRefFilter(e.currentTarget.value)} />
             <For each={[["head", "panel.local"], ["remote", "panel.remote"], ["tag", "panel.tags"]] as const}>
               {([kind, label]) => {
-                const items = () => tab()!.repo.refs.filter((r) => r.kind === kind);
+                const items = () => tab()!.repo.refs.filter((r) => r.kind === kind && r.name.toLowerCase().includes(refFilter().toLowerCase()));
                 return (
                   <Show when={items().length}>
-                    <h2>{t(label)} <span class="muted">{items().length}</span></h2>
+                    <details open={kind !== "remote" || !!refFilter()}>
+                    <summary><h2>{t(label)} <span class="muted">{items().length}</span></h2></summary>
                     <ul>
                       <For each={items()}>
                         {(r) => (
@@ -244,6 +248,7 @@ export function App() {
                         )}
                       </For>
                     </ul>
+                    </details>
                   </Show>
                 );
               }}

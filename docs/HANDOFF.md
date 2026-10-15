@@ -19,16 +19,10 @@ Owner: Thiago (pt-BR speaker, Ubuntu, 7 GB RAM). Specs live in the Obsidian vaul
 - Operation engine (`ops/mod.rs`): `Operation::{Stage,Unstage,Commit{amend},StageHunk,Discard}`, `Engine::{run,undo,redo_last,redo_candidate,journal}`; stable error codes (GIT_IDENTITY_MISSING, NOTHING_TO_COMMIT, EMPTY_MESSAGE, REPO_BUSY, HEAD_MOVED, ALREADY_UNDONE, NOTHING_TO_REDO, WORKTREE_CHANGED, INVALID_HUNK, INVALID_PATH, UNSUPPORTED_PATH, READ_ONLY, GIT_FAILED); human text per code in `i18n.ts` (`err.<CODE>`). Journal at `<git-dir>/atlaskraken/journal.jsonl`; amend snapshots and redo refs in `refs/atlaskraken/snapshots/*`; discard backups in `<git-dir>/atlaskraken/discarded/<id>/` (deviation from the SDD: a ref cannot hold untracked content).
 - Memory: core keeps only SHAs + topology + layout; row text is read via `git log --no-walk --stdin`. Idle on 100k commits: PSS ~231 MB (target <= 250 MB **PSS**), RSS ~390 MB. The benchmark criterion is now PSS (ADR-0001 follow-up).
 
-## Remaining work for Phase 2 (small adjustments)
-1. Investigate the SonarCloud reliability finding (ask owner for the report) and fix or justify it.
-2. No real-app end-to-end test yet (needs WebDriver / tauri-driver in CI). The UI flow was only exercised against the IPC mock; **manually test the packaged app** on a real repo: stage, hunk stage, commit, amend, Undo/Redo, discard + Undo, external edit (watcher), identity-missing error (`git config --local user.name ""`).
-3. Watcher watches the whole tree recursively (inotify): heavy trees (node_modules/target) cause bursts (debounced 350 ms) and may hit inotify limits. Consider ignoring paths via `.gitignore` (`git check-ignore`) and showing a message if the watch fails.
-4. Graph reloads from scratch (remount, scroll to top) after commit/undo/redo; consider preserving selection/scroll.
-5. UX gaps: multi-select and drag for staging, "stage lines", file tree view in the WIP panel, resizable panels, discard-all, focus/keyboard navigation of the WIP lists, i18n only has `en` (pt-BR is Phase 5).
-6. Journal view in the UI ("show exact commands") — data exists (`JournalEntry.commands`), no screen yet. Journal grows without limit and `discarded/` backups are never pruned: add retention (opt-in cleanup).
-7. Edge cases not covered: conflicted files (shown but no actions), submodules, symlinks (discard refuses), renamed-file hunk staging, CRLF, repositories with a `.git` file (worktrees) — the cache path code uses `root.join(".git")` in `main.rs::load`; use `--absolute-git-dir` instead.
-8. Lane `main` shifting in some repos; refs panel for repos with ~100 remote branches needs filter/collapsible groups (carried over from Phase 1).
-9. Dev-only: `devMock.ts` duplicates backend behaviour; keep it minimal.
+## Phase 2 close-out (done in this session)
+Done: `.git` path via `rev-parse --absolute-git-dir`; watcher skips gitignored top-level dirs; graph keeps scroll; journal view (`features/journal`) + `Engine::prune_journal` / `journal_prune` (opt-in); refs filter; tests for CRLF hunks, worktrees, conflicts, symlinks.
+Still open (owner): SonarCloud reliability finding on PR #2 (needs owner login) and manual test of the packaged app (stage, hunk, commit, amend, Undo/Redo, discard + Undo, external edit, missing identity).
+Deferred: watcher for dirs created after open and failure notice; graph selection kept on reload (needs a sha->row command); multi-select/drag, stage lines, WIP tree, resizable panels, discard-all, keyboard nav in WIP; tauri-driver e2e; pt-BR (Phase 5). Keep `devMock.ts` minimal.
 
 ## Next phases (see `en/04-plan/roadmap.md`)
 - **Phase 3 — Branching & merge**: branch create/rename/delete/checkout, native context menus, drag-and-drop ref onto ref, `ops.preview` with `git merge-tree` conflict list, merge, 3-pane conflict tool, abort, stash push/pop/apply/drop and stash rows in the graph. Reuse `Engine` (add `Operation` variants, lock `Lock::Config/RepoSettings` already exist, journal entries, snapshots before destructive ops); the read-only allow-list in `ak-gitcli/src/exec.rs` is bypassed by `Mode::ReadWrite`.

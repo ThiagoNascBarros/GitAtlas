@@ -5,6 +5,7 @@ const en = {
   "open.title": "Open a repository",
   "open.hint": "Choose a folder that contains a Git repository, or start AtlasKraken with a path: atlaskraken /path/to/repo",
   "open.button": "Open repository…",
+  "panel.filter": "Filter branches and tags",
   "toolbar.undo": "Undo",
   "toolbar.redo": "Redo",
   "toolbar.redoTitle": "Redo the last undone operation",
