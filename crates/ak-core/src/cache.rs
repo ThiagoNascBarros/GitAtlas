@@ -32,14 +32,14 @@ pub fn fingerprint(refs: &[(String, String)], head: Option<&str>) -> u64 {
     h.finish()
 }
 
-/// Where the cache for a repo lives: `$XDG_CACHE_HOME/atlaskraken/graph/<hash-of-git-dir>.json`.
+/// Where the cache for a repo lives: `$XDG_CACHE_HOME/atlasgit/graph/<hash-of-git-dir>.json`.
 pub fn cache_path(git_dir: &Path) -> Option<PathBuf> {
     let base = std::env::var_os("XDG_CACHE_HOME")
         .map(PathBuf::from)
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))?;
     let mut h = std::collections::hash_map::DefaultHasher::new();
     git_dir.hash(&mut h);
-    Some(base.join("atlaskraken").join("graph").join(format!("{:016x}.json", h.finish())))
+    Some(base.join("atlasgit").join("graph").join(format!("{:016x}.json", h.finish())))
 }
 
 /// Returns the cached commits when the fingerprint matches; `None` otherwise.

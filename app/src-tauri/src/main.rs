@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! AtlasKraken Tauri shell. The UI can only reach the commands below
+//! AtlasGit Tauri shell. The UI can only reach the commands below
 //! (SDD §4.1). All Git access stays in the core.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -610,5 +610,5 @@ fn main() {
             journal_prune
         ])
         .run(tauri::generate_context!())
-        .expect("error while running AtlasKraken");
+        .expect("error while running AtlasGit");
 }

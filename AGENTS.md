@@ -1,4 +1,4 @@
-# AtlasKraken — instruções para agentes de IA
+# AtlasGit — instruções para agentes de IA
 
 Cliente Git desktop em Rust + Tauri, com UI em SolidJS/Vite/TypeScript (`app/ui`), core em `crates/` e shell Tauri em `app/src-tauri`.
 

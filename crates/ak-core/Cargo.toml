@@ -1,6 +1,6 @@
 [package]
 name = "ak-core"
-description = "AtlasKraken core: repository reading and commit graph layout"
+description = "AtlasGit core: repository reading and commit graph layout"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

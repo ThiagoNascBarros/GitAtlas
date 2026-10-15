@@ -24,6 +24,7 @@ use serde::Serialize;
 use journal::{Journal, JournalEntry};
 use lock::Lock;
 
+// Per-repo data keeps the pre-rename "atlaskraken" name so existing journals, snapshots and backups stay reachable.
 pub const SNAPSHOT_PREFIX: &str = "refs/atlaskraken/snapshots/";
 const PATH_CHUNK: usize = 100;
 
@@ -182,7 +183,7 @@ impl Engine {
         if git.mode() != Mode::ReadWrite {
             return Err(OpError::new(
                 "READ_ONLY",
-                "Your Git is too old to edit this repository; AtlasKraken opens it read-only.",
+                "Your Git is too old to edit this repository; AtlasGit opens it read-only.",
                 Some("Install Git 2.20 or newer."),
             ));
         }

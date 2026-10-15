@@ -1,6 +1,6 @@
 [package]
-name = "atlaskraken"
-description = "AtlasKraken desktop Git client"
+name = "atlasgit"
+description = "AtlasGit desktop Git client"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

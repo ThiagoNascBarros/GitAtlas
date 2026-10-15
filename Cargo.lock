@@ -111,7 +111,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "atlaskraken"
+name = "atlasgit"
 version = "0.1.0"
 dependencies = [
  "ak-core",

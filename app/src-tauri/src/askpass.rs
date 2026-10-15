@@ -15,7 +15,7 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
-pub const SOCK_ENV: &str = "ATLASKRAKEN_ASKPASS_SOCK";
+pub const SOCK_ENV: &str = "ATLASGIT_ASKPASS_SOCK";
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(300);
 
 /// Askpass client mode: prompt in argv[1], answer on stdout. Exit code 1 = cancelled.
@@ -67,7 +67,7 @@ pub fn with_bridge<T>(app: &AppHandle, pending: Arc<Pending>, repo_id: u32, f: i
     let (Ok(exe), dir) = (std::env::current_exe(), std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir)) else {
         return f(&[]);
     };
-    let path = dir.join(format!("atlaskraken-askpass-{}-{}.sock", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+    let path = dir.join(format!("atlasgit-askpass-{}-{}.sock", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
     let _ = std::fs::remove_file(&path);
     let Ok(listener) = UnixListener::bind(&path) else { return f(&[]) };
     let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));

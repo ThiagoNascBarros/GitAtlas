@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // All UI strings live here (PRD NFR-9). pt-BR is added in Phase 5.
 const en = {
-  "app.name": "AtlasKraken",
+  "app.name": "AtlasGit",
   "open.title": "Open a repository",
-  "open.hint": "Choose a folder that contains a Git repository, or start AtlasKraken with a path: atlaskraken /path/to/repo",
+  "open.hint": "Choose a folder that contains a Git repository, or start AtlasGit with a path: atlasgit /path/to/repo",
   "open.button": "Open repository…",
   "panel.filter": "Filter branches and tags",
   "toolbar.undo": "Undo",

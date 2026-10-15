@@ -56,4 +56,4 @@ jobs:
       - run: pnpm --dir app/ui test
       - run: pnpm --dir app/ui build
       - run: node scripts/contrast.mjs
-      - run: cargo build -p atlaskraken --features custom-protocol
+      - run: cargo build -p atlasgit --features custom-protocol
