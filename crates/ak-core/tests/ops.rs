@@ -410,3 +410,79 @@ fn prune_journal_drops_old_entries_and_their_snapshots() {
     assert_eq!(e.prune_journal(1).unwrap(), 0);
     assert_eq!(git(&d, &["for-each-ref", "refs/atlaskraken/snapshots"]).lines().count(), 1);
 }
+
+fn base_repo() -> (PathBuf, Engine) {
+    let d = repo();
+    let e = engine(&d);
+    write(&d, "a.txt", "1");
+    stage(&e, &["a.txt"]);
+    commit(&e, "base", false);
+    (d, e)
+}
+
+fn branches(d: &Path) -> String {
+    git(d, &["for-each-ref", "--format=%(refname:short)", "refs/heads"]).replace('\n', ",")
+}
+
+#[test]
+fn branch_create_rename_delete_with_undo_and_redo() {
+    let (d, e) = base_repo();
+    let create = e.run(&Operation::BranchCreate { name: "feat".into(), at: None }).unwrap();
+    assert_eq!(branches(&d), "feat,main");
+    e.run(&Operation::BranchRename { old: "feat".into(), new: "feat2".into() }).unwrap();
+    assert_eq!(branches(&d), "feat2,main");
+    let del = e.run(&Operation::BranchDelete { name: "feat2".into(), force: false }).unwrap();
+    assert_eq!(branches(&d), "main");
+    e.undo(del.id.as_deref().unwrap()).unwrap();
+    assert_eq!(branches(&d), "feat2,main");
+    e.redo_last().unwrap();
+    assert_eq!(branches(&d), "main");
+    e.undo(del.id.as_deref().unwrap()).unwrap();
+    let ren = e.journal().iter().rev().find(|x| x.kind == "branch_rename").unwrap().id.clone();
+    e.undo(&ren).unwrap();
+    assert_eq!(branches(&d), "feat,main");
+    e.undo(create.id.as_deref().unwrap()).unwrap();
+    assert_eq!(branches(&d), "main");
+}
+
+#[test]
+fn branch_errors_have_stable_codes() {
+    let (d, e) = base_repo();
+    assert_eq!(code(e.run(&Operation::BranchCreate { name: "bad name".into(), at: None })), "INVALID_BRANCH_NAME");
+    assert_eq!(code(e.run(&Operation::BranchCreate { name: "main".into(), at: None })), "BRANCH_EXISTS");
+    assert_eq!(code(e.run(&Operation::BranchDelete { name: "main".into(), force: true })), "BRANCH_IS_CURRENT");
+    git(&d, &["checkout", "-q", "-b", "side"]);
+    write(&d, "b.txt", "2");
+    git(&d, &["add", "b.txt"]);
+    git(&d, &["commit", "-qm", "side work"]);
+    git(&d, &["checkout", "-q", "main"]);
+    assert_eq!(code(e.run(&Operation::BranchDelete { name: "side".into(), force: false })), "BRANCH_NOT_MERGED");
+    e.run(&Operation::BranchDelete { name: "side".into(), force: true }).unwrap();
+    assert_eq!(branches(&d), "main");
+}
+
+#[test]
+fn checkout_branch_and_detached_with_undo() {
+    let (d, e) = base_repo();
+    e.run(&Operation::BranchCreate { name: "other".into(), at: None }).unwrap();
+    let co = e.run(&Operation::Checkout { target: "other".into(), is_branch: true }).unwrap();
+    assert_eq!(git(&d, &["symbolic-ref", "--short", "HEAD"]), "other");
+    e.undo(co.id.as_deref().unwrap()).unwrap();
+    assert_eq!(git(&d, &["symbolic-ref", "--short", "HEAD"]), "main");
+    e.redo_last().unwrap();
+    assert_eq!(git(&d, &["symbolic-ref", "--short", "HEAD"]), "other");
+    e.undo(co.id.as_deref().unwrap()).unwrap();
+    let sha = git(&d, &["rev-parse", "HEAD"]);
+    let det = e.run(&Operation::Checkout { target: sha.clone(), is_branch: false }).unwrap();
+    assert!(Command::new("git").arg("-C").arg(&d).args(["symbolic-ref", "-q", "HEAD"]).output().unwrap().status.code() == Some(1));
+    e.undo(det.id.as_deref().unwrap()).unwrap();
+    assert_eq!(git(&d, &["symbolic-ref", "--short", "HEAD"]), "main");
+    // Dirty file that conflicts with the target blocks the switch without losing work.
+    git(&d, &["checkout", "-q", "other"]);
+    write(&d, "a.txt", "other\n");
+    git(&d, &["commit", "-qam", "other change"]);
+    git(&d, &["checkout", "-q", "main"]);
+    write(&d, "a.txt", "dirty\n");
+    assert_eq!(code(e.run(&Operation::Checkout { target: "other".into(), is_branch: true })), "GIT_FAILED");
+    assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "dirty\n");
+}

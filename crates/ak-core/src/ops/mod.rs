@@ -2,6 +2,7 @@
 //! Operation engine (SDD §1.4): every working-directory change goes through
 //! here so it is locked, journaled, undoable and reported with a stable error code.
 
+mod branch;
 pub mod journal;
 pub mod lock;
 
@@ -84,6 +85,13 @@ pub enum Operation {
     StageHunk { path: String, hunk: usize, unstage: bool },
     /// Throw away working-tree changes. A backup is kept so Undo can restore them.
     Discard { paths: Vec<String> },
+    /// New local branch at `at` (default HEAD); it is not checked out.
+    BranchCreate { name: String, at: Option<String> },
+    BranchRename { old: String, new: String },
+    /// `force` deletes even if the branch is not merged (the tip stays recoverable via Undo).
+    BranchDelete { name: String, force: bool },
+    /// Switch to a local branch, or detach HEAD at a commit when `is_branch` is false.
+    Checkout { target: String, is_branch: bool },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -195,6 +203,10 @@ impl Engine {
             Operation::Commit { message, amend } => self.commit(message, *amend),
             Operation::StageHunk { path, hunk, unstage } => self.stage_hunk(path, *hunk, *unstage),
             Operation::Discard { paths } => self.discard(paths),
+            Operation::BranchCreate { name, at } => self.branch_create(name, at.as_deref()),
+            Operation::BranchRename { old, new } => self.branch_rename(old, new),
+            Operation::BranchDelete { name, force } => self.branch_delete(name, *force),
+            Operation::Checkout { target, is_branch } => self.checkout(target, *is_branch),
         }
     }
 
@@ -273,6 +285,7 @@ impl Engine {
             undone_at: 0,
             paths: vec![],
             untracked: vec![],
+            args: vec![],
         })?;
         Ok(OpOutcome { id: Some(id), head: head_after })
     }
@@ -291,6 +304,11 @@ impl Engine {
         let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
         if entry.kind == "discard" {
             self.undo_discard(&entry)?;
+            self.journal.set_undone(id, true, now_ns())?;
+            return Ok(OpOutcome { id: None, head: self.head() });
+        }
+        if branch::is_ref_kind(&entry.kind) {
+            self.apply_ref_entry(&entry, false)?;
             self.journal.set_undone(id, true, now_ns())?;
             return Ok(OpOutcome { id: None, head: self.head() });
         }
@@ -338,6 +356,8 @@ impl Engine {
         let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
         if entry.kind == "discard" {
             self.redo_discard(&entry)?;
+        } else if branch::is_ref_kind(&entry.kind) {
+            self.apply_ref_entry(&entry, true)?;
         } else {
             let moved = || {
                 OpError::new(
@@ -486,6 +506,7 @@ impl Engine {
             undone_at: 0,
             paths: keep_tracked,
             untracked: keep_untracked,
+            args: vec![],
         })?;
         Ok(OpOutcome { id: Some(id), head: self.head() })
     }
