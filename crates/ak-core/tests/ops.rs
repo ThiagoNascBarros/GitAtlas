@@ -601,3 +601,85 @@ fn conflict_versions_and_resolve_with_edited_content() {
     assert_eq!(git(&d, &["show", ":a.txt"]), "both");
     assert_eq!(code(e.run(&Operation::ResolveWith { path: "../x".into(), content: String::new() })), "INVALID_PATH");
 }
+
+fn side_commit(d: &Path, file: &str, text: &str) -> String {
+    git(d, &["checkout", "-q", "-b", "side"]);
+    write(d, file, text);
+    git(d, &["add", file]);
+    git(d, &["commit", "-qm", "side change"]);
+    let sha = git(d, &["rev-parse", "HEAD"]);
+    git(d, &["checkout", "-q", "main"]);
+    sha
+}
+
+#[test]
+fn cherry_pick_and_revert_with_undo_redo() {
+    let (d, e) = base_repo();
+    let sha = side_commit(&d, "b.txt", "side\n");
+    let before = git(&d, &["rev-parse", "HEAD"]);
+    let cp = e.run(&Operation::CherryPick { sha: sha.clone() }).unwrap();
+    assert_eq!(std::fs::read_to_string(d.join("b.txt")).unwrap(), "side\n");
+    assert_eq!(code(e.run(&Operation::CherryPick { sha: sha.clone() })), "NOTHING_TO_COMMIT");
+    assert!(e.in_progress().is_none());
+    e.undo(cp.id.as_deref().unwrap()).unwrap();
+    assert_eq!(git(&d, &["rev-parse", "HEAD"]), before);
+    e.redo_last().unwrap();
+    let rv = e.run(&Operation::Revert { sha: "HEAD".into() }).unwrap();
+    assert!(!d.join("b.txt").exists());
+    assert!(git(&d, &["log", "-1", "--format=%s"]).starts_with("Revert"));
+    e.undo(rv.id.as_deref().unwrap()).unwrap();
+    assert!(d.join("b.txt").exists());
+}
+
+#[test]
+fn cherry_pick_conflict_can_be_aborted() {
+    let (d, e) = base_repo();
+    let sha = side_commit(&d, "a.txt", "side\n");
+    write(&d, "a.txt", "main\n");
+    git(&d, &["commit", "-qam", "main change"]);
+    let before = git(&d, &["status", "--porcelain"]);
+    assert!(e.run(&Operation::CherryPick { sha }).unwrap().conflicted);
+    assert_eq!(e.in_progress(), Some("cherry-pick"));
+    assert_eq!(code(e.run(&Operation::Revert { sha: "HEAD".into() })), "MERGE_IN_PROGRESS");
+    e.run(&Operation::MergeAbort).unwrap();
+    assert!(e.in_progress().is_none());
+    assert_eq!(git(&d, &["status", "--porcelain"]), before);
+}
+
+#[test]
+fn hard_reset_undo_restores_commit_and_uncommitted_work() {
+    let (d, e) = base_repo();
+    write(&d, "a.txt", "2");
+    stage(&e, &["a.txt"]);
+    commit(&e, "second", false);
+    let head = git(&d, &["rev-parse", "HEAD"]);
+    write(&d, "a.txt", "uncommitted");
+    let r = e.run(&Operation::Reset { sha: "HEAD~1".into(), mode: "hard".into() }).unwrap();
+    assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "1");
+    e.undo(r.id.as_deref().unwrap()).unwrap();
+    assert_eq!(git(&d, &["rev-parse", "HEAD"]), head);
+    assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "uncommitted");
+    // Redo refuses while there is uncommitted work it would destroy.
+    assert_eq!(code(e.redo_last()), "WORKTREE_CHANGED");
+    let soft = e.run(&Operation::Reset { sha: "HEAD~1".into(), mode: "soft".into() }).unwrap();
+    assert_eq!(git(&d, &["diff", "--cached", "--name-only"]), "a.txt");
+    e.undo(soft.id.as_deref().unwrap()).unwrap();
+    assert_eq!(git(&d, &["rev-parse", "HEAD"]), head);
+    assert_eq!(code(e.run(&Operation::Reset { sha: "HEAD".into(), mode: "bogus".into() })), "INVALID_REF");
+}
+
+#[test]
+fn tags_create_delete_with_undo() {
+    let (d, e) = base_repo();
+    e.run(&Operation::TagCreate { name: "v1".into(), at: "HEAD".into(), message: None }).unwrap();
+    e.run(&Operation::TagCreate { name: "v2".into(), at: "HEAD".into(), message: Some("Release 2".into()) }).unwrap();
+    assert_eq!(git(&d, &["cat-file", "-t", "v2"]), "tag");
+    assert_eq!(code(e.run(&Operation::TagCreate { name: "v1".into(), at: "HEAD".into(), message: None })), "TAG_EXISTS");
+    let obj = git(&d, &["rev-parse", "refs/tags/v2"]);
+    let del = e.run(&Operation::TagDelete { name: "v2".into() }).unwrap();
+    assert_eq!(git(&d, &["tag"]), "v1");
+    e.undo(del.id.as_deref().unwrap()).unwrap();
+    assert_eq!(git(&d, &["rev-parse", "refs/tags/v2"]), obj);
+    e.redo_last().unwrap();
+    assert_eq!(git(&d, &["tag"]), "v1");
+}

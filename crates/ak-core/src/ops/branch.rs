@@ -9,7 +9,7 @@ use super::lock::{self, Lock};
 use super::{new_id, now, Engine, OpError, OpOutcome};
 
 pub(super) fn is_ref_kind(kind: &str) -> bool {
-    matches!(kind, "branch_create" | "branch_delete" | "branch_rename" | "checkout" | "merge" | "stash_push" | "stash_drop")
+    matches!(kind, "branch_create" | "branch_delete" | "branch_rename" | "checkout" | "merge" | "stash_push" | "stash_drop" | "cherry_pick" | "revert" | "reset" | "tag_create" | "tag_delete")
 }
 
 fn refs_moved() -> OpError {
@@ -161,7 +161,10 @@ impl Engine {
                     self.git.run(r, ["checkout", "-q", "--detach", go.as_str()])?;
                 }
             }
-            ("merge", _) => self.apply_merge_entry(e, forward)?,
+            ("merge" | "cherry_pick" | "revert", _) => self.apply_merge_entry(e, forward)?,
+            ("reset", _) => self.apply_reset_entry(e, forward)?,
+            ("tag_create", f) => self.apply_tag_entry(e, f)?,
+            ("tag_delete", f) => self.apply_tag_entry(e, !f)?,
             ("stash_push", false) => self.undo_stash_push(e)?,
             ("stash_drop", false) => self.undo_stash_drop(e)?,
             ("stash_drop", true) => self.redo_stash_drop(e)?,

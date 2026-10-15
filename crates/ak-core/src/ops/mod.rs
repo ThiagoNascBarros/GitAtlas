@@ -3,6 +3,7 @@
 //! here so it is locked, journaled, undoable and reported with a stable error code.
 
 mod branch;
+mod history;
 mod merge;
 mod stash;
 
@@ -113,6 +114,13 @@ pub enum Operation {
     StashApply { index: usize },
     StashPop { index: usize },
     StashDrop { index: usize },
+    CherryPick { sha: String },
+    Revert { sha: String },
+    /// `mode`: "soft", "mixed" or "hard".
+    Reset { sha: String, mode: String },
+    /// Annotated when `message` is given.
+    TagCreate { name: String, at: String, message: Option<String> },
+    TagDelete { name: String },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -238,6 +246,11 @@ impl Engine {
             Operation::StashApply { index } => self.stash_apply(*index, false),
             Operation::StashPop { index } => self.stash_apply(*index, true),
             Operation::StashDrop { index } => self.stash_drop(*index),
+            Operation::CherryPick { sha } => self.pick_like("cherry_pick", sha),
+            Operation::Revert { sha } => self.pick_like("revert", sha),
+            Operation::Reset { sha, mode } => self.reset(sha, mode),
+            Operation::TagCreate { name, at, message } => self.tag_create(name, at, message.as_deref()),
+            Operation::TagDelete { name } => self.tag_delete(name),
         }
     }
 
