@@ -9,7 +9,12 @@ use super::lock::{self, Lock};
 use super::{new_id, now, Engine, OpError, OpOutcome};
 
 pub(super) fn is_ref_kind(kind: &str) -> bool {
-    matches!(kind, "branch_create" | "branch_delete" | "branch_rename" | "checkout" | "merge" | "stash_push" | "stash_drop" | "cherry_pick" | "revert" | "reset" | "tag_create" | "tag_delete" | "rebase")
+    matches!(kind, "shared_stash_branch" | "branch_create" | "branch_delete" | "branch_rename" | "checkout" | "merge" | "stash_push" | "stash_drop" | "cherry_pick" | "revert" | "reset" | "tag_create" | "tag_delete" | "rebase")
+}
+
+/// Shared Stash entries that are history only: they can never be undone, and they do not clear Redo.
+pub(super) fn is_passive_kind(kind: &str) -> bool {
+    kind.starts_with("shared_stash_") && kind != "shared_stash_branch"
 }
 
 fn refs_moved() -> OpError {
@@ -21,7 +26,7 @@ fn refs_moved() -> OpError {
 }
 
 impl Engine {
-    fn valid_branch(&self, name: &str) -> Result<(), OpError> {
+    pub(super) fn valid_branch(&self, name: &str) -> Result<(), OpError> {
         let ok = !name.is_empty()
             && !name.starts_with('-')
             && self.git.run(&self.root, ["check-ref-format", "--branch", name]).is_ok();
@@ -30,7 +35,7 @@ impl Engine {
         })
     }
 
-    fn tip(&self, branch: &str) -> Option<String> {
+    pub(super) fn tip(&self, branch: &str) -> Option<String> {
         let r = format!("refs/heads/{branch}");
         self.git
             .run(&self.root, ["rev-parse", "-q", "--verify", r.as_str()])
@@ -38,7 +43,7 @@ impl Engine {
             .map(|o| String::from_utf8_lossy(&o).trim().to_owned())
     }
 
-    fn record(&self, kind: &str, summary: String, args: Vec<String>, before: Option<String>, commands: Vec<String>) -> Result<OpOutcome, OpError> {
+    pub(super) fn record(&self, kind: &str, summary: String, args: Vec<String>, before: Option<String>, commands: Vec<String>) -> Result<OpOutcome, OpError> {
         let id = new_id();
         self.journal.append(&JournalEntry {
             id: id.clone(),
@@ -165,6 +170,7 @@ impl Engine {
             ("reset", _) => self.apply_reset_entry(e, forward)?,
             ("tag_create", f) => self.apply_tag_entry(e, f)?,
             ("tag_delete", f) => self.apply_tag_entry(e, !f)?,
+            ("shared_stash_branch", forward) => self.apply_shared_branch_entry(e, forward)?,
             ("stash_push", false) => self.undo_stash_push(e)?,
             ("stash_drop", false) => self.undo_stash_drop(e)?,
             ("stash_drop", true) => self.redo_stash_drop(e)?,

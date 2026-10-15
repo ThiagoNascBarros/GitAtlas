@@ -103,10 +103,21 @@ impl Git {
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
+        self.run_with_input_env(repo, args, input, &[])
+    }
+
+    /// [`run_with_input`](Self::run_with_input) with extra environment variables
+    /// (e.g. `GIT_AUTHOR_NAME` for `commit-tree` when the user has no `user.name`).
+    pub fn run_with_input_env<I, S>(&self, repo: &Path, args: I, input: &[u8], env: &[(String, String)]) -> Result<Vec<u8>, GitError>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
         use std::io::Write;
         let args: Vec<_> = args.into_iter().map(|a| a.as_ref().to_owned()).collect();
         let subcommand = args.first().map(|a| a.to_string_lossy().into_owned()).unwrap_or_default();
         let mut cmd = self.command(repo, &args)?;
+        cmd.envs(env.iter().map(|(k, v)| (k, v)));
         cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
         let mut child = cmd.spawn()?;
         // Write on a thread so a large input cannot deadlock against git's output pipes.
