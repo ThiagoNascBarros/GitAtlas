@@ -4,7 +4,7 @@ import { api } from "../../api";
 import { t } from "../../i18n";
 import { useOverlay } from "../overlay";
 
-const KEEP = 50;
+const DEFAULT_KEEP = 50;
 
 /** Operation journal: what AtlasKraken did, with the exact Git commands, plus opt-in cleanup. */
 export function JournalPanel(props: { repoId: number; onClose: () => void; onError: (e: unknown) => void }) {
@@ -12,12 +12,13 @@ export function JournalPanel(props: { repoId: number; onClose: () => void; onErr
   let close: HTMLButtonElement | undefined;
   useOverlay(() => props.onClose(), () => close);
   const [confirm, setConfirm] = createSignal(false);
+  const [keep, setKeep] = createSignal(DEFAULT_KEEP);
   async function prune() {
     // Pruning cannot be undone: ask for a second click.
     if (!confirm()) return setConfirm(true);
     setConfirm(false);
     try {
-      await api.pruneJournal(props.repoId, KEEP);
+      await api.pruneJournal(props.repoId, keep());
       refetch();
     } catch (e) {
       props.onError(e);
@@ -44,8 +45,12 @@ export function JournalPanel(props: { repoId: number; onClose: () => void; onErr
           </ul>
         </Show>
         <div class="modal-actions">
-          <button classList={{ danger: confirm() }} onClick={prune} onBlur={() => setConfirm(false)} title={t("journal.pruneTitle", { n: KEEP })}>
-            {confirm() ? t("journal.pruneConfirm") : t("journal.prune", { n: KEEP })}
+          <label class="muted">{t("journal.keep")}{" "}
+            <input type="number" min="0" step="1" value={keep()} style={{ width: "5em" }}
+              onInput={(e) => { setConfirm(false); setKeep(Math.max(0, Math.floor(Number(e.currentTarget.value) || 0))); }} />
+          </label>
+          <button classList={{ danger: confirm() }} onClick={prune} onBlur={() => setConfirm(false)} title={t("journal.pruneTitle", { n: keep() })}>
+            {confirm() ? t("journal.pruneConfirm") : t("journal.prune", { n: keep() })}
           </button>
           <button ref={close} class="primary" onClick={props.onClose}>{t("journal.close")}</button>
         </div>
