@@ -135,7 +135,7 @@ Updated by the coordinator.
 
 | Agent | Phase | Status | Branch / commit |
 |---|---|---|---|
-| — | `i18n-pt-br` | waiting | — |
-| — | `packaging` | waiting | — |
+| agent `i18n-pt-br` (worktree) | `i18n-pt-br` | running | — |
+| agent `packaging` (worktree) | `packaging` | running | — |
 | — | `accessibility` | waiting (needs `i18n-pt-br`) | — |
 | — | `release-docs` | waiting (needs all) | — |
