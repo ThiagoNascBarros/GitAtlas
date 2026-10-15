@@ -2,7 +2,7 @@
 // Canvas commit graph (roadmap T1.8): virtualized rows, lanes, refs,
 // selection, keyboard navigation and an accessible shadow of the selection.
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
-import { api, FLAG_MERGE, GraphRow, OpenedRepo, RefInfo, RowMeta, SEG_IN, SEG_OUT, SEG_PASS } from "../../api";
+import { api, FLAG_MERGE, GraphRow, OpenedRepo, RefInfo, RowMeta, SEG_IN, SEG_OUT, SEG_PASS, SharedStashInfo } from "../../api";
 import { activeTheme, laneColor, token } from "../../theme/theme";
 import { t } from "../../i18n";
 
@@ -31,6 +31,8 @@ export function GraphView(props: {
   onSelect: (row: number, sha: string) => void;
   /** Right-click on a row (the row is selected first). */
   onMenu?: (sha: string, x: number, y: number) => void;
+  /** Shared stashes by base commit; a glyph is drawn on those rows (view toggle off: undefined). */
+  shared?: Map<string, SharedStashInfo[]>;
 }) {
   let scroller!: HTMLDivElement;
   let canvas!: HTMLCanvasElement;
@@ -176,6 +178,28 @@ export function GraphView(props: {
       }
       // Ref labels
       let rx = 8;
+      const sharedHere = props.shared?.get(r.m.sha);
+      if (sharedHere && widths().refs > 48) {
+        const count = sharedHere.length > 1 ? String(sharedHere.length) : "";
+        const tw = 26 + (count ? ctx.measureText(count).width + 4 : 0);
+        ctx.fillStyle = token("color.bg.raised");
+        ctx.fillRect(rx, y + 4, tw, ROW_H - 8);
+        ctx.strokeStyle = token("color.accent.default");
+        ctx.lineWidth = 1;
+        ctx.strokeRect(rx + 0.5, y + 4.5, tw - 1, ROW_H - 9);
+        // Tray with an arrow leaving it: "shared out of this commit".
+        const ax = rx + 13, ay = cy;
+        ctx.beginPath();
+        ctx.moveTo(ax, ay + 3); ctx.lineTo(ax, ay - 5);
+        ctx.moveTo(ax - 3.5, ay - 1.5); ctx.lineTo(ax, ay - 5); ctx.lineTo(ax + 3.5, ay - 1.5);
+        ctx.moveTo(ax - 5, ay + 6); ctx.lineTo(ax + 5, ay + 6);
+        ctx.stroke();
+        if (count) {
+          ctx.fillStyle = token("color.accent.default");
+          ctx.fillText(count, rx + 22, cy);
+        }
+        rx += tw + 4;
+      }
       for (const ref of refs.get(i) ?? []) {
         const label = refLabel(ref);
         const tw = Math.min(ctx.measureText(label).width + 12, widths().refs - rx - 8);
@@ -306,7 +330,7 @@ export function GraphView(props: {
         </div>
       )}
       <div class="sr-only" aria-live="polite" role="status">
-        {selectedMeta() ? `${selectedMeta()!.summary}, ${selectedMeta()!.author}, ${selectedMeta()!.sha.slice(0, 7)}` : ""}
+        {selectedMeta() ? `${selectedMeta()!.summary}, ${selectedMeta()!.author}, ${selectedMeta()!.sha.slice(0, 7)}${(props.shared?.get(selectedMeta()!.sha) ?? []).map((x) => `, ${t("ss.glyphTitle", { s: x.title })}`).join("")}` : ""}
       </div>
     </div>
   );
