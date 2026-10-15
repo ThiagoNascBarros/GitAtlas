@@ -334,3 +334,61 @@ fn redo_discard_discards_again() {
     assert_eq!(git(&d, &["status", "--porcelain"]), "");
     assert!(!d.join("u.txt").exists());
 }
+
+#[test]
+fn hunk_staging_keeps_crlf_bytes() {
+    let d = repo();
+    let e = engine(&d);
+    let base: String = (1..=30).map(|i| format!("line{i}\r\n")).collect();
+    write(&d, "w.txt", &base);
+    git(&d, &["config", "core.autocrlf", "false"]);
+    stage(&e, &["w.txt"]);
+    commit(&e, "base", false);
+    write(&d, "w.txt", &base.replace("line2\r\n", "LINE2\r\n").replace("line29\r\n", "LINE29\r\n"));
+    e.run(&Operation::StageHunk { path: "w.txt".into(), hunk: 0, unstage: false }).unwrap();
+    let cached = Command::new("git").arg("-C").arg(&d).args(["diff", "--cached"]).output().unwrap().stdout;
+    let cached = String::from_utf8_lossy(&cached);
+    assert!(cached.contains("+LINE2\r\n") && !cached.contains("LINE29"));
+}
+
+#[test]
+fn engine_opens_in_a_linked_worktree_and_stages() {
+    let d = repo();
+    let e = engine(&d);
+    write(&d, "a.txt", "1");
+    stage(&e, &["a.txt"]);
+    commit(&e, "base", false);
+    let wt = d.with_file_name(format!("{}-wt", d.file_name().unwrap().to_string_lossy()));
+    let _ = std::fs::remove_dir_all(&wt);
+    git(&d, &["worktree", "add", "-q", "-b", "side", wt.to_str().unwrap()]);
+    let we = engine(&wt);
+    write(&wt, "b.txt", "2");
+    stage(&we, &["b.txt"]);
+    assert_eq!(git(&wt, &["diff", "--cached", "--name-only"]), "b.txt");
+    assert_eq!(we.journal().len(), 0);
+}
+
+#[test]
+fn symlink_discard_is_refused_and_conflicted_file_can_be_resolved() {
+    let d = repo();
+    let e = engine(&d);
+    write(&d, "a.txt", "base\n");
+    stage(&e, &["a.txt"]);
+    commit(&e, "base", false);
+    git(&d, &["checkout", "-q", "-b", "other"]);
+    write(&d, "a.txt", "other\n");
+    git(&d, &["commit", "-qam", "other"]);
+    git(&d, &["checkout", "-q", "main"]);
+    write(&d, "a.txt", "main\n");
+    git(&d, &["commit", "-qam", "main"]);
+    let _ = Command::new("git").arg("-C").arg(&d).args(["merge", "other"]).output().unwrap();
+    assert!(git(&d, &["status", "--porcelain"]).starts_with("UU"));
+    write(&d, "a.txt", "resolved\n");
+    stage(&e, &["a.txt"]);
+    assert_eq!(git(&d, &["status", "--porcelain"]), "M  a.txt");
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink("a.txt", d.join("link")).unwrap();
+        assert_eq!(code(e.run(&Operation::Discard { paths: vec!["link".into()] })), "UNSUPPORTED_PATH");
+    }
+}
