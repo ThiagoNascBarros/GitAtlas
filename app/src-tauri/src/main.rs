@@ -14,7 +14,7 @@ use std::time::Duration;
 use ak_core::cache;
 use ak_core::graph::{self, Layout, Topology};
 use ak_core::ops::journal::JournalEntry;
-use ak_core::ops::{ConflictVersions, MergePreview, StashInfo};
+use ak_core::ops::{ConflictVersions, MergePreview, StashInfo, TodoItem};
 use ak_core::ops::{Engine, OpError, OpOutcome, Operation};
 use ak_core::read::{CliReader, CommitDetails, RepoReader, RowText};
 use ak_core::read_gix::GixReader;
@@ -521,6 +521,22 @@ async fn op_history(repo_id: u32, action: String, sha: String, mode: Option<Stri
 }
 
 #[tauri::command]
+async fn rebase_todo(repo_id: u32, onto: String, state: State<'_, AppState>) -> Result<Vec<TodoItem>> {
+    let r = get(&state, repo_id)?;
+    Ok(engine(&r)?.rebase_todo(&onto)?)
+}
+
+#[tauri::command]
+async fn op_rebase(repo_id: u32, onto: String, todo: Option<Vec<TodoItem>>, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::Rebase { onto, todo })
+}
+
+#[tauri::command]
+async fn op_rebase_continue(repo_id: u32, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::RebaseContinue)
+}
+
+#[tauri::command]
 async fn op_undo(repo_id: u32, id: String, state: State<'_, AppState>) -> Result<OpOutcome> {
     let r = get(&state, repo_id)?;
     Ok(engine(&r)?.undo(&id)?)
@@ -584,6 +600,9 @@ fn main() {
             op_history,
             op_net,
             credentials_answer,
+            rebase_todo,
+            op_rebase,
+            op_rebase_continue,
             op_undo,
             op_redo,
             journal_list,

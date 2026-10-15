@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Right-click menu on a graph row: history operations on that commit (Phase 4).
 import { createSignal, onMount, Show } from "solid-js";
-import { Check, Copy, GitBranchPlus, Redo2, RotateCcw, Tag, Undo2 } from "lucide-solid";
+import { Check, Copy, ListOrdered, GitBranchPlus, Redo2, RotateCcw, Tag, Undo2 } from "lucide-solid";
 import { api } from "../../api";
 import { t } from "../../i18n";
 import { menuKeys, useOverlay } from "../overlay";
@@ -10,7 +10,7 @@ import { NameDialog } from "../refs/NameDialog";
 export interface CommitMenuState { x: number; y: number; sha: string }
 type Run = (op: () => Promise<unknown>, opts?: { graph?: boolean; toast?: string }) => Promise<boolean>;
 
-export function CommitMenu(props: { repoId: number; menu: CommitMenuState; run: Run; onClose: () => void; onToast: (s: string) => void }) {
+export function CommitMenu(props: { repoId: number; menu: CommitMenuState; run: Run; onClose: () => void; onToast: (s: string) => void; onRebase: (onto: string) => void }) {
   const sha = () => props.menu.sha;
   const short = () => sha().slice(0, 7);
   const [ask, setAsk] = createSignal<"branch" | "tag" | null>(null);
@@ -51,6 +51,7 @@ export function CommitMenu(props: { repoId: number; menu: CommitMenuState; run: 
           {item(() => <RotateCcw size={14} aria-hidden="true" />, t("commitmenu.resetHard"), () => reset("hard"))}
           {item(() => <GitBranchPlus size={14} aria-hidden="true" />, t("commitmenu.newBranch"), () => setAsk("branch"))}
           {item(() => <Tag size={14} aria-hidden="true" />, t("commitmenu.tag"), () => setAsk("tag"))}
+          {item(() => <ListOrdered size={14} aria-hidden="true" />, t("commitmenu.rebaseInteractive"), () => { props.onClose(); props.onRebase(sha()); })}
           {item(() => <Check size={14} aria-hidden="true" />, t("commitmenu.checkout"), () => go(() => api.checkout(props.repoId, sha(), false), t("toast.checkedOutDetached", { s: short() })))}
           {item(() => <Copy size={14} aria-hidden="true" />, t("commitmenu.copySha"), () => { props.onClose(); void navigator.clipboard?.writeText(sha()).then(() => props.onToast(t("toast.copied", { s: short() }))); })}
         </menu>

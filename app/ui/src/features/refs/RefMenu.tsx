@@ -18,7 +18,7 @@ function mergeText(p: MergePreview): string {
   return p.conflicts.length ? t("merge.conflicts") : t("merge.clean");
 }
 
-export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; onClose: () => void; onError: (e: unknown) => void }) {
+export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; onClose: () => void; onError: (e: unknown) => void; onRebase: (onto: string) => void }) {
   const r = () => props.menu.ref;
   const local = () => r().kind === "head";
   const [ask, setAsk] = createSignal<"new" | "rename" | "merge" | null>(props.menu.merge ? "merge" : null);
@@ -69,6 +69,8 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
             </Show>
             <Show when={!r().isHead && r().kind !== "tag"}>
               <li role="none"><button role="menuitem" onClick={() => setAsk("merge")}><GitMerge size={14} aria-hidden="true" />{t("refmenu.merge")}</button></li>
+              <li role="none"><button role="menuitem" onClick={() => go(() => api.rebase(props.repoId, r().name), t("toast.rebased"))}><GitMerge size={14} aria-hidden="true" />{t("refmenu.rebase")}</button></li>
+              <li role="none"><button role="menuitem" onClick={() => { props.onClose(); props.onRebase(r().name); }}><GitMerge size={14} aria-hidden="true" />{t("refmenu.rebaseInteractive")}</button></li>
             </Show>
             <Show when={r().kind === "tag"}>
               <li role="none"><button role="menuitem" onClick={() => go(() => api.history(props.repoId, "tag-delete", "", { name: r().name }), t("toast.tagDeleted", { s: r().name }))}><Trash2 size={14} aria-hidden="true" />{t("refmenu.deleteTag")}</button></li>

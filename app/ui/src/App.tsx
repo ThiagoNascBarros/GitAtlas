@@ -10,6 +10,7 @@ import { setTheme, themeChoice, ThemeChoice } from "./theme/theme";
 import { errorFix, errorText, t } from "./i18n";
 import { StashPanel } from "./features/stash/StashPanel";
 import { CommitMenu, CommitMenuState } from "./features/graph/CommitMenu";
+import { RebaseEditor } from "./features/rebase/RebaseEditor";
 import { RefMenu, RefMenuState } from "./features/refs/RefMenu";
 import { JournalPanel } from "./features/journal/JournalPanel";
 import { NameDialog } from "./features/refs/NameDialog";
@@ -41,6 +42,7 @@ export function App() {
   const [toast, setToast] = createSignal<Toast | null>(null);
   const [refFilter, setRefFilter] = createSignal("");
   const [refMenu, setRefMenu] = createSignal<RefMenuState | null>(null);
+  const [rebaseOnto, setRebaseOnto] = createSignal<string | null>(null);
   const [commitMenu, setCommitMenu] = createSignal<CommitMenuState | null>(null);
   const [creds, setCreds] = createSignal<CredentialsRequest[]>([]);
   const [netBusy, setNetBusy] = createSignal<string | null>(null);
@@ -471,16 +473,20 @@ export function App() {
           <button class="mini" onClick={() => setError(null)}>{t("err.dismiss")}</button>
         </div>
       </Show>
+      <Show when={tab() && rebaseOnto()} keyed>
+        {(onto) => <RebaseEditor repoId={tab()!.repo.repoId} onto={onto} label={/^[0-9a-f]{40}$/.test(onto) ? onto.slice(0, 7) : onto}
+          run={run} onClose={() => setRebaseOnto(null)} onError={(e) => fail(e)} />}
+      </Show>
       <Show when={tab() && commitMenu()} keyed>
         {(m) => <CommitMenu repoId={tab()!.repo.repoId} menu={m} run={run} onClose={() => setCommitMenu(null)}
-          onToast={(text) => setToast({ text, repoId: tab()!.repo.repoId, undoId: null })} />}
+          onToast={(text) => setToast({ text, repoId: tab()!.repo.repoId, undoId: null })} onRebase={setRebaseOnto} />}
       </Show>
       <Show when={creds()[0]} keyed>
         {(c) => <NameDialog label={c.prompt || t("creds.title")} secret={c.secret} onSubmit={(v) => answerCreds(c.id, v)} onCancel={() => answerCreds(c.id, null)} />}
       </Show>
       {/* Keyed: the menu's actions still read their ref after closing it (refMenu() is null by then). */}
       <Show when={tab() && refMenu()} keyed>
-        {(m) => <RefMenu repoId={tab()!.repo.repoId} menu={m} run={run} onClose={() => setRefMenu(null)} onError={(e) => fail(e)} />}
+        {(m) => <RefMenu repoId={tab()!.repo.repoId} menu={m} run={run} onClose={() => setRefMenu(null)} onError={(e) => fail(e)} onRebase={setRebaseOnto} />}
       </Show>
       <Show when={tab() && askName()} keyed>
         {(kind) => {

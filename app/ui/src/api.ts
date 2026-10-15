@@ -20,6 +20,7 @@ export interface StatusEntry {
 export interface StatusReport { branch: string | null; oid: string | null; entries: StatusEntry[]; merging?: boolean; in_progress?: string | null; upstream?: string | null; ahead?: number; behind?: number }
 export interface MergePreview { up_to_date: boolean; fast_forward: boolean; conflicts: string[] | null }
 export interface ConflictVersions { base: string | null; ours: string | null; theirs: string | null; merged: string }
+export interface TodoItem { sha: string; action: "pick" | "reword" | "squash" | "fixup" | "drop"; message: string }
 export interface StashInfo { index: number; sha: string; message: string; time: number }
 export interface OpOutcome { id: string | null; head: string | null; conflicted?: boolean }
 export interface JournalEntry {
@@ -56,6 +57,9 @@ export const api = {
     invoke<OpOutcome>("op_history", { repoId, action, sha, mode: opts.mode ?? null, name: opts.name ?? null }),
   net: (repoId: number, action: "fetch" | "pull" | "push", force = false) => invoke<OpOutcome>("op_net", { repoId, action, force }),
   credentialsAnswer: (id: number, value: string | null) => invoke<void>("credentials_answer", { id, value }),
+  rebaseTodo: (repoId: number, onto: string) => invoke<TodoItem[]>("rebase_todo", { repoId, onto }),
+  rebase: (repoId: number, onto: string, todo: TodoItem[] | null = null) => invoke<OpOutcome>("op_rebase", { repoId, onto, todo }),
+  rebaseContinue: (repoId: number) => invoke<OpOutcome>("op_rebase_continue", { repoId }),
   undo: (repoId: number, id: string) => invoke<OpOutcome>("op_undo", { repoId, id }),
   redo: (repoId: number) => invoke<OpOutcome>("op_redo", { repoId }),
   journal: (repoId: number) => invoke<JournalEntry[]>("journal_list", { repoId }),
