@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // File diff: unified (hunk) or split view (roadmap T1.9).
+import { X } from "lucide-solid";
 import { createResource, createSignal, For, Show } from "solid-js";
 import { api } from "../../api";
 import { t } from "../../i18n";
@@ -28,7 +29,7 @@ export function DiffView(props: { repoId: number; source: DiffSource; path: stri
           <button aria-pressed={mode() === "unified"} onClick={() => setMode("unified")}>{t("diff.unified")}</button>
           <button aria-pressed={mode() === "split"} onClick={() => setMode("split")}>{t("diff.split")}</button>
         </div>
-        <button class="icon" onClick={props.onClose} aria-label={t("diff.close")}>✕</button>
+        <button class="icon" onClick={props.onClose} aria-label={t("diff.close")}><X size={16} /></button>
       </header>
       <div class="diff-body">
         <Show when={!patch.loading} fallback={<p class="muted">{t("loading")}</p>}>

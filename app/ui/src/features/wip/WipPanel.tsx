@@ -4,6 +4,7 @@ import { createEffect, createMemo, createSignal, For, on, Show } from "solid-js"
 import { api, OpenedRepo, StatusReport, UiError } from "../../api";
 import { t } from "../../i18n";
 import { groupStatus, WipItem } from "./status";
+import { Check, FileCheck2, FilePen, Minus, Plus, TriangleAlert, X } from "lucide-solid";
 
 export interface WipFile { path: string; staged: boolean; untracked: boolean }
 
@@ -78,13 +79,13 @@ export function WipPanel(props: {
       </button>
       <span class="row-actions">
         <Show when={!staged}>
-          <button class="mini" onClick={() => props.run(() => api.stage(id, [item.path]))}>{t("wip.stage")}</button>
+          <button class="mini" onClick={() => props.run(() => api.stage(id, [item.path]))}><Plus size={14} aria-hidden="true" />{t("wip.stage")}</button>
           <button class="mini danger" onClick={() => discard(item)}>
             {confirm() === item.path ? t("wip.discardConfirm") : t("wip.discard")}
           </button>
         </Show>
         <Show when={staged}>
-          <button class="mini" onClick={() => props.run(() => api.unstage(id, [item.path]))}>{t("wip.unstage")}</button>
+          <button class="mini" onClick={() => props.run(() => api.unstage(id, [item.path]))}><Minus size={14} aria-hidden="true" />{t("wip.unstage")}</button>
         </Show>
       </span>
     </li>
@@ -95,12 +96,12 @@ export function WipPanel(props: {
       <Show when={props.status?.merging}>
         <div class="merge-banner" role="alert">
           <span>{t("merge.banner")}</span>
-          <button class="mini danger" onClick={() => void props.run(() => api.mergeAbort(id), { graph: true, toast: t("toast.mergeAborted") })}>{t("merge.abort")}</button>
+          <button class="mini danger" onClick={() => void props.run(() => api.mergeAbort(id), { graph: true, toast: t("toast.mergeAborted") })}><X size={14} aria-hidden="true" />{t("merge.abort")}</button>
         </div>
       </Show>
       <Show when={groups().conflicted.length}>
         <section>
-          <h3>{t("wip.conflicts")} <span class="muted">{groups().conflicted.length}</span></h3>
+          <h3><TriangleAlert size={14} aria-hidden="true" />{t("wip.conflicts")} <span class="muted">{groups().conflicted.length}</span></h3>
           <ul class="files wip-list"><For each={groups().conflicted}>{(i) => <li>
             <span class="st st-conflict">U</span><span class="path">{i.path}</span>
             <button class="mini" onClick={() => void props.run(() => api.resolve(id, i.path, false))}>{t("merge.ours")}</button>
@@ -110,18 +111,18 @@ export function WipPanel(props: {
       </Show>
       <section>
         <div class="files-head">
-          <h3>{t("wip.unstaged")} <span class="muted">{groups().unstaged.length}</span></h3>
+          <h3><FilePen size={14} aria-hidden="true" />{t("wip.unstaged")} <span class="muted">{groups().unstaged.length}</span></h3>
           <Show when={groups().unstaged.length}>
-            <button class="mini" onClick={() => props.run(() => api.stage(id, groups().unstaged.map((i) => i.path)))}>{t("wip.stageAll")}</button>
+            <button class="mini" onClick={() => props.run(() => api.stage(id, groups().unstaged.map((i) => i.path)))}><Plus size={14} aria-hidden="true" />{t("wip.stageAll")}</button>
           </Show>
         </div>
         <ul class="files wip-list"><For each={groups().unstaged} fallback={<li class="muted pad-s">{t("wip.empty")}</li>}>{(i) => row(i, false)}</For></ul>
       </section>
       <section>
         <div class="files-head">
-          <h3>{t("wip.staged")} <span class="muted">{groups().staged.length}</span></h3>
+          <h3><FileCheck2 size={14} aria-hidden="true" />{t("wip.staged")} <span class="muted">{groups().staged.length}</span></h3>
           <Show when={groups().staged.length}>
-            <button class="mini" onClick={() => props.run(() => api.unstage(id, groups().staged.map((i) => i.path)))}>{t("wip.unstageAll")}</button>
+            <button class="mini" onClick={() => props.run(() => api.unstage(id, groups().staged.map((i) => i.path)))}><Minus size={14} aria-hidden="true" />{t("wip.unstageAll")}</button>
           </Show>
         </div>
         <ul class="files wip-list"><For each={groups().staged} fallback={<li class="muted pad-s">{t("wip.empty")}</li>}>{(i) => row(i, true)}</For></ul>
@@ -159,7 +160,7 @@ export function WipPanel(props: {
           {t("wip.amend")}
         </label>
         <button type="submit" class="primary wide" disabled={!canCommit()}>
-          {amend() ? t("wip.commitAmend") : t("wip.commit")}
+          <Check size={16} aria-hidden="true" />{amend() ? t("wip.commitAmend") : t("wip.commit")}
         </button>
       </form>
     </div>

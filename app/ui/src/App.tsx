@@ -17,6 +17,9 @@ import { WipFile, WipPanel } from "./features/wip/WipPanel";
 import { changeCount, groupStatus } from "./features/wip/status";
 import { toTreeRows } from "./features/files/tree";
 import { markOpenStart, togglePerf } from "./features/graph/perf";
+import { Archive, Clock, Plus, Cloud, Files, Folder, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Laptop, List, ListTree, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X } from "lucide-solid";
+import { Dynamic } from "solid-js/web";
+import { Splitter, storedSize } from "./features/split/Splitter";
 
 interface Tab {
   repo: OpenedRepo; selected: number | null; sha: string | null; diffPath: string | null;
@@ -27,6 +30,9 @@ interface Tab {
 interface Toast { text: string; repoId: number; undoId: string | null }
 
 export function App() {
+  const [leftW, setLeftW, saveLeftW] = storedSize("left", 232);
+  const [rightW, setRightW, saveRightW] = storedSize("right", 360);
+  const [diffH, setDiffH, saveDiffH] = storedSize("diff", 320);
   const [tabs, setTabs] = createSignal<Tab[]>([]);
   const [active, setActive] = createSignal(0);
   const [error, setError] = createSignal<UiError | null>(null);
@@ -193,45 +199,53 @@ export function App() {
 
   return (
     <div class="app">
-      <nav class="tabbar" role="tablist" aria-label={t("tabs.label")}>
-        <For each={tabs()}>
-          {(x, i) => (
-            <div class="tab" role="tab" aria-selected={i() === active()} classList={{ active: i() === active() }}>
-              <button class="tab-name" onClick={() => setActive(i())}>{x.repo.name}</button>
-              <button class="icon" aria-label={t("tabs.close", { s: x.repo.name })} onClick={() => closeTab(i())}>✕</button>
-            </div>
-          )}
-        </For>
-        <button class="icon tab-add" aria-label={t("open.button")} onClick={pick}>＋</button>
-      </nav>
-
       <header class="toolbar">
         <div class="crumb">
-          <strong>{tab()?.repo.name ?? t("app.name")}</strong>
-          <Show when={tab()?.repo.branch}><span class="muted">›</span><span>{tab()!.repo.branch}</span></Show>
+          <Show when={tabs().length} fallback={<strong class="repo">{t("app.name")}</strong>}>
+            <nav class="tabs" role="tablist" aria-label={t("tabs.label")}>
+              <For each={tabs()}>
+                {(x, i) => (
+                  <div class="tab" role="tab" aria-selected={i() === active()} classList={{ active: i() === active() }}>
+                    <button class="tab-name repo" onClick={() => setActive(i())}>{x.repo.name}</button>
+                    <button class="icon" aria-label={t("tabs.close", { s: x.repo.name })} onClick={() => closeTab(i())}><X size={14} /></button>
+                  </div>
+                )}
+              </For>
+              <button class="icon tab-add" title={t("open.button")} aria-label={t("open.button")} onClick={pick}><Plus size={16} /></button>
+            </nav>
+          </Show>
+          <Show when={tab()?.repo.branch}>
+            <span class="branch" title={tab()!.repo.branch!}><GitBranch size={14} aria-hidden="true" />{tab()!.repo.branch}</span>
+          </Show>
+          <Show when={tab()?.repo.readOnlyReason}><span class="badge">{t("toolbar.readOnly")}</span></Show>
         </div>
-        <Show when={tab()?.repo.readOnlyReason}><span class="badge">{t("toolbar.readOnly")}</span></Show>
-        <button class="tool" disabled={!tab()} title={t("toolbar.undoTitle")} onClick={() => undo(tab().repo.repoId, null)}>↶ {t("toolbar.undo")}</button>
-        <button class="tool" disabled={!tab()} title={t("toolbar.redoTitle")} onClick={() => redo(tab().repo.repoId)}>↷ {t("toolbar.redo")}</button>
-        <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.stashTitle")}
-          onClick={() => setAskName("stash")}>{t("toolbar.stash")}</button>
-        <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.newBranchTitle")} onClick={() => setAskName("branch")}>{t("toolbar.newBranch")}</button>
-        <button class="tool" disabled={!tab()} title={t("toolbar.journalTitle")} onClick={() => setShowJournal(true)}>{t("toolbar.journal")}</button>
-        <label class="theme-pick">
-          {t("toolbar.theme")}
-          <select value={themeChoice()} onChange={(e) => setTheme(e.currentTarget.value as ThemeChoice)}>
-            <option value="system">{t("theme.system")}</option>
-            <option value="atlas-dark">{t("theme.dark")}</option>
-            <option value="atlas-light">{t("theme.light")}</option>
-          </select>
-        </label>
-        <button class="primary" onClick={pick}>{t("open.button")}</button>
+        <div class="group">
+          <button class="tool" disabled={!tab()} title={t("toolbar.undoTitle")} onClick={() => undo(tab().repo.repoId, null)}><Undo2 size={16} /><span class="lbl">{t("toolbar.undo")}</span></button>
+          <button class="tool" disabled={!tab()} title={t("toolbar.redoTitle")} onClick={() => redo(tab().repo.repoId)}><Redo2 size={16} /><span class="lbl">{t("toolbar.redo")}</span></button>
+        </div>
+        <div class="group">
+          <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.newBranchTitle")} onClick={() => setAskName("branch")}><GitBranchPlus size={16} /><span class="lbl">{t("toolbar.newBranch")}</span></button>
+          <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.stashTitle")}
+            onClick={() => setAskName("stash")}><Archive size={16} /><span class="lbl">{t("toolbar.stash")}</span></button>
+        </div>
+        <div class="group">
+          <button class="tool" disabled={!tab()} title={t("toolbar.journalTitle")} onClick={() => setShowJournal(true)}><History size={16} /><span class="lbl">{t("toolbar.journal")}</span></button>
+          <label class="theme-pick" title={t("toolbar.theme")}>
+            <SunMoon size={16} aria-hidden="true" /><span class="sr-only">{t("toolbar.theme")}</span>
+            <select value={themeChoice()} onChange={(e) => setTheme(e.currentTarget.value as ThemeChoice)}>
+              <option value="system">{t("theme.system")}</option>
+              <option value="atlas-dark">{t("theme.dark")}</option>
+              <option value="atlas-light">{t("theme.light")}</option>
+            </select>
+          </label>
+        </div>
       </header>
 
       <Show
         when={tab()}
         fallback={
           <main class="empty">
+            <FolderGit2 size={48} stroke-width={1.25} class="muted" aria-hidden="true" />
             <h1>{t("open.title")}</h1>
             <p class="muted">{t("open.hint")}</p>
             <Show when={error()}>
@@ -241,17 +255,17 @@ export function App() {
           </main>
         }
       >
-        <div class="body">
+        <div class="body" style={{ "--left-w": `${leftW()}px`, "--right-w": `${rightW()}px` }}>
           <aside class="left" aria-label={t("panel.refs")}>
-            <input class="ref-filter" type="search" placeholder={t("panel.filter")} aria-label={t("panel.filter")}
-              value={refFilter()} onInput={(e) => setRefFilter(e.currentTarget.value)} />
+            <div class="search"><Search size={14} aria-hidden="true" /><input class="ref-filter" type="search" placeholder={t("panel.filter")} aria-label={t("panel.filter")}
+              value={refFilter()} onInput={(e) => setRefFilter(e.currentTarget.value)} /></div>
             <For each={[["head", "panel.local"], ["remote", "panel.remote"], ["tag", "panel.tags"]] as const}>
               {([kind, label]) => {
                 const items = () => filterRefs(tab()!.repo.refs, kind, refFilter());
                 return (
                   <Show when={items().length}>
                     <details open={kind !== "remote" || !!refFilter()}>
-                    <summary><h2>{t(label)} <span class="muted">{items().length}</span></h2></summary>
+                    <summary><Dynamic component={{ head: Laptop, remote: Cloud, tag: Tags }[kind]} size={14} aria-hidden="true" /><h2>{t(label)} <span class="muted">{items().length}</span></h2></summary>
                     <ul>
                       <For each={items()}>
                         {(r) => (
@@ -264,7 +278,8 @@ export function App() {
                               onDblClick={() => r.kind === "head" && !r.isHead && void run(() => api.checkout(tab().repo.repoId, r.name, true), { graph: true, toast: t("toast.checkedOut", { s: r.name }) })}
                               onContextMenu={(e) => { e.preventDefault(); setRefMenu({ x: e.clientX, y: e.clientY, ref: r }); }}
                             >
-                              {r.name}
+                              <Dynamic component={r.kind === "tag" ? Tag : GitBranch} size={14} class="ref-icon" aria-hidden="true" />
+                              <span class="path">{r.name}</span>
                             </button>
                           </li>
                         )}
@@ -277,8 +292,9 @@ export function App() {
             </For>
             <StashPanel repoId={tab()!.repo.repoId} rev={tab()!.diffRev} run={run} />
           </aside>
+          <Splitter label={t("split.left")} axis="x" value={leftW()} min={140} max={420} onChange={setLeftW} onCommit={saveLeftW} />
 
-          <main class="center">
+          <main class="center" style={{ "--diff-h": `${diffH()}px` }}>
             <button
               class="wip-row"
               classList={{ active: tab()!.wip }}
@@ -289,32 +305,19 @@ export function App() {
                 {wipLabel()}
               </span>
             </button>
-            <Show
-              when={tab()!.wip && tab()!.wipFile}
-              fallback={
-                <Show
-                  when={tab()!.diffPath && tab()!.sha}
-                  fallback={
-                    <Show when={tab()!.graphRev} keyed>
-                      {(_) => (
-                        <GraphView
-                          repo={tab()!.repo}
-                          selected={tab()!.selected}
-                          onSelect={(row, sha) => patch({ selected: row, sha, diffPath: null, wip: false })}
-                        />
-                      )}
-                    </Show>
-                  }
-                >
-                  <DiffView
-                    repoId={tab()!.repo.repoId}
-                    source={{ kind: "commit", sha: tab()!.sha! }}
-                    path={tab()!.diffPath!}
-                    onClose={() => patch({ diffPath: null })}
-                  />
-                </Show>
-              }
-            >
+            <Show when={tab()!.graphRev} keyed>
+              {(_) => (
+                <GraphView
+                  repo={tab()!.repo}
+                  selected={tab()!.selected}
+                  onSelect={(row, sha) => patch({ selected: row, sha, diffPath: null, wip: false })}
+                />
+              )}
+            </Show>
+            <Show when={(tab()!.wip && tab()!.wipFile) || (!tab()!.wip && tab()!.diffPath && tab()!.sha)}>
+              <Splitter label={t("split.diff")} axis="y" dir={-1} value={diffH()} min={120} max={Math.max(160, innerHeight - 260)} onChange={setDiffH} onCommit={saveDiffH} />
+            </Show>
+            <Show when={tab()!.wip && tab()!.wipFile}>
               <DiffView
                 repoId={tab()!.repo.repoId}
                 path={tab()!.wipFile!.path}
@@ -328,8 +331,17 @@ export function App() {
                 onClose={() => patch({ wipFile: null })}
               />
             </Show>
+            <Show when={!tab()!.wip && tab()!.diffPath && tab()!.sha}>
+              <DiffView
+                repoId={tab()!.repo.repoId}
+                source={{ kind: "commit", sha: tab()!.sha! }}
+                path={tab()!.diffPath!}
+                onClose={() => patch({ diffPath: null })}
+              />
+            </Show>
           </main>
 
+          <Splitter label={t("split.right")} axis="x" dir={-1} value={rightW()} min={240} max={600} onChange={setRightW} onCommit={saveRightW} />
           <aside class="right" aria-label={t("details.label")}>
             <Show when={tab()!.wip}>
               <WipPanel
@@ -344,16 +356,17 @@ export function App() {
             <Show when={!tab()!.wip}><Show when={details()} fallback={<p class="muted pad">{t("details.select")}</p>}>
               {(d) => (
                 <div class="details">
-                  <p class="sha mono">{d().sha.slice(0, 10)}</p>
+                  <p class="sha mono"><GitCommitHorizontal size={14} aria-hidden="true" />{d().sha.slice(0, 10)}</p>
                   <h2 class="message">{d().message.split("\n")[0]}</h2>
                   <Show when={d().message.includes("\n")}><pre class="body-text">{d().message.split("\n").slice(1).join("\n").trim()}</pre></Show>
-                  <p class="meta">{d().author} · {new Date(d().time * 1000).toLocaleString()}</p>
-                  <p class="meta">{t("details.parents")}: <span class="mono">{d().parents.map((p) => p.slice(0, 7)).join(", ") || "—"}</span></p>
+                  <p class="meta"><User size={14} aria-hidden="true" />{d().author}</p>
+                  <p class="meta"><Clock size={14} aria-hidden="true" /><time datetime={new Date(d().time * 1000).toISOString()}>{new Date(d().time * 1000).toLocaleString()}</time></p>
+                  <p class="meta"><GitMerge size={14} aria-hidden="true" />{t("details.parents")}: <span class="mono">{d().parents.map((p) => p.slice(0, 7)).join(", ") || "—"}</span></p>
                   <div class="files-head">
-                    <h3>{t("details.files")} <span class="muted">{d().files.length}</span></h3>
+                    <h3><Files size={14} aria-hidden="true" />{t("details.files")} <span class="muted">{d().files.length}</span></h3>
                     <div class="seg" role="group" aria-label={t("files.view")}>
-                      <button aria-pressed={fileView() === "path"} onClick={() => setFileView("path")}>{t("files.path")}</button>
-                      <button aria-pressed={fileView() === "tree"} onClick={() => setFileView("tree")}>{t("files.tree")}</button>
+                      <button aria-pressed={fileView() === "path"} onClick={() => setFileView("path")}><List size={14} aria-hidden="true" />{t("files.path")}</button>
+                      <button aria-pressed={fileView() === "tree"} onClick={() => setFileView("tree")}><ListTree size={14} aria-hidden="true" />{t("files.tree")}</button>
                     </div>
                   </div>
                   <ul class="files">
@@ -375,7 +388,7 @@ export function App() {
                       <For each={toTreeRows(d().files)}>
                         {(r) =>
                           r.kind === "dir" ? (
-                            <li class="dir" style={{ "padding-left": `${8 + r.depth * 14}px` }}>▾ {r.name}</li>
+                            <li class="dir" style={{ "padding-left": `${8 + r.depth * 14}px` }}><Folder size={14} aria-hidden="true" /> {r.name}</li>
                           ) : (
                             <li>
                               <button
@@ -446,8 +459,8 @@ export function App() {
 
       <footer class="statusbar">
         <Show when={tab()}>
-          <span>{t("status.commits", { n: tab()!.repo.rowCount.toLocaleString() })}</span>
-          <span>{t("status.git", { v: tab()!.repo.gitVersion })}</span>
+          <span><GitCommitHorizontal size={14} aria-hidden="true" />{t("status.commits", { n: tab()!.repo.rowCount.toLocaleString() })}</span>
+          <span><Terminal size={14} aria-hidden="true" />{t("status.git", { v: tab()!.repo.gitVersion })}</span>
           <Show when={tab()!.repo.readOnlyReason}><span class="warn">{tab()!.repo.readOnlyReason}</span></Show>
         </Show>
       </footer>

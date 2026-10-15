@@ -14,6 +14,9 @@ importers:
       '@tauri-apps/plugin-dialog':
         specifier: ^2.8.2
         version: 2.8.2
+      lucide-solid:
+        specifier: 0.469.0
+        version: 0.469.0(solid-js@1.9.17)
       solid-js:
         specifier: ^1.9.17
         version: 1.9.17
@@ -661,6 +664,11 @@ packages:
 
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
+
+  lucide-solid@0.469.0:
+    resolution: {integrity: sha512-kBZl5AFg02g/wcwaapTwOwjHw0VvyyFmZm3BE6McKjs0GjiauWtjYbrhf2bCtDpScEtcinhIG/LpRExBlIV3fA==}
+    peerDependencies:
+      solid-js: ^1.4.7
 
   magic-string@1.4.3:
     resolution: {integrity: sha512-z12OxmaPGE0F4xlpGdjuAUckipLpQlTAuAmyGhNoD7ODpYUzvDfvtxUbjM/jwznyP178oju/KDdyi220wNJ0RQ==}
@@ -1328,6 +1336,10 @@ snapshots:
   lru-cache@5.1.1:
     dependencies:
       yallist: 3.1.1
+
+  lucide-solid@0.469.0(solid-js@1.9.17):
+    dependencies:
+      solid-js: 1.9.17
 
   magic-string@1.4.3:
     dependencies:
