@@ -11,6 +11,8 @@ import { errorFix, errorText, t } from "./i18n";
 import { StashPanel } from "./features/stash/StashPanel";
 import { RefMenu, RefMenuState } from "./features/refs/RefMenu";
 import { JournalPanel } from "./features/journal/JournalPanel";
+import { NameDialog } from "./features/refs/NameDialog";
+import { filterRefs } from "./features/refs/filter";
 import { WipFile, WipPanel } from "./features/wip/WipPanel";
 import { changeCount, groupStatus } from "./features/wip/status";
 import { toTreeRows } from "./features/files/tree";
@@ -33,6 +35,7 @@ export function App() {
   const [refFilter, setRefFilter] = createSignal("");
   const [refMenu, setRefMenu] = createSignal<RefMenuState | null>(null);
   const [showJournal, setShowJournal] = createSignal(false);
+  const [askName, setAskName] = createSignal<"branch" | "stash" | null>(null);
   const [showDetail, setShowDetail] = createSignal(false);
   let toastTimer: number | undefined;
   const tab = () => tabs()[active()];
@@ -209,7 +212,8 @@ export function App() {
         <button class="tool" disabled={!tab()} title={t("toolbar.undoTitle")} onClick={() => undo(tab().repo.repoId, null)}>↶ {t("toolbar.undo")}</button>
         <button class="tool" disabled={!tab()} title={t("toolbar.redoTitle")} onClick={() => redo(tab().repo.repoId)}>↷ {t("toolbar.redo")}</button>
         <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.stashTitle")}
-          onClick={() => void run(() => api.stash(tab().repo.repoId, "push"), { graph: true, toast: t("toast.stashed") })}>{t("toolbar.stash")}</button>
+          onClick={() => setAskName("stash")}>{t("toolbar.stash")}</button>
+        <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.newBranchTitle")} onClick={() => setAskName("branch")}>{t("toolbar.newBranch")}</button>
         <button class="tool" disabled={!tab()} title={t("toolbar.journalTitle")} onClick={() => setShowJournal(true)}>{t("toolbar.journal")}</button>
         <label class="theme-pick">
           {t("toolbar.theme")}
@@ -241,7 +245,7 @@ export function App() {
               value={refFilter()} onInput={(e) => setRefFilter(e.currentTarget.value)} />
             <For each={[["head", "panel.local"], ["remote", "panel.remote"], ["tag", "panel.tags"]] as const}>
               {([kind, label]) => {
-                const items = () => tab()!.repo.refs.filter((r) => r.kind === kind && r.name.toLowerCase().includes(refFilter().toLowerCase()));
+                const items = () => filterRefs(tab()!.repo.refs, kind, refFilter());
                 return (
                   <Show when={items().length}>
                     <details open={kind !== "remote" || !!refFilter()}>
@@ -408,6 +412,17 @@ export function App() {
       {/* Keyed: the menu's actions still read their ref after closing it (refMenu() is null by then). */}
       <Show when={tab() && refMenu()} keyed>
         {(m) => <RefMenu repoId={tab()!.repo.repoId} menu={m} run={run} onClose={() => setRefMenu(null)} onError={(e) => fail(e)} />}
+      </Show>
+      <Show when={tab() && askName()} keyed>
+        {(kind) => {
+          const repoId = tab()!.repo.repoId;
+          const done = (v: string) => {
+            setAskName(null);
+            if (kind === "stash") void run(() => api.stash(repoId, "push", 0, v || null), { graph: true, toast: t("toast.stashed") });
+            else void run(() => api.branchCreate(repoId, v, null), { graph: true, toast: t("toast.branchCreated", { s: v }) });
+          };
+          return <NameDialog label={kind === "stash" ? t("stash.messagePrompt") : t("refmenu.namePrompt")} optional={kind === "stash"} onSubmit={done} onCancel={() => setAskName(null)} />;
+        }}
       </Show>
       <Show when={showJournal() && tab()}>
         <JournalPanel repoId={tab()!.repo.repoId} onClose={() => setShowJournal(false)} onError={(e) => fail(e)} />

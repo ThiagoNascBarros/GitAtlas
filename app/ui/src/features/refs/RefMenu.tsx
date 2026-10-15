@@ -3,6 +3,7 @@ import { createEffect, createResource, createSignal, For, on, onMount, Show } fr
 import { api, RefInfo } from "../../api";
 import { t } from "../../i18n";
 import { menuKeys, useOverlay } from "../overlay";
+import { NameDialog } from "./NameDialog";
 
 export interface RefMenuState { x: number; y: number; ref: RefInfo }
 type Run = (op: () => Promise<unknown>, opts?: { graph?: boolean; toast?: string }) => Promise<boolean>;
@@ -13,11 +14,9 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
   const local = () => r().kind === "head";
   const [ask, setAsk] = createSignal<"new" | "rename" | "merge" | null>(null);
   const [preview] = createResource(() => (ask() === "merge" ? r().name : null), (src) => api.mergePreview(props.repoId, src).catch((e) => { props.onError(e); props.onClose(); return null; }));
-  const [name, setName] = createSignal("");
   const [pos, setPos] = createSignal({ x: props.menu.x, y: props.menu.y });
   let menuEl: HTMLMenuElement | undefined;
   let cancel: HTMLButtonElement | undefined;
-  let input: HTMLInputElement | undefined;
   useOverlay(() => props.onClose(), () => menuEl?.querySelector("button") ?? undefined);
   // Keep the menu inside the window when opened near the bottom or right edge.
   onMount(() => {
@@ -27,23 +26,23 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
   });
   createEffect(on(ask, (a) => {
     if (a === "merge") cancel?.focus();
-    else if (a) input?.select();
   }, { defer: true }));
 
   const go = (op: () => Promise<unknown>, toast: string) => {
     props.onClose();
     void props.run(op, { graph: true, toast });
   };
-  const submit = (e: Event) => {
-    e.preventDefault();
-    const n = name().trim();
-    if (!n) return;
+  const submit = (n: string) => {
     if (ask() === "new") go(() => api.branchCreate(props.repoId, n, r().name), t("toast.branchCreated", { s: n }));
     else go(() => api.branchRename(props.repoId, r().name, n), t("toast.branchRenamed", { s: n }));
   };
 
   return (
-    <div class="menu-back" classList={{ "modal-back": !!ask() }} onClick={props.onClose} onContextMenu={(e) => { e.preventDefault(); props.onClose(); }}>
+    <Show when={ask() !== "new" && ask() !== "rename"} fallback={
+      <NameDialog label={t("refmenu.namePrompt")} initial={ask() === "rename" ? r().name : ""} onSubmit={submit} onCancel={props.onClose} />
+    }>
+    {/* The merge dialog closes only via its buttons/Escape, like the name dialog. */}
+    <div class="menu-back" classList={{ "modal-back": !!ask() }} onClick={() => !ask() && props.onClose()} onContextMenu={(e) => { e.preventDefault(); if (!ask()) props.onClose(); }}>
       <Show
         when={ask()}
         fallback={
@@ -51,12 +50,15 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
             <Show when={local() && !r().isHead}>
               <li role="none"><button role="menuitem" onClick={() => go(() => api.checkout(props.repoId, r().name, true), t("toast.checkedOut", { s: r().name }))}>{t("refmenu.checkout")}</button></li>
             </Show>
+            <Show when={r().kind === "tag" || r().kind === "remote"}>
+              <li role="none"><button role="menuitem" onClick={() => go(() => api.checkout(props.repoId, r().name, false), t("toast.checkedOutDetached", { s: r().name }))}>{t("refmenu.checkoutDetached")}</button></li>
+            </Show>
             <Show when={!r().isHead && r().kind !== "tag"}>
               <li role="none"><button role="menuitem" onClick={() => setAsk("merge")}>{t("refmenu.merge")}</button></li>
             </Show>
-            <li role="none"><button role="menuitem" onClick={() => { setName(""); setAsk("new"); }}>{t("refmenu.newBranch")}</button></li>
+            <li role="none"><button role="menuitem" onClick={() => setAsk("new")}>{t("refmenu.newBranch")}</button></li>
             <Show when={local()}>
-              <li role="none"><button role="menuitem" onClick={() => { setName(r().name); setAsk("rename"); }}>{t("refmenu.rename")}</button></li>
+              <li role="none"><button role="menuitem" onClick={() => setAsk("rename")}>{t("refmenu.rename")}</button></li>
               <Show when={!r().isHead}>
                 <li role="none"><button role="menuitem" onClick={() => go(() => api.branchDelete(props.repoId, r().name, false), t("toast.branchDeleted", { s: r().name }))}>{t("refmenu.delete")}</button></li>
                 <li role="none"><button role="menuitem" onClick={() => go(() => api.branchDelete(props.repoId, r().name, true), t("toast.branchDeleted", { s: r().name }))}>{t("refmenu.forceDelete")}</button></li>
@@ -65,7 +67,7 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
           </menu>
         }
       >
-        <dialog open class="modal" aria-label={ask() === "merge" ? t("merge.title", { s: r().name }) : t("refmenu.namePrompt")} onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
+        <dialog open class="modal" aria-label={t("merge.title", { s: r().name })} onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
           <Show when={ask() === "merge"}>
             <h2>{t("merge.title", { s: r().name })}</h2>
             <Show when={preview()} fallback={<p class="muted">{t("loading")}</p>}>
@@ -84,20 +86,9 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
               </button>
             </div>
           </Show>
-          {/* Not `hidden`: `.modal form { display: grid }` would override it. */}
-          <Show when={ask() !== "merge"}>
-            <form onSubmit={submit}>
-              <label>{t("refmenu.namePrompt")}
-                <input ref={input} value={name()} onInput={(e) => setName(e.currentTarget.value)} />
-              </label>
-              <div class="modal-actions">
-                <button type="button" onClick={props.onClose}>{t("refmenu.cancel")}</button>
-                <button type="submit" class="primary" disabled={!name().trim()}>{t("refmenu.ok")}</button>
-              </div>
-            </form>
-          </Show>
         </dialog>
       </Show>
     </div>
+    </Show>
   );
 }
