@@ -23,10 +23,13 @@ Owner: Thiago (pt-BR speaker, Ubuntu, 7 GB RAM). Specs live in the Obsidian vaul
 ## Phase 2 close-out (done in this session)
 Done: `.git` path via `rev-parse --absolute-git-dir`; watcher skips gitignored top-level dirs; graph keeps scroll; journal view (`features/journal`) + `Engine::prune_journal` / `journal_prune` (opt-in); refs filter; tests for CRLF hunks, worktrees, conflicts, symlinks.
 Still open (owner): SonarCloud reliability finding on PR #2 (needs owner login) and manual test of the packaged app (stage, hunk, commit, amend, Undo/Redo, discard + Undo, external edit, missing identity).
-Deferred: watcher for dirs created after open and failure notice; graph selection kept on reload (needs a sha->row command); multi-select/drag, stage lines, WIP tree, resizable panels, discard-all, keyboard nav in WIP; tauri-driver e2e; pt-BR (Phase 5). Keep `devMock.ts` minimal.
+Deferred: graph selection kept on reload (needs a sha->row command); multi-select/drag, stage lines, WIP tree, resizable panels, discard-all, keyboard nav in WIP; tauri-driver e2e; pt-BR (Phase 5). Keep `devMock.ts` minimal.
 
 ## Phase 3 progress (`feature/branching-merge`)
 Core: `ops/{branch,merge,stash}.rs`; commands in `main.rs` (`op_branch_*`, `op_checkout`, `merge_preview`, `op_merge*`, `op_resolve`, `stash_list`, `op_stash`); UI: `features/{refs,stash}`, banner + ours/theirs in `features/wip`. Journal `args` holds undo/redo parameters for ref operations. Missing: drag-and-drop ref->ref, 3-pane conflict editor, stash rows in graph, Git < 2.38 conflict prediction, native menus. Manual test of the packaged app still pending.
+
+## Fixes after Phase 3 part 1 (`fix/ui-polish`, `fix/audit-gaps`)
+Ref-menu crash, Escape/focus handling (`features/overlay.ts`), dialog/theme layout, auto refs column width, shared `NameDialog` (new branch, rename, stash message), toolbar New branch, detached checkout for tags/remotes, stash drop confirm, journal keep-count input, watcher picks up new top-level dirs and emits `watch-failed`. Known: commit bf00715 only type-checks together with d719951; `devMock.ts` lacks `watch-failed`; a file written in a new dir before its watch is added can be missed.
 
 ## Next phases (see `en/04-plan/roadmap.md`)
 - **Phase 3 — Branching & merge**: branch create/rename/delete/checkout, native context menus, drag-and-drop ref onto ref, `ops.preview` with `git merge-tree` conflict list, merge, 3-pane conflict tool, abort, stash push/pop/apply/drop and stash rows in the graph. Reuse `Engine` (add `Operation` variants, lock `Lock::Config/RepoSettings` already exist, journal entries, snapshots before destructive ops); the read-only allow-list in `ak-gitcli/src/exec.rs` is bypassed by `Mode::ReadWrite`.
