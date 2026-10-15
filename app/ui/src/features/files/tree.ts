@@ -39,3 +39,10 @@ export function toTreeRows(files: FileItem[]): TreeRow[] {
   walk(root, 0, "");
   return rows;
 }
+
+/** Hides the rows inside collapsed directories (`collapsed` holds directory paths). */
+export function visibleRows(rows: TreeRow[], collapsed: ReadonlySet<string>): TreeRow[] {
+  if (!collapsed.size) return rows;
+  const hidden = (p: string) => [...collapsed].some((c) => p.startsWith(c + "/"));
+  return rows.filter((r) => !hidden(r.kind === "dir" ? r.path : r.file.path));
+}
