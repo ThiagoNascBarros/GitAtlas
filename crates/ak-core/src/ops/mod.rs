@@ -4,6 +4,7 @@
 
 mod branch;
 mod merge;
+mod remote;
 mod stash;
 
 pub use merge::{ConflictVersions, MergePreview};
@@ -113,6 +114,9 @@ pub enum Operation {
     StashApply { index: usize },
     StashPop { index: usize },
     StashDrop { index: usize },
+    Fetch,
+    Pull,
+    Push { force: bool },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -220,7 +224,15 @@ impl Engine {
     }
 
     pub fn run(&self, op: &Operation) -> Result<OpOutcome, OpError> {
+        self.run_with_env(op, &[])
+    }
+
+    /// Like [`run`](Self::run), with extra environment for network operations (askpass bridge).
+    pub fn run_with_env(&self, op: &Operation, env: &[(String, String)]) -> Result<OpOutcome, OpError> {
         match op {
+            Operation::Fetch => self.fetch(env),
+            Operation::Pull => self.pull(env),
+            Operation::Push { force } => self.push(*force, env),
             Operation::Stage { paths } => self.stage(paths, true),
             Operation::Unstage { paths } => self.stage(paths, false),
             Operation::Commit { message, amend } => self.commit(message, *amend),

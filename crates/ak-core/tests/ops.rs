@@ -601,3 +601,77 @@ fn conflict_versions_and_resolve_with_edited_content() {
     assert_eq!(git(&d, &["show", ":a.txt"]), "both");
     assert_eq!(code(e.run(&Operation::ResolveWith { path: "../x".into(), content: String::new() })), "INVALID_PATH");
 }
+
+/// Bare remote + clone A (with an engine) + clone B, like two teammates.
+fn remote_pair() -> (PathBuf, Engine, PathBuf) {
+    let (a, e) = base_repo();
+    let bare = a.with_file_name(format!("{}-remote.git", a.file_name().unwrap().to_string_lossy()));
+    let b = a.with_file_name(format!("{}-b", a.file_name().unwrap().to_string_lossy()));
+    let _ = std::fs::remove_dir_all(&bare);
+    let _ = std::fs::remove_dir_all(&b);
+    git(&a, &["init", "-q", "--bare", bare.to_str().unwrap()]);
+    git(&bare, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+    git(&a, &["remote", "add", "origin", bare.to_str().unwrap()]);
+    e.run(&Operation::Push { force: false }).unwrap();
+    git(&a, &["clone", "-q", bare.to_str().unwrap(), b.to_str().unwrap()]);
+    git(&b, &["config", "user.name", "B"]);
+    git(&b, &["config", "user.email", "b@example.com"]);
+    (a, e, b)
+}
+
+fn ahead_behind(d: &Path) -> (u32, u32) {
+    let out = Command::new("git").arg("-C").arg(d).args(["status", "--porcelain=v2", "-z", "--branch"]).output().unwrap().stdout;
+    let s = ak_gitcli::parse::parse_status_v2(&out).unwrap();
+    (s.ahead, s.behind)
+}
+
+#[test]
+fn push_sets_upstream_then_fetch_pull_and_undo_pull() {
+    let (a, e, b) = remote_pair();
+    assert_eq!(git(&a, &["rev-parse", "--abbrev-ref", "@{upstream}"]), "origin/main");
+    write(&b, "b.txt", "from b");
+    git(&b, &["add", "b.txt"]);
+    git(&b, &["commit", "-qm", "b work"]);
+    git(&b, &["push", "-q"]);
+    e.run(&Operation::Fetch).unwrap();
+    assert_eq!(ahead_behind(&a), (0, 1));
+    let before = git(&a, &["rev-parse", "HEAD"]);
+    let pull = e.run(&Operation::Pull).unwrap();
+    assert_eq!(git(&a, &["rev-parse", "HEAD"]), git(&b, &["rev-parse", "HEAD"]));
+    e.undo(pull.id.as_deref().unwrap()).unwrap();
+    assert_eq!(git(&a, &["rev-parse", "HEAD"]), before);
+    e.redo_last().unwrap();
+    assert!(a.join("b.txt").exists());
+    // Nothing new: pull is a no-op without a journal entry.
+    assert!(e.run(&Operation::Pull).unwrap().id.is_none());
+}
+
+#[test]
+fn rejected_push_and_force_with_lease() {
+    let (a, e, b) = remote_pair();
+    write(&b, "b.txt", "from b");
+    git(&b, &["add", "b.txt"]);
+    git(&b, &["commit", "-qm", "b work"]);
+    git(&b, &["push", "-q"]);
+    write(&a, "a.txt", "local");
+    stage(&e, &["a.txt"]);
+    commit(&e, "a work", false);
+    // Remote moved after our last fetch: rejected, and the lease also protects B's commit.
+    e.run(&Operation::Fetch).unwrap();
+    assert_eq!(ahead_behind(&a), (1, 1));
+    let base = git(&a, &["rev-parse", "origin/main"]);
+    assert_eq!(code(e.run(&Operation::Push { force: false })), "PUSH_REJECTED");
+    git(&b, &["commit", "-q", "--allow-empty", "-m", "b again"]);
+    git(&b, &["push", "-q"]);
+    assert_eq!(code(e.run(&Operation::Push { force: true })), "PUSH_REJECTED");
+    assert_ne!(git(&b, &["ls-remote", "origin", "refs/heads/main"]).split('\t').next().unwrap(), base);
+}
+
+#[test]
+fn pull_without_upstream_and_missing_remote() {
+    let (d, e) = base_repo();
+    assert_eq!(code(e.run(&Operation::Pull)), "NO_UPSTREAM");
+    assert_eq!(code(e.run(&Operation::Push { force: false })), "NO_REMOTE");
+    git(&d, &["remote", "add", "origin", "/nonexistent/repo.git"]);
+    assert_eq!(code(e.run(&Operation::Fetch)), "NO_REMOTE");
+}
