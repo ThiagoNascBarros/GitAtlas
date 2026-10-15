@@ -5,6 +5,9 @@
 mod branch;
 mod merge;
 mod stash;
+
+pub use merge::MergePreview;
+pub use stash::StashInfo;
 pub mod journal;
 pub mod lock;
 

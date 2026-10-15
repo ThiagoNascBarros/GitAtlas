@@ -25,6 +25,9 @@ Done: `.git` path via `rev-parse --absolute-git-dir`; watcher skips gitignored t
 Still open (owner): SonarCloud reliability finding on PR #2 (needs owner login) and manual test of the packaged app (stage, hunk, commit, amend, Undo/Redo, discard + Undo, external edit, missing identity).
 Deferred: watcher for dirs created after open and failure notice; graph selection kept on reload (needs a sha->row command); multi-select/drag, stage lines, WIP tree, resizable panels, discard-all, keyboard nav in WIP; tauri-driver e2e; pt-BR (Phase 5). Keep `devMock.ts` minimal.
 
+## Phase 3 progress (`feature/branching-merge`)
+Core: `ops/{branch,merge,stash}.rs`; commands in `main.rs` (`op_branch_*`, `op_checkout`, `merge_preview`, `op_merge*`, `op_resolve`, `stash_list`, `op_stash`); UI: `features/{refs,stash}`, banner + ours/theirs in `features/wip`. Journal `args` holds undo/redo parameters for ref operations. Missing: drag-and-drop ref->ref, 3-pane conflict editor, stash rows in graph, Git < 2.38 conflict prediction, native menus. Manual test of the packaged app still pending.
+
 ## Next phases (see `en/04-plan/roadmap.md`)
 - **Phase 3 — Branching & merge**: branch create/rename/delete/checkout, native context menus, drag-and-drop ref onto ref, `ops.preview` with `git merge-tree` conflict list, merge, 3-pane conflict tool, abort, stash push/pop/apply/drop and stash rows in the graph. Reuse `Engine` (add `Operation` variants, lock `Lock::Config/RepoSettings` already exist, journal entries, snapshots before destructive ops); the read-only allow-list in `ak-gitcli/src/exec.rs` is bypassed by `Mode::ReadWrite`.
 - **Phase 4 — Remotes & rebase**: fetch/pull/push, credentials through Git credential helpers/ssh-agent/libsecret and an askpass bridge, rebase + interactive rebase editor, cherry-pick, reset (snapshot), revert, tags. Then the **Shared Stash** addendum (SDD §11, e2e = PRD criterion 14 with two clones and a local bare remote).

@@ -12,6 +12,7 @@ use std::time::Duration;
 use ak_core::cache;
 use ak_core::graph::{self, Layout, Topology};
 use ak_core::ops::journal::JournalEntry;
+use ak_core::ops::{MergePreview, StashInfo};
 use ak_core::ops::{Engine, OpError, OpOutcome, Operation};
 use ak_core::read::{CliReader, CommitDetails, RepoReader, RowText};
 use ak_core::read_gix::GixReader;
@@ -299,8 +300,55 @@ async fn diff_worktree(
 }
 
 #[tauri::command]
-async fn status_get(repo_id: u32, state: State<'_, AppState>) -> Result<StatusReport> {
-    get(&state, repo_id)?.reader.status().map_err(|e| UiError::new("READ_FAILED", e))
+async fn status_get(repo_id: u32, state: State<'_, AppState>) -> Result<StatusWithMerge> {
+    let r = get(&state, repo_id)?;
+    let status = r.reader.status().map_err(|e| UiError::new("READ_FAILED", e))?;
+    Ok(StatusWithMerge { status, merging: engine(&r)?.merge_in_progress() })
+}
+
+#[derive(Serialize)]
+struct StatusWithMerge {
+    #[serde(flatten)]
+    status: StatusReport,
+    merging: bool,
+}
+
+#[tauri::command]
+async fn merge_preview(repo_id: u32, source: String, state: State<'_, AppState>) -> Result<MergePreview> {
+    let r = get(&state, repo_id)?;
+    Ok(engine(&r)?.merge_preview(&source)?)
+}
+
+#[tauri::command]
+async fn stash_list(repo_id: u32, state: State<'_, AppState>) -> Result<Vec<StashInfo>> {
+    let r = get(&state, repo_id)?;
+    Ok(engine(&r)?.stashes()?)
+}
+
+#[tauri::command]
+async fn op_merge(repo_id: u32, source: String, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::Merge { source })
+}
+
+#[tauri::command]
+async fn op_merge_abort(repo_id: u32, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::MergeAbort)
+}
+
+#[tauri::command]
+async fn op_resolve(repo_id: u32, path: String, theirs: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::ResolveConflict { path, theirs })
+}
+
+#[tauri::command]
+async fn op_stash(repo_id: u32, action: String, index: usize, message: Option<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
+    let op = match action.as_str() {
+        "push" => Operation::StashPush { message, include_untracked: true },
+        "apply" => Operation::StashApply { index },
+        "pop" => Operation::StashPop { index },
+        _ => Operation::StashDrop { index },
+    };
+    run_op(&state, repo_id, op)
 }
 
 fn run_op(state: &AppState, repo_id: u32, op: Operation) -> Result<OpOutcome> {
@@ -408,6 +456,12 @@ fn main() {
             op_branch_rename,
             op_branch_delete,
             op_checkout,
+            merge_preview,
+            stash_list,
+            op_merge,
+            op_merge_abort,
+            op_resolve,
+            op_stash,
             op_undo,
             op_redo,
             journal_list,

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { createSignal, Show } from "solid-js";
+import { createResource, createSignal, For, Show } from "solid-js";
 import { api, RefInfo } from "../../api";
 import { t } from "../../i18n";
 
@@ -10,7 +10,8 @@ type Run = (op: () => Promise<unknown>, opts?: { graph?: boolean; toast?: string
 export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; onClose: () => void; onError: (e: unknown) => void }) {
   const r = () => props.menu.ref;
   const local = () => r().kind === "head";
-  const [ask, setAsk] = createSignal<"new" | "rename" | null>(null);
+  const [ask, setAsk] = createSignal<"new" | "rename" | "merge" | null>(null);
+  const [preview] = createResource(() => (ask() === "merge" ? r().name : null), (src) => api.mergePreview(props.repoId, src).catch((e) => { props.onError(e); props.onClose(); return null; }));
   const [name, setName] = createSignal("");
 
   const go = (op: () => Promise<unknown>, toast: string) => {
@@ -34,6 +35,9 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
             <Show when={local() && !r().isHead}>
               <li><button onClick={() => go(() => api.checkout(props.repoId, r().name, true), t("toast.checkedOut", { s: r().name }))}>{t("refmenu.checkout")}</button></li>
             </Show>
+            <Show when={!r().isHead && r().kind !== "tag"}>
+              <li><button onClick={() => setAsk("merge")}>{t("refmenu.merge")}</button></li>
+            </Show>
             <li><button onClick={() => { setName(""); setAsk("new"); }}>{t("refmenu.newBranch")}</button></li>
             <Show when={local()}>
               <li><button onClick={() => { setName(r().name); setAsk("rename"); }}>{t("refmenu.rename")}</button></li>
@@ -46,7 +50,25 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
         }
       >
         <dialog open class="modal" aria-label={t("refmenu.namePrompt")} onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === "Escape" && props.onClose()}>
-          <form onSubmit={submit}>
+          <Show when={ask() === "merge"}>
+            <h2>{t("merge.title", { s: r().name })}</h2>
+            <Show when={preview()} fallback={<p class="muted">…</p>}>
+              {(p) => (
+                <>
+                  <p>{p().up_to_date ? t("merge.upToDate") : p().fast_forward ? t("merge.ff") : p().conflicts === null ? t("merge.unknown") : p().conflicts!.length ? t("merge.conflicts") : t("merge.clean")}</p>
+                  <ul><For each={p().conflicts ?? []}>{(f) => <li class="mono">{f}</li>}</For></ul>
+                  <div class="modal-actions">
+                    <button onClick={props.onClose}>{t("refmenu.cancel")}</button>
+                    <button class="primary" disabled={p().up_to_date}
+                      onClick={() => go(async () => { const o = await api.merge(props.repoId, r().name); return o; }, t("toast.merged", { s: r().name }))}>
+                      {t("merge.confirm")}
+                    </button>
+                  </div>
+                </>
+              )}
+            </Show>
+          </Show>
+          <form onSubmit={submit} hidden={ask() === "merge"}>
             <label>{t("refmenu.namePrompt")}
               <input autofocus value={name()} onInput={(e) => setName(e.currentTarget.value)} />
             </label>

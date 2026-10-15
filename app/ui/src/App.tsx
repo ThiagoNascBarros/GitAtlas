@@ -8,6 +8,7 @@ import { GraphView } from "./features/graph/GraphView";
 import { DiffView } from "./features/diff/DiffView";
 import { setTheme, themeChoice, ThemeChoice } from "./theme/theme";
 import { errorFix, errorText, t } from "./i18n";
+import { StashPanel } from "./features/stash/StashPanel";
 import { RefMenu, RefMenuState } from "./features/refs/RefMenu";
 import { JournalPanel } from "./features/journal/JournalPanel";
 import { WipFile, WipPanel } from "./features/wip/WipPanel";
@@ -73,7 +74,8 @@ export function App() {
   async function run(op: () => Promise<unknown>, opts: { graph?: boolean; toast?: string } = {}): Promise<boolean> {
     const repoId = tab().repo.repoId;
     try {
-      const out = (await op()) as { id?: string | null } | undefined;
+      const out = (await op()) as { id?: string | null; conflicted?: boolean } | undefined;
+      if (out?.conflicted) opts = { graph: true, toast: t("toast.mergeConflicts") };
       setError(null);
       if (opts.graph) await refreshRepo(repoId);
       await loadStatus(repoId);
@@ -206,6 +208,8 @@ export function App() {
         <Show when={tab()?.repo.readOnlyReason}><span class="badge">{t("toolbar.readOnly")}</span></Show>
         <button disabled={!tab()} title={t("toolbar.undoTitle")} onClick={() => undo(tab().repo.repoId, null)}>↶ {t("toolbar.undo")}</button>
         <button disabled={!tab()} title={t("toolbar.redoTitle")} onClick={() => redo(tab().repo.repoId)}>↷ {t("toolbar.redo")}</button>
+        <button disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.stashTitle")}
+          onClick={() => void run(() => api.stash(tab().repo.repoId, "push"), { graph: true, toast: t("toast.stashed") })}>{t("toolbar.stash")}</button>
         <button disabled={!tab()} title={t("toolbar.journalTitle")} onClick={() => setShowJournal(true)}>{t("toolbar.journal")}</button>
         <label class="theme-pick">
           {t("toolbar.theme")}
@@ -264,6 +268,7 @@ export function App() {
                 );
               }}
             </For>
+            <StashPanel repoId={tab()!.repo.repoId} rev={tab()!.diffRev} run={run} />
           </aside>
 
           <main class="center">

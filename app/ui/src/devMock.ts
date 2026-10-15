@@ -69,6 +69,11 @@ export async function installDevMock(first: string, next = "hubbi") {
       case "op_undo": return { id: null, head: null };
       case "journal_list": return [];
       case "journal_prune": return 0;
+      case "stash_list": return [];
+      case "merge_preview": return { up_to_date: false, fast_forward: false, conflicts: [] };
+      case "op_merge": case "op_merge_abort": case "op_resolve": case "op_stash":
+      case "op_branch_create": case "op_branch_rename": case "op_branch_delete": case "op_checkout":
+        return { id: null, head: null };
       default: throw { code: "UNKNOWN_COMMAND", message: cmd };
     }
   });
