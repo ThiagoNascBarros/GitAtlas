@@ -4,6 +4,7 @@ import { api, MergePreview, RefInfo } from "../../api";
 import { t } from "../../i18n";
 import { menuKeys, useOverlay } from "../overlay";
 import { NameDialog } from "./NameDialog";
+import { Check, GitBranchPlus, GitMerge, Pencil, Trash2 } from "lucide-solid";
 
 export interface RefMenuState { x: number; y: number; ref: RefInfo }
 type Run = (op: () => Promise<unknown>, opts?: { graph?: boolean; toast?: string }) => Promise<boolean>;
@@ -56,22 +57,24 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
       <Show
         when={ask()}
         fallback={
-          <menu ref={menuEl} class="ctx" role="menu" style={{ left: `${pos().x}px`, top: `${pos().y}px` }} onClick={(e) => e.stopPropagation()} onKeyDown={menuKeys}>
+          <menu ref={menuEl} class="ctx" role="menu" style={{ left: `${pos().x}px`, top: `${pos().y}px` }} onClick={(e) => e.stopPropagation()} onKeyDown={menuKeys}
+            // Hover moves focus, so mouse and keyboard share one highlighted item (as in native menus).
+            onPointerOver={(e) => (e.target as HTMLElement).closest<HTMLButtonElement>("button:not(:disabled)")?.focus()}>
             <Show when={local() && !r().isHead}>
-              <li role="none"><button role="menuitem" onClick={() => go(() => api.checkout(props.repoId, r().name, true), t("toast.checkedOut", { s: r().name }))}>{t("refmenu.checkout")}</button></li>
+              <li role="none"><button role="menuitem" onClick={() => go(() => api.checkout(props.repoId, r().name, true), t("toast.checkedOut", { s: r().name }))}><Check size={14} aria-hidden="true" />{t("refmenu.checkout")}</button></li>
             </Show>
             <Show when={r().kind === "tag" || r().kind === "remote"}>
-              <li role="none"><button role="menuitem" onClick={() => go(() => api.checkout(props.repoId, r().name, false), t("toast.checkedOutDetached", { s: r().name }))}>{t("refmenu.checkoutDetached")}</button></li>
+              <li role="none"><button role="menuitem" onClick={() => go(() => api.checkout(props.repoId, r().name, false), t("toast.checkedOutDetached", { s: r().name }))}><Check size={14} aria-hidden="true" />{t("refmenu.checkoutDetached")}</button></li>
             </Show>
             <Show when={!r().isHead && r().kind !== "tag"}>
-              <li role="none"><button role="menuitem" onClick={() => setAsk("merge")}>{t("refmenu.merge")}</button></li>
+              <li role="none"><button role="menuitem" onClick={() => setAsk("merge")}><GitMerge size={14} aria-hidden="true" />{t("refmenu.merge")}</button></li>
             </Show>
-            <li role="none"><button role="menuitem" onClick={() => setAsk("new")}>{t("refmenu.newBranch")}</button></li>
+            <li role="none"><button role="menuitem" onClick={() => setAsk("new")}><GitBranchPlus size={14} aria-hidden="true" />{t("refmenu.newBranch")}</button></li>
             <Show when={local()}>
-              <li role="none"><button role="menuitem" onClick={() => setAsk("rename")}>{t("refmenu.rename")}</button></li>
+              <li role="none"><button role="menuitem" onClick={() => setAsk("rename")}><Pencil size={14} aria-hidden="true" />{t("refmenu.rename")}</button></li>
               <Show when={!r().isHead}>
-                <li role="none"><button role="menuitem" onClick={() => go(() => api.branchDelete(props.repoId, r().name, false), t("toast.branchDeleted", { s: r().name }))}>{t("refmenu.delete")}</button></li>
-                <li role="none"><button role="menuitem" onClick={() => go(() => api.branchDelete(props.repoId, r().name, true), t("toast.branchDeleted", { s: r().name }))}>{t("refmenu.forceDelete")}</button></li>
+                <li role="none"><button role="menuitem" onClick={() => go(() => api.branchDelete(props.repoId, r().name, false), t("toast.branchDeleted", { s: r().name }))}><Trash2 size={14} aria-hidden="true" />{t("refmenu.delete")}</button></li>
+                <li role="none"><button role="menuitem" onClick={() => go(() => api.branchDelete(props.repoId, r().name, true), t("toast.branchDeleted", { s: r().name }))}><Trash2 size={14} aria-hidden="true" />{t("refmenu.forceDelete")}</button></li>
               </Show>
             </Show>
           </menu>
