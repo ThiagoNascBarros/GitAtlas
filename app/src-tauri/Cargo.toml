@@ -14,6 +14,7 @@ ak-core = { path = "../../crates/ak-core", features = ["gix-reader"] }
 ak-gitcli = { path = "../../crates/ak-gitcli" }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+notify = "6"
 serde.workspace = true
 serde_json.workspace = true
 

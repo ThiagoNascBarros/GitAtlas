@@ -97,6 +97,36 @@ impl Git {
         Ok(cmd)
     }
 
+    /// Like [`run`](Self::run) but feeds `input` to git's stdin (e.g. `commit -F -`).
+    pub fn run_with_input<I, S>(&self, repo: &Path, args: I, input: &[u8]) -> Result<Vec<u8>, GitError>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        use std::io::Write;
+        let args: Vec<_> = args.into_iter().map(|a| a.as_ref().to_owned()).collect();
+        let subcommand = args.first().map(|a| a.to_string_lossy().into_owned()).unwrap_or_default();
+        let mut cmd = self.command(repo, &args)?;
+        cmd.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+        let mut child = cmd.spawn()?;
+        // Write on a thread so a large input cannot deadlock against git's output pipes.
+        let mut stdin = child.stdin.take().expect("piped stdin");
+        let data = input.to_vec();
+        let writer = std::thread::spawn(move || {
+            let _ = stdin.write_all(&data);
+        });
+        let out = child.wait_with_output()?;
+        let _ = writer.join();
+        if !out.status.success() {
+            return Err(GitError::Failed {
+                subcommand,
+                code: out.status.code(),
+                stderr: String::from_utf8_lossy(&out.stderr).trim().to_owned(),
+            });
+        }
+        Ok(out.stdout)
+    }
+
     /// Runs git and returns stdout bytes; non-zero exit becomes `GitError::Failed`.
     pub fn run<I, S>(&self, repo: &Path, args: I) -> Result<Vec<u8>, GitError>
     where

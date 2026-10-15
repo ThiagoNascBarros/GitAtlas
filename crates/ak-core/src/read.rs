@@ -173,3 +173,56 @@ impl CliReader {
     }
 
 }
+
+/// Text of one commit row, fetched on demand so the core does not keep it in memory.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct RowText {
+    pub sha: String,
+    pub summary: String,
+    pub author: String,
+    pub email: String,
+    pub time: i64,
+}
+
+impl CliReader {
+    /// Summaries/authors for specific commits, in the order given.
+    pub fn rows_text(&self, shas: &[&str]) -> Result<Vec<RowText>, ReadError> {
+        if shas.is_empty() {
+            return Ok(vec![]);
+        }
+        for s in shas {
+            check_rev(s)?;
+        }
+        let input = shas.join("\n") + "\n";
+        let out = self.git.run_with_input(
+            &self.root,
+            ["log", "-z", "--no-walk=unsorted", "--stdin", parse::COMMIT_FORMAT],
+            input.as_bytes(),
+        )?;
+        Ok(parse::parse_commits(&out)?
+            .into_iter()
+            .map(|c| RowText { sha: c.sha, summary: c.summary, author: c.author, email: c.email, time: c.time })
+            .collect())
+    }
+
+    /// Unified diff of a working-directory file: unstaged (against the index) or
+    /// staged (index against HEAD). Untracked files are shown as all-added.
+    pub fn worktree_diff(&self, path: &str, staged: bool, untracked: bool) -> Result<String, ReadError> {
+        let spec = format!(":(literal){path}");
+        let out = if untracked {
+            // `--no-index` exits with 1 when the files differ, which is the normal case.
+            let o = self
+                .git
+                .command(&self.root, ["diff", "--no-index", "--no-color", "--no-ext-diff", "--", "/dev/null", path])?
+                .output()
+                .map_err(GitError::from)?;
+            o.stdout
+        } else if staged {
+            self.git.run(&self.root, ["diff", "--cached", "--no-color", "--no-ext-diff", "--", spec.as_str()])?
+        } else {
+            self.git.run(&self.root, ["diff", "--no-color", "--no-ext-diff", "--", spec.as_str()])?
+        };
+        Ok(String::from_utf8_lossy(&out).into_owned())
+    }
+}
+

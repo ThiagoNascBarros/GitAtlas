@@ -13,11 +13,33 @@ export interface FileChange { status: string; path: string; orig_path: string | 
 export interface CommitDetails {
   sha: string; parents: string[]; author: string; email: string; time: number; message: string; files: FileChange[];
 }
-export interface UiError { code: string; message: string }
+export interface UiError { code: string; message: string; detail?: string; suggestion?: string }
+export interface StatusEntry {
+  path: string; orig_path: string | null; index: string; worktree: string; conflicted: boolean; untracked: boolean;
+}
+export interface StatusReport { branch: string | null; oid: string | null; entries: StatusEntry[] }
+export interface OpOutcome { id: string | null; head: string | null }
+export interface JournalEntry {
+  id: string; time: number; kind: string; summary: string; undone: boolean; commands: string[]; paths: string[]; untracked: string[];
+}
 
 export const api = {
   initialPath: () => invoke<string | null>("get_initial_path"),
   open: (path: string) => invoke<OpenedRepo>("repo_open", { path }),
+  refresh: (repoId: number) => invoke<OpenedRepo>("repo_refresh", { repoId }),
+  status: (repoId: number) => invoke<StatusReport>("status_get", { repoId }),
+  worktreeDiff: (repoId: number, path: string, staged: boolean, untracked: boolean) =>
+    invoke<string>("diff_worktree", { repoId, path, staged, untracked }),
+  stage: (repoId: number, paths: string[]) => invoke<OpOutcome>("op_stage", { repoId, paths }),
+  unstage: (repoId: number, paths: string[]) => invoke<OpOutcome>("op_unstage", { repoId, paths }),
+  stageHunk: (repoId: number, path: string, hunk: number, unstage: boolean) =>
+    invoke<OpOutcome>("op_stage_hunk", { repoId, path, hunk, unstage }),
+  discard: (repoId: number, paths: string[]) => invoke<OpOutcome>("op_discard", { repoId, paths }),
+  commit: (repoId: number, message: string, amend: boolean) => invoke<OpOutcome>("op_commit", { repoId, message, amend }),
+  undo: (repoId: number, id: string) => invoke<OpOutcome>("op_undo", { repoId, id }),
+  redo: (repoId: number) => invoke<OpOutcome>("op_redo", { repoId }),
+  journal: (repoId: number) => invoke<JournalEntry[]>("journal_list", { repoId }),
+  pruneJournal: (repoId: number, keep: number) => invoke<number>("journal_prune", { repoId, keep }),
   close: (repoId: number) => invoke<void>("repo_close", { repoId }),
   rows: (repoId: number, start: number, count: number) => invoke<RowMeta[]>("graph_rows", { repoId, start, count }),
   window: async (repoId: number, start: number, count: number) =>
