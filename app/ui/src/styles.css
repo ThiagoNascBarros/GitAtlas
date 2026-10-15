@@ -461,7 +461,7 @@ menu.ctx button:focus svg { color: currentColor; }
 .conflict-result { display: grid; gap: 4px; }
 .conflict-result textarea { min-height: 30vh; resize: vertical; background: var(--ak-color-bg-canvas); color: var(--ak-color-text-primary); border: 1px solid var(--ak-color-border-default); border-radius: var(--r-m, 6px); padding: 8px; }
 .files li.dir button { display: flex; gap: 4px; align-items: center; color: var(--ak-color-text-secondary); }
-.files li button .st { margin-left: auto; }
+.files li button.tree-file .st { margin-left: auto; }
 .right .files-head { flex-wrap: wrap; row-gap: 4px; }
 .files li button.tree-file { gap: 4px; }
 .files li.dir { padding: 0; }
