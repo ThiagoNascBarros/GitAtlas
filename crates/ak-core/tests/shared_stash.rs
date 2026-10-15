@@ -679,6 +679,10 @@ fn reshare_refuses_to_overwrite_and_discard_keep_forgets_the_copy() {
     assert!(!sh_ok(&w.a, &["rev-parse", "--verify", "-q", &format!("refs/atlasgit/keep/{id}")]));
     assert_eq!(code(w.ea.run(&Operation::SharedStashDiscardKeep { id: id.clone() })), "STASH_NOT_FOUND");
     assert_eq!(code(w.ea.run(&Operation::SharedStashReshare { id, remote: "origin".into() })), "STASH_NOT_FOUND");
+    for odd in ["../../heads/main", "", "a b"] {
+        assert_eq!(code(w.ea.run(&Operation::SharedStashReshare { id: odd.into(), remote: "origin".into() })), "STASH_NOT_FOUND", "{odd:?}");
+        assert_eq!(code(w.ea.run(&Operation::SharedStashDiscardKeep { id: odd.into() })), "STASH_NOT_FOUND", "{odd:?}");
+    }
 }
 
 #[test]

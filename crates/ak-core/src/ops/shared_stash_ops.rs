@@ -581,6 +581,14 @@ impl Engine {
     }
 
     fn keep_sha(&self, id: &str) -> Option<String> {
+        // ids are ours (`new_id`); anything else never names a keep ref.
+        let plain = !id.is_empty()
+            && id.len() <= 200
+            && !id.contains("..")
+            && id.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'));
+        if !plain {
+            return None;
+        }
         let r = keep_ref(id);
         self.git.run(&self.root, ["rev-parse", "--verify", "-q", r.as_str()]).ok().map(|o| String::from_utf8_lossy(&o).trim().to_owned())
     }
