@@ -4,7 +4,7 @@ import { api, MergePreview, RefInfo } from "../../api";
 import { t } from "../../i18n";
 import { menuKeys, useOverlay } from "../overlay";
 import { NameDialog } from "./NameDialog";
-import { Check, GitBranchPlus, GitMerge, Pencil, Trash2 } from "lucide-solid";
+import { Check, GitBranchPlus, GitMerge, Pencil, Trash2, Upload } from "lucide-solid";
 
 /** `merge` opens straight on the merge dialog (used by drag-and-drop of a ref onto the current branch). */
 export interface RefMenuState { x: number; y: number; ref: RefInfo; merge?: boolean }
@@ -73,6 +73,7 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
               <li role="none"><button role="menuitem" onClick={() => { props.onClose(); props.onRebase(r().name); }}><GitMerge size={14} aria-hidden="true" />{t("refmenu.rebaseInteractive")}</button></li>
             </Show>
             <Show when={r().kind === "tag"}>
+              <li role="none"><button role="menuitem" onClick={() => go(() => api.net(props.repoId, "push-tag", false, r().name), t("toast.tagPushed", { s: r().name }))}><Upload size={14} aria-hidden="true" />{t("refmenu.pushTag")}</button></li>
               <li role="none"><button role="menuitem" onClick={() => go(() => api.history(props.repoId, "tag-delete", "", { name: r().name }), t("toast.tagDeleted", { s: r().name }))}><Trash2 size={14} aria-hidden="true" />{t("refmenu.deleteTag")}</button></li>
             </Show>
             <li role="none"><button role="menuitem" onClick={() => setAsk("new")}><GitBranchPlus size={14} aria-hidden="true" />{t("refmenu.newBranch")}</button></li>

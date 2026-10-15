@@ -127,6 +127,7 @@ pub enum Operation {
     Fetch,
     Pull,
     Push { force: bool },
+    PushTag { name: String },
     /// Rebase the current branch onto `onto`; interactive when `todo` is given (oldest first).
     Rebase { onto: String, todo: Option<Vec<TodoItem>> },
     RebaseContinue,
@@ -246,6 +247,7 @@ impl Engine {
             Operation::Fetch => self.fetch(env),
             Operation::Pull => self.pull(env),
             Operation::Push { force } => self.push(*force, env),
+            Operation::PushTag { name } => self.push_tag(name, env),
             Operation::Stage { paths } => self.stage(paths, true),
             Operation::Unstage { paths } => self.stage(paths, false),
             Operation::Commit { message, amend } => self.commit(message, *amend),

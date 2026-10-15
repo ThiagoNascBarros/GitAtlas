@@ -823,3 +823,13 @@ fn rebase_conflict_continue_and_merges_refused() {
     git(&d, &["merge", "-q", "--no-ff", "--no-edit", "feat"]);
     assert_eq!(code(e.rebase_todo("HEAD~2").map(|_| ak_core::ops::OpOutcome::default())), "UNSUPPORTED_REBASE");
 }
+
+#[test]
+fn push_tag_reaches_the_remote() {
+    let (a, e, b) = remote_pair();
+    e.run(&Operation::TagCreate { name: "v9".into(), at: "HEAD".into(), message: None }).unwrap();
+    e.run(&Operation::PushTag { name: "v9".into() }).unwrap();
+    assert!(git(&b, &["ls-remote", "--tags", "origin"]).contains("refs/tags/v9"));
+    assert_eq!(code(e.run(&Operation::PushTag { name: "nope".into() })), "INVALID_REF");
+    let _ = a;
+}

@@ -485,13 +485,14 @@ async fn op_checkout(repo_id: u32, target: String, is_branch: bool, state: State
 /// Fetch, pull or push. Runs off the async runtime (it can wait on the network and on the user
 /// answering a credentials prompt, which arrives through `credentials_answer`).
 #[tauri::command]
-async fn op_net(repo_id: u32, action: String, force: bool, app: AppHandle, state: State<'_, AppState>) -> Result<OpOutcome> {
+async fn op_net(repo_id: u32, action: String, force: bool, name: Option<String>, app: AppHandle, state: State<'_, AppState>) -> Result<OpOutcome> {
     let r = get(&state, repo_id)?;
     let pending = state.askpass.clone();
     let op = match action.as_str() {
         "fetch" => Operation::Fetch,
         "pull" => Operation::Pull,
         "push" => Operation::Push { force },
+        "push-tag" => Operation::PushTag { name: name.unwrap_or_default() },
         _ => return Err(UiError::new("GIT_FAILED", "unknown network action")),
     };
     tauri::async_runtime::spawn_blocking(move || {

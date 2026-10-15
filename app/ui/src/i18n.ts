@@ -167,6 +167,8 @@ const en = {
   "commitmenu.copySha": "Copy SHA",
   "commitmenu.tagPrompt": "Tag name",
   "refmenu.deleteTag": "Delete tag",
+  "refmenu.pushTag": "Push tag",
+  "toast.tagPushed": "Pushed tag {s}",
   "toast.cherryPicked": "Cherry-picked {s}",
   "toast.reverted": "Reverted {s}",
   "toast.reset": "Branch reset to {s}",

@@ -55,7 +55,8 @@ export const api = {
     invoke<OpOutcome>("op_stash", { repoId, action, index, message }),
   history: (repoId: number, action: "cherry-pick" | "revert" | "reset" | "tag" | "tag-delete", sha: string, opts: { mode?: string; name?: string } = {}) =>
     invoke<OpOutcome>("op_history", { repoId, action, sha, mode: opts.mode ?? null, name: opts.name ?? null }),
-  net: (repoId: number, action: "fetch" | "pull" | "push", force = false) => invoke<OpOutcome>("op_net", { repoId, action, force }),
+  net: (repoId: number, action: "fetch" | "pull" | "push" | "push-tag", force = false, name: string | null = null) =>
+    invoke<OpOutcome>("op_net", { repoId, action, force, name }),
   credentialsAnswer: (id: number, value: string | null) => invoke<void>("credentials_answer", { id, value }),
   rebaseTodo: (repoId: number, onto: string) => invoke<TodoItem[]>("rebase_todo", { repoId, onto }),
   rebase: (repoId: number, onto: string, todo: TodoItem[] | null = null) => invoke<OpOutcome>("op_rebase", { repoId, onto, todo }),

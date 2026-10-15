@@ -125,4 +125,18 @@ impl Engine {
         }
         Ok(OpOutcome { head: self.head(), ..Default::default() })
     }
+
+    /// Pushes one tag to `origin` (or the only remote).
+    pub(super) fn push_tag(&self, name: &str, env: &Env) -> Result<OpOutcome, OpError> {
+        let r = format!("refs/tags/{name}");
+        if self.git.run(&self.root, ["rev-parse", "-q", "--verify", r.as_str()]).is_err() {
+            return Err(OpError::new("INVALID_REF", "That tag does not exist.", None));
+        }
+        let remote = self.default_remote()?;
+        let (code, out, err) = self.git.run_status_env(&self.root, ["push", "--porcelain", remote.as_str(), r.as_str()], env)?;
+        if code != Some(0) {
+            return Err(net_error("push", format!("{out}\n{err}").trim().to_owned()));
+        }
+        Ok(OpOutcome { head: self.head(), ..Default::default() })
+    }
 }
