@@ -503,9 +503,9 @@ fn merge_preview_predicts_conflicts_then_ours_resolution_makes_two_parents() {
     let (d, e) = conflict_repo();
     let p = e.merge_preview("feature/conflict").unwrap();
     assert!(!p.fast_forward && !p.up_to_date);
-    if let Some(c) = &p.conflicts {
-        assert_eq!(c, &vec!["a.txt".to_string()]);
-    }
+    assert_eq!(p.conflicts, Some(vec!["a.txt".to_string()]));
+    // Old-Git path (used below 2.38) must agree.
+    assert_eq!(e.merge_conflicts_legacy("feature/conflict").unwrap(), vec!["a.txt".to_string()]);
     let before = git(&d, &["status", "--porcelain"]);
     let out = e.run(&Operation::Merge { source: "feature/conflict".into() }).unwrap();
     assert!(out.conflicted && e.merge_in_progress());

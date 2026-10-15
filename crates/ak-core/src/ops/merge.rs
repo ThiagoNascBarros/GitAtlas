@@ -47,7 +47,7 @@ impl Engine {
             return Ok(MergePreview { fast_forward: true, conflicts: Some(vec![]), ..Default::default() });
         }
         if !self.git.caps().merge_tree_write_tree {
-            return Ok(MergePreview::default());
+            return Ok(MergePreview { conflicts: Some(self.merge_conflicts_legacy(source)?), ..Default::default() });
         }
         let (code, out, err) = self.git.run_status(&self.root, ["merge-tree", "--write-tree", "--name-only", "HEAD", source])?;
         let conflicts = match code {
@@ -148,5 +148,41 @@ impl Engine {
         let spec = literal(path);
         self.git.run(&self.root, ["add", "--", spec.as_str()])?;
         Ok(OpOutcome::default())
+    }
+
+    /// Conflict prediction for Git < 2.38 with the old 3-argument `git merge-tree`.
+    #[doc(hidden)]
+    pub fn merge_conflicts_legacy(&self, source: &str) -> Result<Vec<String>, OpError> {
+        let base = self.git.run(&self.root, ["merge-base", "HEAD", source])?;
+        let base = String::from_utf8_lossy(&base).trim().to_owned();
+        let out = self.git.run(&self.root, ["merge-tree", base.as_str(), "HEAD", source])?;
+        Ok(parse_legacy_merge_tree(&String::from_utf8_lossy(&out)))
+    }
+}
+
+/// Files whose merged content contains conflict markers in old `git merge-tree` output.
+/// shortcut: modify/delete conflicts (no markers) are not reported; upgrade with a gix 3-way merge if needed.
+fn parse_legacy_merge_tree(out: &str) -> Vec<String> {
+    let mut files: Vec<String> = vec![];
+    let mut path = String::new();
+    for line in out.lines() {
+        if let Some(rest) = line.strip_prefix("  ") {
+            // "  our    100644 <sha> <path>" (the path may contain spaces)
+            if let Some(p) = rest.split_whitespace().nth(2).and_then(|sha| rest.split_once(sha)).map(|(_, p)| p.trim_start()) {
+                path = p.to_owned();
+            }
+        } else if line.starts_with("+<<<<<<< ") && !files.contains(&path) {
+            files.push(path.clone());
+        }
+    }
+    files
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn legacy_merge_tree_lists_files_with_markers_only() {
+        let out = "changed in both\n  base   100644 aaa a b.txt\n  our    100644 bbb a b.txt\n  their  100644 ccc a b.txt\n@@ -1 +1,5 @@\n+<<<<<<< .our\n m\n+=======\n+f\n+>>>>>>> .their\nmerged\n  result 100644 ddd c.txt\n  our    100644 eee c.txt\n@@ -1 +1 @@\n-x\n+y\n";
+        assert_eq!(super::parse_legacy_merge_tree(out), vec!["a b.txt".to_string()]);
     }
 }
