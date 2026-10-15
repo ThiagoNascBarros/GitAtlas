@@ -270,7 +270,6 @@ const en = {
   "ss.discard": "Discard",
   "ss.discardConfirm": "Discard? (click again)",
   "ss.listLabel": "Shared stashes. Use arrow keys to move, Enter to see changes, Menu key for actions.",
-  "ss.row": "{title}, by {author}",
   "ss.glyphTitle": "Shared stash: {s}",
   "ss.glyphToggle": "Show shared stashes in the graph",
   "ss.menu.apply": "Apply",

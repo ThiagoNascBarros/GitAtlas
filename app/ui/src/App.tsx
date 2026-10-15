@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // App frame (roadmap T1.7): tabs, toolbar, refs panel, graph/diff, details, status bar.
-import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { CredentialsRequest, api, KeptSharedStash, OpOutcome, OpenedRepo, SharedStashInfo, StashInfo, StatusReport, UiError } from "./api";
 import { listen } from "@tauri-apps/api/event";
@@ -24,6 +24,7 @@ import { Dynamic } from "solid-js/web";
 import { Splitter, storedSize } from "./features/split/Splitter";
 import { SharedStashPanel } from "./features/shared-stash/SharedStashPanel";
 import { SharedActions, SharedMenuState, SharedStashMenu } from "./features/shared-stash/SharedStashMenu";
+import { LocalStashMenu, LocalStashMenuState } from "./features/stash/LocalStashMenu";
 import { ShareDialog } from "./features/shared-stash/ShareDialog";
 import { basesIndex, formatBytes } from "./features/shared-stash/logic";
 import { forget, glyphOn, modelOf, reloadList } from "./features/shared-stash/model";
@@ -81,6 +82,7 @@ export function App() {
   // Shared stash: sidebar view, dialogs and operations (features/shared-stash).
   const [sideView, setSideView] = createSignal<"refs" | "shared">("refs");
   const [sharedMenu, setSharedMenu] = createSignal<SharedMenuState | null>(null);
+  const [localMenu, setLocalMenu] = createSignal<LocalStashMenuState | null>(null);
   const [shareStash, setShareStash] = createSignal<StashInfo | null>(null);
   const [sharing, setSharing] = createSignal(false);
   // Tell the shell while the tab is showing, so "panel" mode fetches on Fetch/Pull only then.
@@ -92,6 +94,7 @@ export function App() {
   });
   // Mirrors change after any fetch/pull/op; reading them is local and cheap.
   createEffect(on(() => (tab() ? ([tab()!.repo.repoId, tab()!.diffRev] as const) : null), (k) => { if (k) void reloadList(k[0]); }));
+  const sharedBases = createMemo(() => (tab() ? basesIndex(modelOf(tab()!.repo.repoId).listing?.stashes ?? []) : undefined));
   const toastNow = (text: string, undoId: string | null = null) => {
     clearTimeout(toastTimer);
     setToast({ text, repoId: tab().repo.repoId, undoId });
@@ -108,19 +111,18 @@ export function App() {
     const repoId = tab().repo.repoId;
     setSharing(true);
     const ok = await sharedOp(() => api.sharedStashPublish(repoId, stash.sha, title, remote), (out) => {
-      const big = out.shared_stash?.large_bytes;
+      const big = out?.shared_stash?.large_bytes;
       return big ? t("toast.ssSharedLarge", { remote, size: formatBytes(big) }) : t("toast.ssShared", { s: remote });
     });
     setSharing(false);
-    if (ok) {
-      setShareStash(null);
-      setSideView("shared");
-    }
+    // Failures show in the error banner, which a dialog would cover.
+    setShareStash(null);
+    if (ok) setSideView("shared");
   }
   const sharedActions = (): SharedActions => {
     const repoId = tab().repo.repoId;
     return {
-      apply: (s) => void sharedOp(() => api.sharedStashApply(repoId, s.id, s.remote), (out) => (out.shared_stash?.index_dropped ? t("toast.ssAppliedNoIndex") : t("toast.ssApplied")), true),
+      apply: (s) => void sharedOp(() => api.sharedStashApply(repoId, s.id, s.remote), (out) => (out?.shared_stash?.index_dropped ? t("toast.ssAppliedNoIndex") : t("toast.ssApplied")), true),
       branch: (s, name) => void sharedOp(() => api.sharedStashBranch(repoId, s.id, s.remote, name), t("toast.ssBranch", { s: name }), true),
       update: (s, sha, title) => void sharedOp(() => api.sharedStashUpdate(repoId, s.id, s.remote, sha, title), t("toast.ssUpdated")),
       rename: (s, title) => void sharedOp(() => api.sharedStashUpdate(repoId, s.id, s.remote, null, title), t("toast.ssRenamed")),
@@ -424,7 +426,7 @@ export function App() {
                 );
               }}
             </For>
-            <StashPanel repoId={tab()!.repo.repoId} rev={tab()!.diffRev} run={run} onShare={tab()!.repo.readOnlyReason ? undefined : setShareStash} />
+            <StashPanel repoId={tab()!.repo.repoId} rev={tab()!.diffRev} run={run} onMenu={tab()!.repo.readOnlyReason ? undefined : (stash, x, y) => setLocalMenu({ x, y, stash })} />
             </Show>
           </aside>
           <Splitter label={t("split.left")} axis="x" value={leftW()} min={140} max={420} onChange={setLeftW} onCommit={saveLeftW} />
@@ -447,7 +449,7 @@ export function App() {
                   selected={tab()!.selected}
                   onSelect={(row, sha) => patch({ selected: row, sha, diffPath: null, wip: false })}
                   onMenu={tab()!.repo.readOnlyReason ? undefined : (sha, x, y) => setCommitMenu({ sha, x, y })}
-                  shared={glyphOn() ? basesIndex(modelOf(tab()!.repo.repoId).listing?.stashes ?? []) : undefined}
+                  shared={glyphOn() ? sharedBases() : undefined}
                 />
               )}
             </Show>
@@ -591,6 +593,11 @@ export function App() {
       </Show>
       <Show when={tab() && sharedMenu()} keyed>
         {(m) => <SharedStashMenu repoId={tab()!.repo.repoId} menu={m} actions={sharedActions()} onClose={() => setSharedMenu(null)} />}
+      </Show>
+      <Show when={tab() && localMenu()} keyed>
+        {(m) => <LocalStashMenu menu={m} onClose={() => setLocalMenu(null)} onShare={setShareStash}
+          onApply={(x) => void run(() => api.stash(tab().repo.repoId, "apply", x.index), { graph: true, toast: t("toast.stashApplied") })}
+          onPop={(x) => void run(() => api.stash(tab().repo.repoId, "pop", x.index), { graph: true, toast: t("toast.stashPopped") })} />}
       </Show>
       <Show when={tab() && shareStash()} keyed>
         {(st) => <ShareDialog repoId={tab()!.repo.repoId} stash={st} busy={sharing()} onSubmit={(title, remote) => void publish(st, title, remote)} onCancel={() => setShareStash(null)} />}

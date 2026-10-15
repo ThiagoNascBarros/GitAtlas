@@ -25,7 +25,7 @@ export function SharedStashPanel(props: SharedStashPanelProps) {
   const clock = window.setInterval(() => setNow(Math.floor(Date.now() / 1000)), 30000);
   onCleanup(() => window.clearInterval(clock));
   // Opening the tab fetches (panel and always modes alike, SPEC §5.1).
-  onMount(() => void fetchShared(props.repoId));
+  onMount(() => { if (!props.readOnly) void fetchShared(props.repoId); });
 
   const groups = createMemo(() => {
     const l = m().listing;
@@ -59,7 +59,6 @@ export function SharedStashPanel(props: SharedStashPanelProps) {
       <li>
         <button
           class="ss-row" data-ss-row classList={{ invalid: !s.valid, active: props.openSha === s.stash }}
-          aria-label={t("ss.row", { title: s.title, author: s.author_name })}
           aria-disabled={!s.valid} aria-haspopup={s.valid ? "menu" : undefined}
           title={s.valid ? s.title : t("ss.invalidTitle", { s: s.invalid_reason ?? "" })}
           onClick={() => s.valid && props.onOpen(s)}
@@ -147,7 +146,7 @@ export function SharedStashPanel(props: SharedStashPanelProps) {
         <div class="ss-bar">
           <strong>{t("ss.title")}</strong>
           <button class="icon" aria-pressed={glyphOn()} title={t("ss.glyphToggle")} aria-label={t("ss.glyphToggle")} onClick={() => setGlyph(!glyphOn())}><Layers size={15} /></button>
-          <button class="icon" disabled={m().fetch.loading} title={t("ss.refresh")} aria-label={t("ss.refresh")} onClick={() => void fetchShared(props.repoId)}>
+          <button class="icon" disabled={m().fetch.loading || props.readOnly} title={t("ss.refresh")} aria-label={t("ss.refresh")} onClick={() => void fetchShared(props.repoId)}>
             <RefreshCw size={15} classList={{ spin: m().fetch.loading }} />
           </button>
         </div>

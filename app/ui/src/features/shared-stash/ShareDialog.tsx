@@ -13,9 +13,9 @@ export function ShareDialog(props: { repoId: number; stash: StashInfo; onSubmit:
   const remotes = createMemo(() => listing()?.remotes ?? []);
   const usable = () => remotes().filter((r) => r.probe !== "rejected");
   const [title, setTitle] = createSignal(defaultTitle(props.stash.message));
-  const [remote, setRemote] = createSignal(
-    usable().find((r) => r.name === listing()?.defaultRemote)?.name ?? usable()[0]?.name ?? "",
-  );
+  // The list may still be loading when the dialog opens: the default follows it until the user picks.
+  const [picked, setPicked] = createSignal("");
+  const remote = () => picked() || (usable().find((r) => r.name === listing()?.defaultRemote) ?? usable()[0])?.name || "";
   let input: HTMLInputElement | undefined;
   useOverlay(() => props.onCancel(), () => input);
   // Git's user.name is not exposed to the UI; the slug of an earlier own stash is the same name.
@@ -39,7 +39,7 @@ export function ShareDialog(props: { repoId: number; stash: StashInfo; onSubmit:
           </label>
           <Show when={remotes().length} fallback={<p class="ss-note error">{t("ss.share.noRemote")}</p>}>
             <label>{t("ss.share.remote")}
-              <select value={remote()} onChange={(e) => setRemote(e.currentTarget.value)}>
+              <select value={remote()} onChange={(e) => setPicked(e.currentTarget.value)}>
                 <For each={remotes()}>
                   {(r) => <option value={r.name} disabled={r.probe === "rejected"}>{r.probe === "rejected" ? `${r.name} — ${t("err.REMOTE_REJECTED")}` : r.name}</option>}
                 </For>
