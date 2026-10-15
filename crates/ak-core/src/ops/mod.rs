@@ -3,10 +3,14 @@
 //! here so it is locked, journaled, undoable and reported with a stable error code.
 
 mod branch;
+mod history;
 mod merge;
+mod remote;
+mod rebase;
 mod stash;
 
 pub use merge::{ConflictVersions, MergePreview};
+pub use rebase::TodoItem;
 pub use stash::StashInfo;
 pub mod journal;
 pub mod lock;
@@ -113,6 +117,20 @@ pub enum Operation {
     StashApply { index: usize },
     StashPop { index: usize },
     StashDrop { index: usize },
+    CherryPick { sha: String },
+    Revert { sha: String },
+    /// `mode`: "soft", "mixed" or "hard".
+    Reset { sha: String, mode: String },
+    /// Annotated when `message` is given.
+    TagCreate { name: String, at: String, message: Option<String> },
+    TagDelete { name: String },
+    Fetch,
+    Pull,
+    Push { force: bool },
+    PushTag { name: String },
+    /// Rebase the current branch onto `onto`; interactive when `todo` is given (oldest first).
+    Rebase { onto: String, todo: Option<Vec<TodoItem>> },
+    RebaseContinue,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -220,7 +238,16 @@ impl Engine {
     }
 
     pub fn run(&self, op: &Operation) -> Result<OpOutcome, OpError> {
+        self.run_with_env(op, &[])
+    }
+
+    /// Like [`run`](Self::run), with extra environment for network operations (askpass bridge).
+    pub fn run_with_env(&self, op: &Operation, env: &[(String, String)]) -> Result<OpOutcome, OpError> {
         match op {
+            Operation::Fetch => self.fetch(env),
+            Operation::Pull => self.pull(env),
+            Operation::Push { force } => self.push(*force, env),
+            Operation::PushTag { name } => self.push_tag(name, env),
             Operation::Stage { paths } => self.stage(paths, true),
             Operation::Unstage { paths } => self.stage(paths, false),
             Operation::Commit { message, amend } => self.commit(message, *amend),
@@ -238,6 +265,13 @@ impl Engine {
             Operation::StashApply { index } => self.stash_apply(*index, false),
             Operation::StashPop { index } => self.stash_apply(*index, true),
             Operation::StashDrop { index } => self.stash_drop(*index),
+            Operation::CherryPick { sha } => self.pick_like("cherry_pick", sha),
+            Operation::Revert { sha } => self.pick_like("revert", sha),
+            Operation::Reset { sha, mode } => self.reset(sha, mode),
+            Operation::TagCreate { name, at, message } => self.tag_create(name, at, message.as_deref()),
+            Operation::TagDelete { name } => self.tag_delete(name),
+            Operation::Rebase { onto, todo } => self.rebase(onto, todo.as_deref()),
+            Operation::RebaseContinue => self.rebase_continue(),
         }
     }
 

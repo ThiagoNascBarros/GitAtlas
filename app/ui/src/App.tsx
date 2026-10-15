@@ -2,13 +2,15 @@
 // App frame (roadmap T1.7): tabs, toolbar, refs panel, graph/diff, details, status bar.
 import { createResource, createSignal, For, onMount, Show } from "solid-js";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { api, OpenedRepo, StatusReport, UiError } from "./api";
+import { CredentialsRequest, api, OpenedRepo, StatusReport, UiError } from "./api";
 import { listen } from "@tauri-apps/api/event";
 import { GraphView } from "./features/graph/GraphView";
 import { DiffView } from "./features/diff/DiffView";
 import { setTheme, themeChoice, ThemeChoice } from "./theme/theme";
 import { errorFix, errorText, t } from "./i18n";
 import { StashPanel } from "./features/stash/StashPanel";
+import { CommitMenu, CommitMenuState } from "./features/graph/CommitMenu";
+import { RebaseEditor } from "./features/rebase/RebaseEditor";
 import { RefMenu, RefMenuState } from "./features/refs/RefMenu";
 import { JournalPanel } from "./features/journal/JournalPanel";
 import { NameDialog } from "./features/refs/NameDialog";
@@ -17,7 +19,7 @@ import { WipFile, WipPanel } from "./features/wip/WipPanel";
 import { changeCount, groupStatus } from "./features/wip/status";
 import { toTreeRows, visibleRows } from "./features/files/tree";
 import { markOpenStart, togglePerf } from "./features/graph/perf";
-import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Laptop, List, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X } from "lucide-solid";
+import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Laptop, List, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload } from "lucide-solid";
 import { Dynamic } from "solid-js/web";
 import { Splitter, storedSize } from "./features/split/Splitter";
 
@@ -45,6 +47,21 @@ export function App() {
     const s = new Set(collapsed());
     if (!s.delete(p)) s.add(p);
     setCollapsed(s);
+  };
+  const [rebaseOnto, setRebaseOnto] = createSignal<string | null>(null);
+  const [commitMenu, setCommitMenu] = createSignal<CommitMenuState | null>(null);
+  const [creds, setCreds] = createSignal<CredentialsRequest[]>([]);
+  const [netBusy, setNetBusy] = createSignal<string | null>(null);
+  const [forceConfirm, setForceConfirm] = createSignal(false);
+  async function net(action: "fetch" | "pull" | "push", force = false) {
+    setNetBusy(action);
+    const toast = { fetch: t("toast.fetched"), pull: t("toast.pulled"), push: force ? t("toast.forcePushed") : t("toast.pushed") }[action];
+    await run(() => api.net(tab().repo.repoId, action, force), { graph: true, toast });
+    setNetBusy(null);
+  }
+  const answerCreds = (id: number, value: string | null) => {
+    setCreds(creds().filter((c) => c.id !== id));
+    void api.credentialsAnswer(id, value);
   };
   const [showJournal, setShowJournal] = createSignal(false);
   const [watchFailed, setWatchFailed] = createSignal<number[]>([]);
@@ -91,7 +108,7 @@ export function App() {
     const repoId = tab().repo.repoId;
     try {
       const out = (await op()) as { id?: string | null; conflicted?: boolean } | undefined;
-      if (out?.conflicted) opts = { graph: true, toast: t("toast.mergeConflicts") };
+      if (out?.conflicted) opts = { graph: true, toast: t("toast.opConflicts") };
       setError(null);
       if (opts.graph) await refreshRepo(repoId);
       await loadStatus(repoId);
@@ -184,6 +201,8 @@ export function App() {
   onMount(async () => {
     try {
       // The core watches the working tree and emits this (debounced) on any change.
+      await listen<CredentialsRequest>("credentials-request", (e) => setCreds([...creds(), e.payload]));
+      await listen<number>("credentials-cancel", (e) => setCreds(creds().filter((c) => c.id !== e.payload)));
       await listen<number>("repo-changed", (e) => loadStatus(e.payload));
       await listen<number>("watch-failed", (e) => setWatchFailed([...watchFailed().filter((id) => id !== e.payload), e.payload]));
       window.addEventListener("focus", () => tab() && loadStatus(tab().repo.repoId));
@@ -230,6 +249,13 @@ export function App() {
           <button class="tool" disabled={!tab()} title={t("toolbar.redoTitle")} onClick={() => redo(tab().repo.repoId)}><Redo2 size={16} /><span class="lbl">{t("toolbar.redo")}</span></button>
         </div>
         <div class="group">
+          <button class="tool" disabled={!tab() || !!netBusy() || !!tab()?.repo.readOnlyReason} aria-busy={netBusy() === "fetch"} title={t("toolbar.fetchTitle")} onClick={() => void net("fetch")}><CloudDownload size={16} /><span class="lbl">{t("toolbar.fetch")}</span></button>
+          <button class="tool" disabled={!tab() || !!netBusy() || !!tab()?.repo.readOnlyReason} aria-busy={netBusy() === "pull"} title={t("toolbar.pullTitle")} onClick={() => void net("pull")}>
+            <ArrowDownToLine size={16} /><span class="lbl">{t("toolbar.pull")}</span><Show when={tab()?.status?.behind}><span class="count">{tab()!.status!.behind}</span></Show>
+          </button>
+          <button class="tool" disabled={!tab() || !!netBusy() || !!tab()?.repo.readOnlyReason} aria-busy={netBusy() === "push"} title={t("toolbar.pushTitle")} onClick={() => void net("push")}>
+            <ArrowUpFromLine size={16} /><span class="lbl">{t("toolbar.push")}</span><Show when={tab()?.status?.ahead}><span class="count">{tab()!.status!.ahead}</span></Show>
+          </button>
           <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.newBranchTitle")} onClick={() => setAskName("branch")}><GitBranchPlus size={16} /><span class="lbl">{t("toolbar.newBranch")}</span></button>
           <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.stashTitle")}
             onClick={() => setAskName("stash")}><Archive size={16} /><span class="lbl">{t("toolbar.stash")}</span></button>
@@ -327,6 +353,7 @@ export function App() {
                   repo={tab()!.repo}
                   selected={tab()!.selected}
                   onSelect={(row, sha) => patch({ selected: row, sha, diffPath: null, wip: false })}
+                  onMenu={tab()!.repo.readOnlyReason ? undefined : (sha, x, y) => setCommitMenu({ sha, x, y })}
                 />
               )}
             </Show>
@@ -451,12 +478,29 @@ export function App() {
             <Show when={showDetail() && error()!.detail}><pre class="mono">{error()!.detail}</pre></Show>
           </div>
           <Show when={error()!.detail}><button class="mini" onClick={() => setShowDetail(!showDetail())}>{t("err.details")}</button></Show>
+          <Show when={error()!.code === "PUSH_REJECTED"}>
+            {/* Overwrites remote commits: needs a second click. */}
+            <button class="mini danger" onClick={() => { if (!forceConfirm()) return setForceConfirm(true); setForceConfirm(false); setError(null); void net("push", true); }}>
+              {forceConfirm() ? t("push.forceConfirm") : t("push.force")}
+            </button>
+          </Show>
           <button class="mini" onClick={() => setError(null)}>{t("err.dismiss")}</button>
         </div>
       </Show>
+      <Show when={tab() && rebaseOnto()} keyed>
+        {(onto) => <RebaseEditor repoId={tab()!.repo.repoId} onto={onto} label={/^[0-9a-f]{40}$/.test(onto) ? onto.slice(0, 7) : onto}
+          run={run} onClose={() => setRebaseOnto(null)} onError={(e) => fail(e)} />}
+      </Show>
+      <Show when={tab() && commitMenu()} keyed>
+        {(m) => <CommitMenu repoId={tab()!.repo.repoId} menu={m} run={run} onClose={() => setCommitMenu(null)}
+          onToast={(text) => setToast({ text, repoId: tab()!.repo.repoId, undoId: null })} onRebase={setRebaseOnto} />}
+      </Show>
+      <Show when={creds()[0]} keyed>
+        {(c) => <NameDialog label={c.prompt || t("creds.title")} secret={c.secret} onSubmit={(v) => answerCreds(c.id, v)} onCancel={() => answerCreds(c.id, null)} />}
+      </Show>
       {/* Keyed: the menu's actions still read their ref after closing it (refMenu() is null by then). */}
       <Show when={tab() && refMenu()} keyed>
-        {(m) => <RefMenu repoId={tab()!.repo.repoId} menu={m} run={run} onClose={() => setRefMenu(null)} onError={(e) => fail(e)} />}
+        {(m) => <RefMenu repoId={tab()!.repo.repoId} menu={m} run={run} onClose={() => setRefMenu(null)} onError={(e) => fail(e)} onRebase={setRebaseOnto} />}
       </Show>
       <Show when={tab() && askName()} keyed>
         {(kind) => {

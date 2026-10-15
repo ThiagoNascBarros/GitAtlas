@@ -601,3 +601,235 @@ fn conflict_versions_and_resolve_with_edited_content() {
     assert_eq!(git(&d, &["show", ":a.txt"]), "both");
     assert_eq!(code(e.run(&Operation::ResolveWith { path: "../x".into(), content: String::new() })), "INVALID_PATH");
 }
+
+fn side_commit(d: &Path, file: &str, text: &str) -> String {
+    git(d, &["checkout", "-q", "-b", "side"]);
+    write(d, file, text);
+    git(d, &["add", file]);
+    git(d, &["commit", "-qm", "side change"]);
+    let sha = git(d, &["rev-parse", "HEAD"]);
+    git(d, &["checkout", "-q", "main"]);
+    sha
+}
+
+#[test]
+fn cherry_pick_and_revert_with_undo_redo() {
+    let (d, e) = base_repo();
+    let sha = side_commit(&d, "b.txt", "side\n");
+    let before = git(&d, &["rev-parse", "HEAD"]);
+    let cp = e.run(&Operation::CherryPick { sha: sha.clone() }).unwrap();
+    assert_eq!(std::fs::read_to_string(d.join("b.txt")).unwrap(), "side\n");
+    assert_eq!(code(e.run(&Operation::CherryPick { sha: sha.clone() })), "NOTHING_TO_COMMIT");
+    assert!(e.in_progress().is_none());
+    e.undo(cp.id.as_deref().unwrap()).unwrap();
+    assert_eq!(git(&d, &["rev-parse", "HEAD"]), before);
+    e.redo_last().unwrap();
+    let rv = e.run(&Operation::Revert { sha: "HEAD".into() }).unwrap();
+    assert!(!d.join("b.txt").exists());
+    assert!(git(&d, &["log", "-1", "--format=%s"]).starts_with("Revert"));
+    e.undo(rv.id.as_deref().unwrap()).unwrap();
+    assert!(d.join("b.txt").exists());
+}
+
+#[test]
+fn cherry_pick_conflict_can_be_aborted() {
+    let (d, e) = base_repo();
+    let sha = side_commit(&d, "a.txt", "side\n");
+    write(&d, "a.txt", "main\n");
+    git(&d, &["commit", "-qam", "main change"]);
+    let before = git(&d, &["status", "--porcelain"]);
+    assert!(e.run(&Operation::CherryPick { sha }).unwrap().conflicted);
+    assert_eq!(e.in_progress(), Some("cherry-pick"));
+    assert_eq!(code(e.run(&Operation::Revert { sha: "HEAD".into() })), "MERGE_IN_PROGRESS");
+    e.run(&Operation::MergeAbort).unwrap();
+    assert!(e.in_progress().is_none());
+    assert_eq!(git(&d, &["status", "--porcelain"]), before);
+}
+
+#[test]
+fn hard_reset_undo_restores_commit_and_uncommitted_work() {
+    let (d, e) = base_repo();
+    write(&d, "a.txt", "2");
+    stage(&e, &["a.txt"]);
+    commit(&e, "second", false);
+    let head = git(&d, &["rev-parse", "HEAD"]);
+    write(&d, "a.txt", "uncommitted");
+    let r = e.run(&Operation::Reset { sha: "HEAD~1".into(), mode: "hard".into() }).unwrap();
+    assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "1");
+    e.undo(r.id.as_deref().unwrap()).unwrap();
+    assert_eq!(git(&d, &["rev-parse", "HEAD"]), head);
+    assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "uncommitted");
+    // Redo refuses while there is uncommitted work it would destroy.
+    assert_eq!(code(e.redo_last()), "WORKTREE_CHANGED");
+    let soft = e.run(&Operation::Reset { sha: "HEAD~1".into(), mode: "soft".into() }).unwrap();
+    assert_eq!(git(&d, &["diff", "--cached", "--name-only"]), "a.txt");
+    e.undo(soft.id.as_deref().unwrap()).unwrap();
+    assert_eq!(git(&d, &["rev-parse", "HEAD"]), head);
+    assert_eq!(code(e.run(&Operation::Reset { sha: "HEAD".into(), mode: "bogus".into() })), "INVALID_REF");
+}
+
+#[test]
+fn tags_create_delete_with_undo() {
+    let (d, e) = base_repo();
+    e.run(&Operation::TagCreate { name: "v1".into(), at: "HEAD".into(), message: None }).unwrap();
+    e.run(&Operation::TagCreate { name: "v2".into(), at: "HEAD".into(), message: Some("Release 2".into()) }).unwrap();
+    assert_eq!(git(&d, &["cat-file", "-t", "v2"]), "tag");
+    assert_eq!(code(e.run(&Operation::TagCreate { name: "v1".into(), at: "HEAD".into(), message: None })), "TAG_EXISTS");
+    let obj = git(&d, &["rev-parse", "refs/tags/v2"]);
+    let del = e.run(&Operation::TagDelete { name: "v2".into() }).unwrap();
+    assert_eq!(git(&d, &["tag"]), "v1");
+    e.undo(del.id.as_deref().unwrap()).unwrap();
+    assert_eq!(git(&d, &["rev-parse", "refs/tags/v2"]), obj);
+    e.redo_last().unwrap();
+    assert_eq!(git(&d, &["tag"]), "v1");
+}
+
+/// Bare remote + clone A (with an engine) + clone B, like two teammates.
+fn remote_pair() -> (PathBuf, Engine, PathBuf) {
+    let (a, e) = base_repo();
+    let bare = a.with_file_name(format!("{}-remote.git", a.file_name().unwrap().to_string_lossy()));
+    let b = a.with_file_name(format!("{}-b", a.file_name().unwrap().to_string_lossy()));
+    let _ = std::fs::remove_dir_all(&bare);
+    let _ = std::fs::remove_dir_all(&b);
+    git(&a, &["init", "-q", "--bare", bare.to_str().unwrap()]);
+    git(&bare, &["symbolic-ref", "HEAD", "refs/heads/main"]);
+    git(&a, &["remote", "add", "origin", bare.to_str().unwrap()]);
+    e.run(&Operation::Push { force: false }).unwrap();
+    git(&a, &["clone", "-q", bare.to_str().unwrap(), b.to_str().unwrap()]);
+    git(&b, &["config", "user.name", "B"]);
+    git(&b, &["config", "user.email", "b@example.com"]);
+    (a, e, b)
+}
+
+fn ahead_behind(d: &Path) -> (u32, u32) {
+    let out = Command::new("git").arg("-C").arg(d).args(["status", "--porcelain=v2", "-z", "--branch"]).output().unwrap().stdout;
+    let s = ak_gitcli::parse::parse_status_v2(&out).unwrap();
+    (s.ahead, s.behind)
+}
+
+#[test]
+fn push_sets_upstream_then_fetch_pull_and_undo_pull() {
+    let (a, e, b) = remote_pair();
+    assert_eq!(git(&a, &["rev-parse", "--abbrev-ref", "@{upstream}"]), "origin/main");
+    write(&b, "b.txt", "from b");
+    git(&b, &["add", "b.txt"]);
+    git(&b, &["commit", "-qm", "b work"]);
+    git(&b, &["push", "-q"]);
+    e.run(&Operation::Fetch).unwrap();
+    assert_eq!(ahead_behind(&a), (0, 1));
+    let before = git(&a, &["rev-parse", "HEAD"]);
+    let pull = e.run(&Operation::Pull).unwrap();
+    assert_eq!(git(&a, &["rev-parse", "HEAD"]), git(&b, &["rev-parse", "HEAD"]));
+    e.undo(pull.id.as_deref().unwrap()).unwrap();
+    assert_eq!(git(&a, &["rev-parse", "HEAD"]), before);
+    e.redo_last().unwrap();
+    assert!(a.join("b.txt").exists());
+    // Nothing new: pull is a no-op without a journal entry.
+    assert!(e.run(&Operation::Pull).unwrap().id.is_none());
+}
+
+#[test]
+fn rejected_push_and_force_with_lease() {
+    let (a, e, b) = remote_pair();
+    write(&b, "b.txt", "from b");
+    git(&b, &["add", "b.txt"]);
+    git(&b, &["commit", "-qm", "b work"]);
+    git(&b, &["push", "-q"]);
+    write(&a, "a.txt", "local");
+    stage(&e, &["a.txt"]);
+    commit(&e, "a work", false);
+    // Remote moved after our last fetch: rejected, and the lease also protects B's commit.
+    e.run(&Operation::Fetch).unwrap();
+    assert_eq!(ahead_behind(&a), (1, 1));
+    let base = git(&a, &["rev-parse", "origin/main"]);
+    assert_eq!(code(e.run(&Operation::Push { force: false })), "PUSH_REJECTED");
+    git(&b, &["commit", "-q", "--allow-empty", "-m", "b again"]);
+    git(&b, &["push", "-q"]);
+    assert_eq!(code(e.run(&Operation::Push { force: true })), "PUSH_REJECTED");
+    assert_ne!(git(&b, &["ls-remote", "origin", "refs/heads/main"]).split('\t').next().unwrap(), base);
+}
+
+#[test]
+fn pull_without_upstream_and_missing_remote() {
+    let (d, e) = base_repo();
+    assert_eq!(code(e.run(&Operation::Pull)), "NO_UPSTREAM");
+    assert_eq!(code(e.run(&Operation::Push { force: false })), "NO_REMOTE");
+    git(&d, &["remote", "add", "origin", "/nonexistent/repo.git"]);
+    assert_eq!(code(e.run(&Operation::Fetch)), "NO_REMOTE");
+}
+
+fn commit_file(d: &Path, file: &str, text: &str, msg: &str) {
+    write(d, file, text);
+    git(d, &["add", file]);
+    git(d, &["commit", "-qm", msg]);
+}
+
+#[test]
+fn rebase_onto_main_with_undo_redo() {
+    let (d, e) = base_repo();
+    git(&d, &["checkout", "-q", "-b", "feat"]);
+    commit_file(&d, "f.txt", "f", "feat work");
+    git(&d, &["checkout", "-q", "main"]);
+    commit_file(&d, "m.txt", "m", "main work");
+    git(&d, &["checkout", "-q", "feat"]);
+    let before = git(&d, &["rev-parse", "HEAD"]);
+    let r = e.run(&Operation::Rebase { onto: "main".into(), todo: None }).unwrap();
+    assert_eq!(git(&d, &["rev-parse", "HEAD~1"]), git(&d, &["rev-parse", "main"]));
+    e.undo(r.id.as_deref().unwrap()).unwrap();
+    assert_eq!(git(&d, &["rev-parse", "HEAD"]), before);
+    e.redo_last().unwrap();
+    assert!(d.join("m.txt").exists() && d.join("f.txt").exists());
+}
+
+#[test]
+fn interactive_rebase_reword_squash_drop() {
+    let (d, e) = base_repo();
+    let base = git(&d, &["rev-parse", "HEAD"]);
+    commit_file(&d, "1.txt", "1", "first");
+    commit_file(&d, "2.txt", "2", "second");
+    commit_file(&d, "3.txt", "3", "third");
+    let mut todo = e.rebase_todo(&base).unwrap();
+    assert_eq!(todo.iter().map(|i| i.message.as_str()).collect::<Vec<_>>(), ["first", "second", "third"]);
+    todo[0].action = "reword".into();
+    todo[0].message = "Renamed 'first' commit".into();
+    todo[1].action = "squash".into();
+    todo[2].action = "drop".into();
+    e.run(&Operation::Rebase { onto: base.clone(), todo: Some(todo) }).unwrap();
+    assert_eq!(git(&d, &["rev-list", "--count", &format!("{base}..HEAD")]), "1");
+    let msg = git(&d, &["log", "-1", "--format=%B"]);
+    assert!(msg.starts_with("Renamed 'first' commit") && msg.contains("second"), "{msg}");
+    assert!(d.join("2.txt").exists() && !d.join("3.txt").exists());
+    let bad = vec![ak_core::ops::TodoItem { sha: "zz".into(), action: "pick".into(), message: String::new() }];
+    assert_eq!(code(e.run(&Operation::Rebase { onto: base, todo: Some(bad) })), "INVALID_TODO");
+}
+
+#[test]
+fn rebase_conflict_continue_and_merges_refused() {
+    let (d, e) = base_repo();
+    git(&d, &["checkout", "-q", "-b", "feat"]);
+    commit_file(&d, "a.txt", "feat\n", "feat edit");
+    git(&d, &["checkout", "-q", "main"]);
+    commit_file(&d, "a.txt", "main\n", "main edit");
+    git(&d, &["checkout", "-q", "feat"]);
+    assert!(e.run(&Operation::Rebase { onto: "main".into(), todo: None }).unwrap().conflicted);
+    assert_eq!(e.in_progress(), Some("rebase"));
+    write(&d, "a.txt", "both\n");
+    stage(&e, &["a.txt"]);
+    let done = e.run(&Operation::RebaseContinue).unwrap();
+    assert!(e.in_progress().is_none() && done.id.is_some());
+    assert_eq!(git(&d, &["log", "-1", "--format=%s"]), "feat edit");
+    // A range containing a merge is not offered to the editor.
+    git(&d, &["checkout", "-q", "-b", "m2", "main"]);
+    git(&d, &["merge", "-q", "--no-ff", "--no-edit", "feat"]);
+    assert_eq!(code(e.rebase_todo("HEAD~2").map(|_| ak_core::ops::OpOutcome::default())), "UNSUPPORTED_REBASE");
+}
+
+#[test]
+fn push_tag_reaches_the_remote() {
+    let (a, e, b) = remote_pair();
+    e.run(&Operation::TagCreate { name: "v9".into(), at: "HEAD".into(), message: None }).unwrap();
+    e.run(&Operation::PushTag { name: "v9".into() }).unwrap();
+    assert!(git(&b, &["ls-remote", "--tags", "origin"]).contains("refs/tags/v9"));
+    assert_eq!(code(e.run(&Operation::PushTag { name: "nope".into() })), "INVALID_REF");
+    let _ = a;
+}

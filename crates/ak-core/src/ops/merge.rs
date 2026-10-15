@@ -26,8 +26,28 @@ pub struct MergePreview {
 }
 
 impl Engine {
+    /// The unfinished operation that stopped on conflicts, if any: `merge`, `cherry-pick`, `revert` or `rebase`.
+    pub fn in_progress(&self) -> Option<&'static str> {
+        let has = |f: &str| self.git_dir.join(f).exists();
+        if has("rebase-merge") || has("rebase-apply") {
+            Some("rebase")
+        } else if has("CHERRY_PICK_HEAD") {
+            Some("cherry-pick")
+        } else if has("REVERT_HEAD") {
+            Some("revert")
+        } else if has("MERGE_HEAD") {
+            Some("merge")
+        } else {
+            None
+        }
+    }
+
     pub fn merge_in_progress(&self) -> bool {
-        self.git_dir.join("MERGE_HEAD").exists()
+        self.in_progress().is_some()
+    }
+
+    pub(super) fn op_in_progress() -> OpError {
+        OpError::new("MERGE_IN_PROGRESS", "A merge, cherry-pick, revert or rebase is already in progress.", Some("Finish it or abort it first."))
     }
 
     fn is_ancestor(&self, a: &str, b: &str) -> bool {
@@ -62,7 +82,7 @@ impl Engine {
     pub(super) fn merge(&self, source: &str) -> Result<OpOutcome, OpError> {
         let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
         if self.merge_in_progress() {
-            return Err(OpError::new("MERGE_IN_PROGRESS", "A merge is already in progress.", Some("Finish it or abort it first.")));
+            return Err(Self::op_in_progress());
         }
         let (Some(before), Some(branch)) = (self.head(), self.branch()) else {
             return Err(OpError::new("INVALID_REF", "Merging needs a branch with at least one commit checked out.", None));
@@ -112,10 +132,10 @@ impl Engine {
 
     pub(super) fn merge_abort(&self) -> Result<OpOutcome, OpError> {
         let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
-        if !self.merge_in_progress() {
+        let Some(what) = self.in_progress() else {
             return Err(OpError::new("NO_MERGE_IN_PROGRESS", "There is no merge to abort.", None));
-        }
-        self.git.run(&self.root, ["merge", "--abort"])?;
+        };
+        self.git.run(&self.root, [what, "--abort"])?;
         Ok(OpOutcome { head: self.head(), ..Default::default() })
     }
 

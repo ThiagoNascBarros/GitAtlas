@@ -112,6 +112,10 @@ pub struct StatusEntry {
 pub struct StatusReport {
     pub branch: Option<String>,
     pub oid: Option<String>,
+    /// Tracking branch (e.g. `origin/main`) and commits ahead of / behind it.
+    pub upstream: Option<String>,
+    pub ahead: u32,
+    pub behind: u32,
     pub entries: Vec<StatusEntry>,
 }
 
@@ -128,6 +132,12 @@ pub fn parse_status_v2(out: &[u8]) -> Result<StatusReport, ParseError> {
                     rep.branch = (v != "(detached)").then(|| v.to_owned());
                 } else if let Some(v) = p.strip_prefix("# branch.oid ") {
                     rep.oid = (v != "(initial)").then(|| v.to_owned());
+                } else if let Some(v) = p.strip_prefix("# branch.upstream ") {
+                    rep.upstream = Some(v.to_owned());
+                } else if let Some(v) = p.strip_prefix("# branch.ab ") {
+                    let mut ab = v.split(' ').map(|n| n.trim_start_matches(['+', '-']).parse().unwrap_or(0));
+                    rep.ahead = ab.next().unwrap_or(0);
+                    rep.behind = ab.next().unwrap_or(0);
                 }
             }
             b'1' | b'2' | b'u' => {
@@ -189,13 +199,14 @@ mod tests {
 
     #[test]
     fn status_v2_all_entry_kinds() {
-        let raw = "# branch.oid abc\0# branch.head main\0\
+        let raw = "# branch.oid abc\0# branch.head main\0# branch.upstream origin/main\0# branch.ab +2 -1\0\
 1 .M N... 100644 100644 100644 h1 h2 src/a b.txt\0\
 2 R. N... 100644 100644 100644 h1 h2 R100 new.txt\0old.txt\0\
 u UU N... 100644 100644 100644 100644 h1 h2 h3 c.txt\0\
 ? untracked file\0";
         let s = parse_status_v2(raw.as_bytes()).unwrap();
         assert_eq!(s.branch.as_deref(), Some("main"));
+        assert_eq!((s.upstream.as_deref(), s.ahead, s.behind), (Some("origin/main"), 2, 1));
         assert_eq!(s.entries[0].path, "src/a b.txt");
         assert_eq!((s.entries[0].index, s.entries[0].worktree), ('.', 'M'));
         assert_eq!(s.entries[1].orig_path.as_deref(), Some("old.txt"));
