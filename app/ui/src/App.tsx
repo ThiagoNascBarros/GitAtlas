@@ -9,6 +9,7 @@ import { DiffView } from "./features/diff/DiffView";
 import { setTheme, themeChoice, ThemeChoice } from "./theme/theme";
 import { errorFix, errorText, t } from "./i18n";
 import { StashPanel } from "./features/stash/StashPanel";
+import { CommitMenu, CommitMenuState } from "./features/graph/CommitMenu";
 import { RefMenu, RefMenuState } from "./features/refs/RefMenu";
 import { JournalPanel } from "./features/journal/JournalPanel";
 import { NameDialog } from "./features/refs/NameDialog";
@@ -40,6 +41,7 @@ export function App() {
   const [toast, setToast] = createSignal<Toast | null>(null);
   const [refFilter, setRefFilter] = createSignal("");
   const [refMenu, setRefMenu] = createSignal<RefMenuState | null>(null);
+  const [commitMenu, setCommitMenu] = createSignal<CommitMenuState | null>(null);
   const [showJournal, setShowJournal] = createSignal(false);
   const [watchFailed, setWatchFailed] = createSignal<number[]>([]);
   const [askName, setAskName] = createSignal<"branch" | "stash" | null>(null);
@@ -85,7 +87,7 @@ export function App() {
     const repoId = tab().repo.repoId;
     try {
       const out = (await op()) as { id?: string | null; conflicted?: boolean } | undefined;
-      if (out?.conflicted) opts = { graph: true, toast: t("toast.mergeConflicts") };
+      if (out?.conflicted) opts = { graph: true, toast: t("toast.opConflicts") };
       setError(null);
       if (opts.graph) await refreshRepo(repoId);
       await loadStatus(repoId);
@@ -321,6 +323,7 @@ export function App() {
                   repo={tab()!.repo}
                   selected={tab()!.selected}
                   onSelect={(row, sha) => patch({ selected: row, sha, diffPath: null, wip: false })}
+                  onMenu={tab()!.repo.readOnlyReason ? undefined : (sha, x, y) => setCommitMenu({ sha, x, y })}
                 />
               )}
             </Show>
@@ -439,6 +442,10 @@ export function App() {
           <Show when={error()!.detail}><button class="mini" onClick={() => setShowDetail(!showDetail())}>{t("err.details")}</button></Show>
           <button class="mini" onClick={() => setError(null)}>{t("err.dismiss")}</button>
         </div>
+      </Show>
+      <Show when={tab() && commitMenu()} keyed>
+        {(m) => <CommitMenu repoId={tab()!.repo.repoId} menu={m} run={run} onClose={() => setCommitMenu(null)}
+          onToast={(text) => setToast({ text, repoId: tab()!.repo.repoId, undoId: null })} />}
       </Show>
       {/* Keyed: the menu's actions still read their ref after closing it (refMenu() is null by then). */}
       <Show when={tab() && refMenu()} keyed>

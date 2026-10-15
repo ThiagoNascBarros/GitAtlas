@@ -70,6 +70,9 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
             <Show when={!r().isHead && r().kind !== "tag"}>
               <li role="none"><button role="menuitem" onClick={() => setAsk("merge")}><GitMerge size={14} aria-hidden="true" />{t("refmenu.merge")}</button></li>
             </Show>
+            <Show when={r().kind === "tag"}>
+              <li role="none"><button role="menuitem" onClick={() => go(() => api.history(props.repoId, "tag-delete", "", { name: r().name }), t("toast.tagDeleted", { s: r().name }))}><Trash2 size={14} aria-hidden="true" />{t("refmenu.deleteTag")}</button></li>
+            </Show>
             <li role="none"><button role="menuitem" onClick={() => setAsk("new")}><GitBranchPlus size={14} aria-hidden="true" />{t("refmenu.newBranch")}</button></li>
             <Show when={local()}>
               <li role="none"><button role="menuitem" onClick={() => setAsk("rename")}><Pencil size={14} aria-hidden="true" />{t("refmenu.rename")}</button></li>

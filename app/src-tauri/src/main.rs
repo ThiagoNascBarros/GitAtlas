@@ -361,7 +361,8 @@ async fn diff_worktree(
 async fn status_get(repo_id: u32, state: State<'_, AppState>) -> Result<StatusWithMerge> {
     let r = get(&state, repo_id)?;
     let status = r.reader.status().map_err(|e| UiError::new("READ_FAILED", e))?;
-    Ok(StatusWithMerge { status, merging: engine(&r)?.merge_in_progress() })
+    let in_progress = engine(&r)?.in_progress();
+    Ok(StatusWithMerge { status, merging: in_progress.is_some(), in_progress })
 }
 
 #[derive(Serialize)]
@@ -369,6 +370,8 @@ struct StatusWithMerge {
     #[serde(flatten)]
     status: StatusReport,
     merging: bool,
+    /// "merge", "cherry-pick", "revert" or "rebase" while one is stopped on conflicts.
+    in_progress: Option<&'static str>,
 }
 
 #[tauri::command]
@@ -477,6 +480,19 @@ async fn op_checkout(repo_id: u32, target: String, is_branch: bool, state: State
 }
 
 #[tauri::command]
+async fn op_history(repo_id: u32, action: String, sha: String, mode: Option<String>, name: Option<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
+    let op = match action.as_str() {
+        "cherry-pick" => Operation::CherryPick { sha },
+        "revert" => Operation::Revert { sha },
+        "reset" => Operation::Reset { sha, mode: mode.unwrap_or_default() },
+        "tag" => Operation::TagCreate { name: name.unwrap_or_default(), at: sha, message: mode },
+        "tag-delete" => Operation::TagDelete { name: name.unwrap_or_default() },
+        _ => return Err(UiError::new("GIT_FAILED", "unknown history action")),
+    };
+    run_op(&state, repo_id, op)
+}
+
+#[tauri::command]
 async fn op_undo(repo_id: u32, id: String, state: State<'_, AppState>) -> Result<OpOutcome> {
     let r = get(&state, repo_id)?;
     Ok(engine(&r)?.undo(&id)?)
@@ -533,6 +549,7 @@ fn main() {
             conflict_versions,
             op_resolve_with,
             op_stash,
+            op_history,
             op_undo,
             op_redo,
             journal_list,

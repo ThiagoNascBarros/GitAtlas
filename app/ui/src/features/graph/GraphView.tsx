@@ -29,6 +29,8 @@ export function GraphView(props: {
   repo: OpenedRepo;
   selected: number | null;
   onSelect: (row: number, sha: string) => void;
+  /** Right-click on a row (the row is selected first). */
+  onMenu?: (sha: string, x: number, y: number) => void;
 }) {
   let scroller!: HTMLDivElement;
   let canvas!: HTMLCanvasElement;
@@ -279,6 +281,15 @@ export function GraphView(props: {
         onClick={(e) => {
           const rect = scroller.getBoundingClientRect();
           select(Math.floor((e.clientY - rect.top + scroller.scrollTop) / ROW_H));
+        }}
+        onContextMenu={(e) => {
+          const rect = scroller.getBoundingClientRect();
+          const i = Math.floor((e.clientY - rect.top + scroller.scrollTop) / ROW_H);
+          const r = rowAt(i);
+          if (!r || !props.onMenu) return;
+          e.preventDefault();
+          select(i);
+          props.onMenu(r.m.sha, e.clientX, e.clientY);
         }}
       >
         <canvas ref={canvas} class="graph-canvas" style={{ width: `${size().w}px`, height: `${size().h}px` }} />
