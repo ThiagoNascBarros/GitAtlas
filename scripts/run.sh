@@ -14,4 +14,4 @@ fi
 pnpm --dir app/ui install --frozen-lockfile >/dev/null
 pnpm --dir app/ui build >/dev/null
 cargo build "${cargo_flags[@]}" -p atlaskraken --features custom-protocol
-exec "target/$profile/atlaskraken" "${1:-}"
+exec "target/$profile/atlaskraken" ${1:+"$1"}
