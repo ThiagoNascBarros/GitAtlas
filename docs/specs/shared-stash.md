@@ -210,3 +210,22 @@ Critical review by a subagent on 2026-10-15. Accepted: validation, undo, sensiti
 warning, claimed/verified, sha addressing, lease source, dirty tree, `Lock::Remote`, probe,
 UI states, extra criteria. Rejected: dropping the wrapper commit; "hosts may gc custom refs"
 (refs keep objects reachable); hard size limit.
+
+## 13. Implementation notes (M1-M4)
+
+Choices made while implementing, where the spec was silent, ambiguous or not feasible with Git as it behaves.
+
+- **Apply needs the base commit.** `git stash apply` merges against the stash's first parent, so Apply cannot run without the base, contrary to §5.1. Apply and Branch both try the base branch once on the same remote, then return `BASE_MISSING`.
+- **`DIRTY_TREE` is checked before Git runs.** Git restores the untracked files of a stash even when it then refuses the tracked part, so "nothing changed" (§9.4) needs a check first: if any path the stash touches (tracked, staged or untracked) is already changed in the index or working tree, or an untracked path exists on disk, the apply is refused untouched. Git's own messages are still mapped to `DIRTY_TREE` as a safety net.
+- **`--index` only when it can work.** `git stash apply --index` fails when the index already has staged changes, and then unstages them. So `--index` is used only if the stash has staged changes and the index is clean; otherwise the stash is applied without it and `index_dropped` is reported. A failed `--index` run that is not a conflict or overlap also falls back (§5 table).
+- **Branch undo.** Recorded as `shared_stash_branch` (undoable). Undo needs HEAD still at the base on the new branch, checks out the previous branch/commit and deletes the new branch; the applied changes stay as ordinary local changes (nothing is discarded). Redo recreates and checks out the branch without applying the stash again.
+- **Keep metadata.** The wrapper has neither remote nor slug, so unshare writes `.git/atlasgit/keep.json` (`id -> remote, slug, unshared_at`) next to the keep ref; Reshare falls back to the slug of the wrapper's author name if the entry is gone. Written only by Unshare/Reshare/Discard.
+- **Probe.** Pushes an unrelated commit (empty tree, fixed identity) so no user history is uploaded. A host that accepts the push but refuses the delete counts as `rejected` (Unshare would fail there too). Network/auth errors are errors, never cached. The cache entry is keyed by remote name and URL; a URL change invalidates it.
+- **Stale detection.** `STALE_SHARED_STASH` covers both Git's client-side `stale info` and the server-side `failed to update ref` seen when the ref moves between the fresh fetch and the push.
+- **Publish/update.** Title defaults to the stash message. Update with neither content nor title returns `NOTHING_TO_UPDATE` (new code). Reshare/discard of a missing keep ref returns `STASH_NOT_FOUND`. `Created` is kept on update.
+- **Verified badge.** `git verify-commit` succeeds and the signer (`%GS`) contains the trailer email; only checked for wrappers that carry a signature header.
+- **Journal.** Publish, update, unshare, reshare, discard-keep and apply are journaled but not undoable (`UNDO_NOT_SUPPORTED`) and do not clear the redo chain; fetch is not journaled. `OpOutcome::id` is `None` for them; extra results are in `OpOutcome::shared_stash`.
+- **Listing.** Mirrors of remotes that no longer exist are ignored. `Engine::open` refuses Git < 2.20, so the list is not available there either (§8 says read-only; not implemented).
+- **Fetch mode (shell).** Stored as `sharedStash.fetchMode` in `<app config dir>/settings.json` (global) and `<git-dir>/atlasgit/settings.json` (per repo, written only when changed). `shared_stash_tab_open` takes the repo id. A plain Fetch/Pull fetches shared stashes when the effective mode is `always` or the tab is open; its failures are reported per remote and never fail the Fetch/Pull.
+- **Cancel.** `shared_stash_cancel` dismisses the credentials prompts of the repository (Git then fails with an auth error). A running Git process is not killed, and `Lock::Remote` is held until it ends.
+- **Large stash.** Threshold is 10 MiB of blobs missing from the remote's known branches; best effort, a failure to estimate means no warning.
