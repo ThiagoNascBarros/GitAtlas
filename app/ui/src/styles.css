@@ -186,3 +186,4 @@ select { appearance: none; background-color: var(--ak-color-bg-raised); color: v
 .merge-banner { display: flex; gap: 8px; align-items: center; justify-content: space-between; padding: 8px; border-radius: 6px; background: var(--ak-color-accent-muted); border: 1px solid var(--ak-color-border-strong); }
 .stash-item { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; padding: 3px 0 3px 8px; }
 .stash-item .path { flex: 1 1 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.backdrop { position: fixed; inset: 0; width: 100%; height: 100%; padding: 0; border: 0; background: transparent; cursor: default; }

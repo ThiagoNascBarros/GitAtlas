@@ -401,10 +401,10 @@ export function App() {
       </Show>
 
       <Show when={tab() && watchFailed().includes(tab()!.repo.repoId)}>
-        <div class="banner" role="status">
+        <output class="banner">
           <div>{t("watch.failed")}</div>
           <button class="mini" onClick={() => setWatchFailed(watchFailed().filter((id) => id !== tab()!.repo.repoId))}>{t("err.dismiss")}</button>
-        </div>
+        </output>
       </Show>
       <Show when={error() && tab()}>
         <div class="banner error" role="alert">

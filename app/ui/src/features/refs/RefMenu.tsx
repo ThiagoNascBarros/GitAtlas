@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createEffect, createResource, createSignal, For, on, onMount, Show } from "solid-js";
-import { api, RefInfo } from "../../api";
+import { api, MergePreview, RefInfo } from "../../api";
 import { t } from "../../i18n";
 import { menuKeys, useOverlay } from "../overlay";
 import { NameDialog } from "./NameDialog";
@@ -9,6 +9,13 @@ export interface RefMenuState { x: number; y: number; ref: RefInfo }
 type Run = (op: () => Promise<unknown>, opts?: { graph?: boolean; toast?: string }) => Promise<boolean>;
 
 /** Context menu for a branch/tag in the left panel, plus the name prompt it can open. */
+function mergeText(p: MergePreview): string {
+  if (p.up_to_date) return t("merge.upToDate");
+  if (p.fast_forward) return t("merge.ff");
+  if (p.conflicts === null) return t("merge.unknown");
+  return p.conflicts.length ? t("merge.conflicts") : t("merge.clean");
+}
+
 export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; onClose: () => void; onError: (e: unknown) => void }) {
   const r = () => props.menu.ref;
   const local = () => r().kind === "head";
@@ -42,7 +49,10 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
       <NameDialog label={t("refmenu.namePrompt")} initial={ask() === "rename" ? r().name : ""} onSubmit={submit} onCancel={props.onClose} />
     }>
     {/* The merge dialog closes only via its buttons/Escape, like the name dialog. */}
-    <div class="menu-back" classList={{ "modal-back": !!ask() }} onClick={() => !ask() && props.onClose()} onContextMenu={(e) => { e.preventDefault(); if (!ask()) props.onClose(); }}>
+    <div class="menu-back" classList={{ "modal-back": !!ask() }}>
+      <Show when={!ask()}>
+        <button type="button" class="backdrop" tabindex="-1" aria-label={t("refmenu.cancel")} onClick={props.onClose} onContextMenu={(e) => { e.preventDefault(); props.onClose(); }} />
+      </Show>
       <Show
         when={ask()}
         fallback={
@@ -67,13 +77,13 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
           </menu>
         }
       >
-        <dialog open class="modal" aria-label={t("merge.title", { s: r().name })} onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
+        <dialog open class="modal" aria-label={t("merge.title", { s: r().name })}>
           <Show when={ask() === "merge"}>
             <h2>{t("merge.title", { s: r().name })}</h2>
             <Show when={preview()} fallback={<p class="muted">{t("loading")}</p>}>
               {(p) => (
                 <>
-                  <p>{p().up_to_date ? t("merge.upToDate") : p().fast_forward ? t("merge.ff") : p().conflicts === null ? t("merge.unknown") : p().conflicts!.length ? t("merge.conflicts") : t("merge.clean")}</p>
+                  <p>{mergeText(p())}</p>
                   <ul><For each={p().conflicts ?? []}>{(f) => <li class="mono">{f}</li>}</For></ul>
                 </>
               )}

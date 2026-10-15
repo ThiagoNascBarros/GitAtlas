@@ -25,8 +25,9 @@ export function JournalPanel(props: { repoId: number; onClose: () => void; onErr
     }
   }
   return (
-    <div class="modal-back" onClick={props.onClose}>
-      <dialog open class="modal" aria-label={t("journal.title")} onClick={(e) => e.stopPropagation()}>
+    <div class="modal-back">
+      <button type="button" class="backdrop" tabindex="-1" aria-label={t("journal.close")} onClick={props.onClose} />
+      <dialog open class="modal" aria-label={t("journal.title")}>
         <h2>{t("journal.title")}</h2>
         <Show when={(entries() ?? []).length} fallback={<p class="muted">{t("journal.empty")}</p>}>
           <ul class="journal">
