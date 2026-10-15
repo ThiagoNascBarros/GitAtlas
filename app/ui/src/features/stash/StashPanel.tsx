@@ -20,7 +20,7 @@ export function StashPanel(props: { repoId: number; rev: number; run: Run }) {
               <li class="stash-item">
                 <span class="path" title={s.message}>{s.message}</span>
                 <button class="mini" onClick={() => act("apply", s.index, t("toast.stashApplied"))}>{t("stash.apply")}</button>
-                <button class="mini" onClick={() => act("pop", s.index, t("toast.stashApplied"))}>{t("stash.pop")}</button>
+                <button class="mini" onClick={() => act("pop", s.index, t("toast.stashPopped"))}>{t("stash.pop")}</button>
                 <button class="mini" onClick={() => act("drop", s.index, t("toast.stashDropped"))}>{t("stash.drop")}</button>
               </li>
             )}

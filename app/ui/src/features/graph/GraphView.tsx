@@ -246,7 +246,7 @@ export function GraphView(props: {
               <span style={{ left: "8px" }}>{t("col.refs")}</span>
               <span class="col-resize" style={{ left: `${widths().refs - 6}px` }} onPointerDown={(e) => startResize(e, "refs")} />
               <span style={{ left: `${widths().refs}px` }}>{t("col.graph")}</span>
-              <span style={{ left: `${c.msgX}px` }}>{t("col.message")}</span>
+              {c.msgW > 48 && <span style={{ left: `${c.msgX}px` }}>{t("col.message")}</span>}
               {c.showAuthor && <span style={{ left: `${c.authorX}px` }}>{t("col.author")}</span>}
               {c.showAuthor && <span class="col-resize" style={{ left: `${c.authorX - 6}px` }} onPointerDown={(e) => startResize(e, "author")} />}
               {c.showDate && <span style={{ left: `${c.dateX}px` }}>{t("col.date")}</span>}

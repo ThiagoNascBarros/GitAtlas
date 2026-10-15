@@ -188,12 +188,12 @@ export function App() {
 
   return (
     <div class="app">
-      <nav class="tabbar" role="tablist" aria-label="Repositories">
+      <nav class="tabbar" role="tablist" aria-label={t("tabs.label")}>
         <For each={tabs()}>
           {(x, i) => (
             <div class="tab" role="tab" aria-selected={i() === active()} classList={{ active: i() === active() }}>
               <button class="tab-name" onClick={() => setActive(i())}>{x.repo.name}</button>
-              <button class="icon" aria-label={`Close ${x.repo.name}`} onClick={() => closeTab(i())}>✕</button>
+              <button class="icon" aria-label={t("tabs.close", { s: x.repo.name })} onClick={() => closeTab(i())}>✕</button>
             </div>
           )}
         </For>
@@ -206,11 +206,11 @@ export function App() {
           <Show when={tab()?.repo.branch}><span class="muted">›</span><span>{tab()!.repo.branch}</span></Show>
         </div>
         <Show when={tab()?.repo.readOnlyReason}><span class="badge">{t("toolbar.readOnly")}</span></Show>
-        <button disabled={!tab()} title={t("toolbar.undoTitle")} onClick={() => undo(tab().repo.repoId, null)}>↶ {t("toolbar.undo")}</button>
-        <button disabled={!tab()} title={t("toolbar.redoTitle")} onClick={() => redo(tab().repo.repoId)}>↷ {t("toolbar.redo")}</button>
-        <button disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.stashTitle")}
+        <button class="tool" disabled={!tab()} title={t("toolbar.undoTitle")} onClick={() => undo(tab().repo.repoId, null)}>↶ {t("toolbar.undo")}</button>
+        <button class="tool" disabled={!tab()} title={t("toolbar.redoTitle")} onClick={() => redo(tab().repo.repoId)}>↷ {t("toolbar.redo")}</button>
+        <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.stashTitle")}
           onClick={() => void run(() => api.stash(tab().repo.repoId, "push"), { graph: true, toast: t("toast.stashed") })}>{t("toolbar.stash")}</button>
-        <button disabled={!tab()} title={t("toolbar.journalTitle")} onClick={() => setShowJournal(true)}>{t("toolbar.journal")}</button>
+        <button class="tool" disabled={!tab()} title={t("toolbar.journalTitle")} onClick={() => setShowJournal(true)}>{t("toolbar.journal")}</button>
         <label class="theme-pick">
           {t("toolbar.theme")}
           <select value={themeChoice()} onChange={(e) => setTheme(e.currentTarget.value as ThemeChoice)}>
@@ -252,7 +252,8 @@ export function App() {
                           <li>
                             <button
                               classList={{ head: r.isHead }}
-                              disabled={r.row === null}
+                              aria-disabled={r.row === null}
+                              title={r.row === null ? t("panel.refHidden") : undefined}
                               onClick={() => r.row !== null && patch({ selected: r.row, sha: null })}
                               onDblClick={() => r.kind === "head" && !r.isHead && void run(() => api.checkout(tab().repo.repoId, r.name, true), { graph: true, toast: t("toast.checkedOut", { s: r.name }) })}
                               onContextMenu={(e) => { e.preventDefault(); setRefMenu({ x: e.clientX, y: e.clientY, ref: r }); }}
@@ -323,7 +324,7 @@ export function App() {
             </Show>
           </main>
 
-          <aside class="right" aria-label="Commit details">
+          <aside class="right" aria-label={t("details.label")}>
             <Show when={tab()!.wip}>
               <WipPanel
                 repo={tab()!.repo}
@@ -400,12 +401,13 @@ export function App() {
             <Show when={errorFix(error()!)}><p>{errorFix(error()!)}</p></Show>
             <Show when={showDetail() && error()!.detail}><pre class="mono">{error()!.detail}</pre></Show>
           </div>
-          <Show when={error()!.detail}><button onClick={() => setShowDetail(!showDetail())}>{t("err.details")}</button></Show>
-          <button onClick={() => setError(null)}>{t("err.dismiss")}</button>
+          <Show when={error()!.detail}><button class="mini" onClick={() => setShowDetail(!showDetail())}>{t("err.details")}</button></Show>
+          <button class="mini" onClick={() => setError(null)}>{t("err.dismiss")}</button>
         </div>
       </Show>
-      <Show when={refMenu() && tab()}>
-        <RefMenu repoId={tab()!.repo.repoId} menu={refMenu()!} run={run} onClose={() => setRefMenu(null)} onError={(e) => fail(e)} />
+      {/* Keyed: the menu's actions still read their ref after closing it (refMenu() is null by then). */}
+      <Show when={tab() && refMenu()} keyed>
+        {(m) => <RefMenu repoId={tab()!.repo.repoId} menu={m} run={run} onClose={() => setRefMenu(null)} onError={(e) => fail(e)} />}
       </Show>
       <Show when={showJournal() && tab()}>
         <JournalPanel repoId={tab()!.repo.repoId} onClose={() => setShowJournal(false)} onError={(e) => fail(e)} />
