@@ -17,9 +17,9 @@ import { NameDialog } from "./features/refs/NameDialog";
 import { filterRefs } from "./features/refs/filter";
 import { WipFile, WipPanel } from "./features/wip/WipPanel";
 import { changeCount, groupStatus } from "./features/wip/status";
-import { toTreeRows } from "./features/files/tree";
+import { toTreeRows, visibleRows } from "./features/files/tree";
 import { markOpenStart, togglePerf } from "./features/graph/perf";
-import { ArrowDownToLine, ArrowUpFromLine, CloudDownload, Archive, Clock, Plus, Cloud, Files, Folder, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Laptop, List, ListTree, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X } from "lucide-solid";
+import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Laptop, List, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload } from "lucide-solid";
 import { Dynamic } from "solid-js/web";
 import { Splitter, storedSize } from "./features/split/Splitter";
 
@@ -42,6 +42,12 @@ export function App() {
   const [toast, setToast] = createSignal<Toast | null>(null);
   const [refFilter, setRefFilter] = createSignal("");
   const [refMenu, setRefMenu] = createSignal<RefMenuState | null>(null);
+  const [collapsed, setCollapsed] = createSignal<ReadonlySet<string>>(new Set());
+  const toggleDir = (p: string) => {
+    const s = new Set(collapsed());
+    if (!s.delete(p)) s.add(p);
+    setCollapsed(s);
+  };
   const [rebaseOnto, setRebaseOnto] = createSignal<string | null>(null);
   const [commitMenu, setCommitMenu] = createSignal<CommitMenuState | null>(null);
   const [creds, setCreds] = createSignal<CredentialsRequest[]>([]);
@@ -403,7 +409,7 @@ export function App() {
                     <h3><Files size={14} aria-hidden="true" />{t("details.files")} <span class="muted">{d().files.length}</span></h3>
                     <div class="seg" role="group" aria-label={t("files.view")}>
                       <button aria-pressed={fileView() === "path"} onClick={() => setFileView("path")}><List size={14} aria-hidden="true" />{t("files.path")}</button>
-                      <button aria-pressed={fileView() === "tree"} onClick={() => setFileView("tree")}><ListTree size={14} aria-hidden="true" />{t("files.tree")}</button>
+                      <button aria-pressed={fileView() === "tree"} onClick={() => setFileView("tree")}><FolderTree size={14} aria-hidden="true" />{t("files.tree")}</button>
                     </div>
                   </div>
                   <ul class="files">
@@ -422,20 +428,28 @@ export function App() {
                         </For>
                       }
                     >
-                      <For each={toTreeRows(d().files)}>
+                      <For each={visibleRows(toTreeRows(d().files), collapsed())}>
                         {(r) =>
                           r.kind === "dir" ? (
-                            <li class="dir" style={{ "padding-left": `${8 + r.depth * 14}px` }}><Folder size={14} aria-hidden="true" /> {r.name}</li>
+                            <li class="dir">
+                              <button style={{ "padding-left": `${8 + r.depth * 16}px` }} aria-expanded={!collapsed().has(r.path)} onClick={() => toggleDir(r.path)}>
+                                {collapsed().has(r.path) ? <ChevronRight size={14} aria-hidden="true" /> : <ChevronDown size={14} aria-hidden="true" />}
+                                {collapsed().has(r.path) ? <FolderClosed size={14} aria-hidden="true" /> : <FolderOpen size={14} aria-hidden="true" />}
+                                <span class="path">{r.name}</span>
+                              </button>
+                            </li>
                           ) : (
                             <li>
                               <button
-                                style={{ "padding-left": `${8 + r.depth * 14}px` }}
+                                class="tree-file"
+                                style={{ "padding-left": `${8 + r.depth * 16 + 18}px` }}
                                 classList={{ active: tab()!.diffPath === r.file.path }}
                                 onClick={() => patch({ diffPath: r.file.path })}
                                 title={r.file.path}
                               >
-                                <span class={`st st-${r.file.status}`}>{r.file.status}</span>
+                                <FileCode2 size={14} aria-hidden="true" />
                                 <span class="path">{r.name}</span>
+                                <span class={`st st-${r.file.status}`}>{r.file.status}</span>
                               </button>
                             </li>
                           )
