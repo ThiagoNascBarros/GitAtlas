@@ -141,7 +141,14 @@ fn stash_not_found() -> OpError {
 /// push, where "stale" means the remote ref is not what we expected.
 fn push_error(remote: &str, text: String, lease: bool) -> OpError {
     let low = text.to_lowercase();
-    if lease && (low.contains("stale info") || low.contains("failed to update ref")) {
+    // Git reports a lost lease as "stale info" (client side) or, from the receiving end,
+    // "failed to update ref" / "incorrect old value provided" (newer Git), with "but expected".
+    if lease
+        && (low.contains("stale info")
+            || low.contains("failed to update ref")
+            || low.contains("incorrect old value")
+            || low.contains("but expected"))
+    {
         return stale().with_detail(text);
     }
     if is_rejection(&text) {
@@ -953,6 +960,9 @@ mod tests {
         let race = "[remote rejected] (failed to update ref)\nremote: error: cannot lock ref 'r': is at a but expected b";
         assert_eq!(push_error("origin", race.into(), true).code, "STALE_SHARED_STASH");
         assert_eq!(push_error("origin", "[rejected] (stale info)".into(), true).code, "STALE_SHARED_STASH");
+        let newer = "!\tabc:refs/atlasgit/shared-stash/a/b\t[remote rejected] (incorrect old value provided)\nremote: error: cannot lock ref 'r': is at a but expected b";
+        assert_eq!(push_error("origin", newer.into(), true).code, "STALE_SHARED_STASH");
+        assert_eq!(push_error("origin", hook.into(), true).code, "REMOTE_REJECTED");
         // Without a lease the same text is just a rejection by the host.
         assert_eq!(push_error("origin", race.into(), false).code, "REMOTE_REJECTED");
         assert_eq!(push_error("origin", "Permission denied (publickey).".into(), false).code, "AUTH_FAILED");
