@@ -486,3 +486,78 @@ fn checkout_branch_and_detached_with_undo() {
     assert_eq!(code(e.run(&Operation::Checkout { target: "other".into(), is_branch: true })), "GIT_FAILED");
     assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "dirty\n");
 }
+
+fn conflict_repo() -> (PathBuf, Engine) {
+    let (d, e) = base_repo();
+    git(&d, &["checkout", "-q", "-b", "feature/conflict"]);
+    write(&d, "a.txt", "feature\n");
+    git(&d, &["commit", "-qam", "feature"]);
+    git(&d, &["checkout", "-q", "main"]);
+    write(&d, "a.txt", "main\n");
+    git(&d, &["commit", "-qam", "main"]);
+    (d, e)
+}
+
+#[test]
+fn merge_preview_predicts_conflicts_then_ours_resolution_makes_two_parents() {
+    let (d, e) = conflict_repo();
+    let p = e.merge_preview("feature/conflict").unwrap();
+    assert!(!p.fast_forward && !p.up_to_date);
+    if let Some(c) = &p.conflicts {
+        assert_eq!(c, &vec!["a.txt".to_string()]);
+    }
+    let before = git(&d, &["status", "--porcelain"]);
+    let out = e.run(&Operation::Merge { source: "feature/conflict".into() }).unwrap();
+    assert!(out.conflicted && e.merge_in_progress());
+    // Abort restores the pre-merge status (PRD criterion 6).
+    e.run(&Operation::MergeAbort).unwrap();
+    assert_eq!(git(&d, &["status", "--porcelain"]), before);
+    // Resolve with "ours" and commit (PRD criterion 5).
+    e.run(&Operation::Merge { source: "feature/conflict".into() }).unwrap();
+    e.run(&Operation::ResolveConflict { path: "a.txt".into(), theirs: false }).unwrap();
+    assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "main\n");
+    git(&d, &["commit", "-q", "--no-edit"]);
+    assert_eq!(git(&d, &["log", "-1", "--format=%P"]).split(' ').count(), 2);
+}
+
+#[test]
+fn clean_merge_and_fast_forward_undo_redo() {
+    let (d, e) = base_repo();
+    git(&d, &["checkout", "-q", "-b", "side"]);
+    write(&d, "b.txt", "2");
+    git(&d, &["add", "b.txt"]);
+    git(&d, &["commit", "-qm", "side"]);
+    git(&d, &["checkout", "-q", "main"]);
+    let base = git(&d, &["rev-parse", "HEAD"]);
+    assert!(e.merge_preview("side").unwrap().fast_forward);
+    let m = e.run(&Operation::Merge { source: "side".into() }).unwrap();
+    assert_ne!(git(&d, &["rev-parse", "HEAD"]), base);
+    e.undo(m.id.as_deref().unwrap()).unwrap();
+    assert_eq!(git(&d, &["rev-parse", "HEAD"]), base);
+    e.redo_last().unwrap();
+    assert!(d.join("b.txt").exists());
+    assert_eq!(code(e.run(&Operation::Merge { source: "side".into() })), "ALREADY_UP_TO_DATE");
+}
+
+#[test]
+fn stash_push_pop_leaves_tree_identical_and_drop_is_undoable() {
+    let (d, e) = base_repo();
+    write(&d, "a.txt", "changed\n");
+    let before = git(&d, &["diff"]);
+    assert_eq!(code(e.run(&Operation::StashPush { message: None, include_untracked: false }).and_then(|_| e.run(&Operation::StashPush { message: None, include_untracked: false }))), "NOTHING_TO_STASH");
+    assert_eq!(git(&d, &["diff"]), "");
+    assert_eq!(e.stashes().unwrap().len(), 1);
+    e.run(&Operation::StashPop { index: 0 }).unwrap();
+    assert_eq!(git(&d, &["diff"]), before);
+    assert!(e.stashes().unwrap().is_empty());
+    // Undo a push puts the changes back; undo a drop restores the entry.
+    let push = e.run(&Operation::StashPush { message: Some("wip".into()), include_untracked: false }).unwrap();
+    e.undo(push.id.as_deref().unwrap()).unwrap();
+    assert_eq!(git(&d, &["diff"]), before);
+    e.run(&Operation::StashPush { message: Some("wip".into()), include_untracked: false }).unwrap();
+    let drop = e.run(&Operation::StashDrop { index: 0 }).unwrap();
+    assert!(e.stashes().unwrap().is_empty());
+    e.undo(drop.id.as_deref().unwrap()).unwrap();
+    assert_eq!(e.stashes().unwrap().len(), 1);
+    assert_eq!(code(e.run(&Operation::StashApply { index: 7 })), "INVALID_STASH");
+}

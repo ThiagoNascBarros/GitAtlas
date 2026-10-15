@@ -9,7 +9,7 @@ use super::lock::{self, Lock};
 use super::{new_id, now, Engine, OpError, OpOutcome};
 
 pub(super) fn is_ref_kind(kind: &str) -> bool {
-    matches!(kind, "branch_create" | "branch_delete" | "branch_rename" | "checkout")
+    matches!(kind, "branch_create" | "branch_delete" | "branch_rename" | "checkout" | "merge" | "stash_push" | "stash_drop")
 }
 
 fn refs_moved() -> OpError {
@@ -52,7 +52,7 @@ impl Engine {
             args,
             ..Default::default()
         })?;
-        Ok(OpOutcome { id: Some(id), head: self.head() })
+        Ok(OpOutcome { id: Some(id), head: self.head(), ..Default::default() })
     }
 
     pub(super) fn branch_create(&self, name: &str, at: Option<&str>) -> Result<OpOutcome, OpError> {
@@ -161,6 +161,10 @@ impl Engine {
                     self.git.run(r, ["checkout", "-q", "--detach", go.as_str()])?;
                 }
             }
+            ("merge", _) => self.apply_merge_entry(e, forward)?,
+            ("stash_push", false) => self.undo_stash_push(e)?,
+            ("stash_drop", false) => self.undo_stash_drop(e)?,
+            ("stash_drop", true) => self.redo_stash_drop(e)?,
             _ => return Err(OpError::new("UNDO_NOT_SUPPORTED", "This operation cannot be undone.", None)),
         }
         Ok(())

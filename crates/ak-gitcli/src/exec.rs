@@ -127,6 +127,21 @@ impl Git {
         Ok(out.stdout)
     }
 
+    /// Runs git and returns `(exit code, stdout)` without treating a non-zero exit as an error
+    /// (for commands like `merge` and `merge-tree` where 1 means "conflicts").
+    pub fn run_status<I, S>(&self, repo: &Path, args: I) -> Result<(Option<i32>, String, String), GitError>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let out = self.command(repo, args)?.output()?;
+        Ok((
+            out.status.code(),
+            String::from_utf8_lossy(&out.stdout).into_owned(),
+            String::from_utf8_lossy(&out.stderr).trim().to_owned(),
+        ))
+    }
+
     /// Runs git and returns stdout bytes; non-zero exit becomes `GitError::Failed`.
     pub fn run<I, S>(&self, repo: &Path, args: I) -> Result<Vec<u8>, GitError>
     where
