@@ -8,7 +8,8 @@ account, nothing to install on the remote.
 ## Share a stash
 
 1. Stash your changes (toolbar **Stash**). Only a local stash can be shared, not the working directory.
-2. In the sidebar, right-click the stash under **Stashes** and choose **Share stash…**.
+2. In the sidebar, right-click the stash under **Stashes** (or Tab to it and press Enter, the Menu
+   key or Shift+F10) and choose **Share stash…**.
 3. Pick a title and the remote, read the notice, and press **Share**.
 
 The stash is then listed in the **Shared stash** tab, under that remote and under **Mine**. Your
@@ -23,7 +24,8 @@ Sharing is never blocked by size.
 ## Find and use a teammate's stash
 
 Open the **Shared stash** tab in the sidebar. Stashes are grouped by remote, then **Mine** and
-**Team**. Each row shows the title, the author, a badge, the branch it was made on and its age.
+**Team**. Each row shows the title, its age, the author, a shield mark when the stash is verified
+(see below) and the branch it was made on.
 
 - Click a row to see what it changes against its base commit, in the usual file list and diff panel (read-only).
 - Right-click a row (or press the Menu key / Shift+F10) for actions:
@@ -34,7 +36,7 @@ Open the **Shared stash** tab in the sidebar. Stashes are grouped by remote, the
   - **Create branch…** creates a branch at the commit the stash was made on, checks it out and applies the stash.
     This can be undone with **Undo**.
 - Arrow keys, Home and End move between rows; Enter shows the changes.
-- A small arrow-tray mark on a commit in the graph shows where a shared stash was made. Turn the marks
+- A **shared** label on a commit in the graph shows where a shared stash was made. Turn the labels
   on or off with the layers button in the tab header.
 
 Applying never runs anything from the stash; it only changes files.
@@ -65,9 +67,11 @@ stop with "changed on the remote" and overwrite nothing. Refresh and try again.
 push to the remote can change or delete any ref with plain Git, and the author recorded in a stash
 can be forged. So:
 
-- **claimed** badge: the author is what the stash says. Nothing proves it.
-- **verified** badge: the stash is signed and the signature matches the author's email. This needs
-  commit signing (`commit.gpgsign`) on the author's side and a working `git verify-commit` on yours.
+- No mark (screen readers say **claimed**; hovering the author explains it): the author is what
+  the stash says. Nothing proves it.
+- Shield mark (**verified**): the stash is signed and the signature matches the author's email.
+  This needs commit signing (`commit.gpgsign`) on the author's side and a working
+  `git verify-commit` on yours.
 
 Use remote permissions if you need real access control, and do not put secrets in a stash.
 
@@ -92,8 +96,8 @@ the result is remembered for that remote and URL. On a refusing host the tab sho
 sharing is disabled for it. **Retry check** forgets the result so it runs again on your next share,
 for example after the host's admin allowed the refs.
 
-Requirements: Git 2.20 or newer (older Git can open a repository read-only; the Shared stash tab and its
-actions are not available there).
+Requirements: Git 2.20 or newer (older Git can open a repository read-only; there the Shared stash tab
+cannot fetch and its actions are disabled).
 
 ## Where things are stored
 
