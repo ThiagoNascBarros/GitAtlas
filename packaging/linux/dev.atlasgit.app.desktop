@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=AtlasGit
+GenericName=Git Client
+GenericName[pt_BR]=Cliente Git
+Comment=Browse history, commit, branch, merge and sync Git repositories
+Comment[pt_BR]=Navegue pelo histórico, faça commits, branches, merges e sincronize repositórios Git
+Exec=atlasgit %f
+Icon=dev.atlasgit.app
+Terminal=false
+Categories=Development;RevisionControl;
+Keywords=git;vcs;version control;repository;commit;branch;merge;
+Keywords[pt_BR]=git;vcs;controle de versão;repositório;commit;branch;merge;
+StartupNotify=true
+StartupWMClass=atlasgit
