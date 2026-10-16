@@ -140,6 +140,19 @@ Blocking for a real release, not for this phase's implementation:
 3. User guide in pt-BR as well, or EN only for the MVP? (Default in `release-docs.md`: EN only.)
 4. Flathub: build from source (requires vendored cargo/pnpm sources) or keep the binary-repack manifest for local/CI bundles only? (Default: repack for now; Flathub later.)
 
+## 8.1 Integration log
+
+- Wave 1 (`i18n-pt-br` + `packaging`, merged): `cargo test --workspace` 120 passed;
+  `cargo clippy --workspace --all-targets -- -D warnings` clean; UI tests 48 passed; UI build,
+  contrast, Tauri build, desktop/metainfo validators ok.
+- Pre-existing, not a Phase 5 regression: `cargo fmt --all -- --check` reports 565 hunks in Rust
+  files no Phase 5 agent touched (no `.rs` changed since `5657e39`); CI does not run it. Owner
+  decision: add a `rustfmt.toml` matching the current style, or reformat in a separate PR.
+- Owner decisions raised by packaging: deb package/desktop file names come from `productName`
+  (`atlas-git`, `AtlasGit.desktop`), so the metainfo `launchable` only resolves in the Flatpak;
+  Tauri warns that an identifier ending in `.app` clashes with macOS bundles; Flatpak Git source
+  pinned by tag + commit (kernel.org tarball blocked here); `--filesystem=home` may be narrowed.
+
 ## 9. Agent status
 
 Updated by the coordinator.
@@ -147,6 +160,6 @@ Updated by the coordinator.
 | Agent | Phase | Status | Branch / commit |
 |---|---|---|---|
 | agent `i18n-pt-br` (worktree) | `i18n-pt-br` | done, validated, merged | merge `5ae6256` (UI tests 48, build, contrast, Tauri build ok; 5 shots checked) |
-| agent `packaging` (worktree) | `packaging` | running | — |
+| agent `packaging` (worktree) | `packaging` | done, validated, merged (Flatpak bundle not built here: Flathub blocked by the container proxy; built by `release.yml`) | merge `a1c00ed` (.deb + AppImage built and launched, validators ok, 5 shots checked) |
 | agent `accessibility` (worktree) | `accessibility` | running (from `5ae6256`) | — |
 | — | `release-docs` | waiting (needs all) | — |
