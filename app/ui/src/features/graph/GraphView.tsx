@@ -398,7 +398,10 @@ export function GraphView(props: {
     const ro = new ResizeObserver(() => setSize({ w: scroller.clientWidth, h: scroller.clientHeight }));
     ro.observe(scroller);
     onCleanup(() => ro.disconnect());
-    scroller.focus();
+    // On open, or when the reload removed the focused old graph; never steal focus from a control
+    // that is still there (a sidebar or WIP button the operation started from, spec A-6).
+    const a = document.activeElement;
+    if (!a || a === document.body || !a.isConnected) scroller.focus();
   });
 
   // Accessibility mirror: one hidden row per loaded row in the viewport ± OVERSCAN (plus the

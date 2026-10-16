@@ -17,7 +17,8 @@ export function ShareDialog(props: { repoId: number; stash: StashInfo; onSubmit:
   const [picked, setPicked] = createSignal("");
   const remote = () => picked() || (usable().find((r) => r.name === listing()?.defaultRemote) ?? usable()[0])?.name || "";
   let input: HTMLInputElement | undefined;
-  useOverlay(() => props.onCancel(), () => input);
+  let dialog: HTMLDialogElement | undefined;
+  useOverlay(() => props.onCancel(), () => input, () => dialog);
   // Git's user.name is not exposed to the UI; the slug of an earlier own stash is the same name.
   const slug = () => {
     const mine = listing()?.stashes.find((s) => s.mine);
@@ -30,7 +31,7 @@ export function ShareDialog(props: { repoId: number; stash: StashInfo; onSubmit:
   };
   return (
     <div class="modal-back" onContextMenu={(e) => e.preventDefault()}>
-      <dialog open class="modal" aria-labelledby="ss-share-h">
+      <dialog ref={dialog} open class="modal" aria-modal="true" aria-labelledby="ss-share-h">
         <form onSubmit={submit}>
           <h2 id="ss-share-h">{t("ss.share.title")}</h2>
           <label>{t("ss.share.titleLabel")}

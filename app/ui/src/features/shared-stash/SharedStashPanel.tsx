@@ -5,6 +5,7 @@ import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-j
 import { KeptSharedStash, SharedStashInfo } from "../../api";
 import { errorText, t } from "../../i18n";
 import { groupStashes, relativeTime } from "./logic";
+import { isMenuKey } from "../overlay";
 import { cancelFetch, fetchShared, glyphOn, modelOf, setFetchMode, setGlyph } from "./model";
 
 export interface SharedStashPanelProps {
@@ -58,12 +59,12 @@ export function SharedStashPanel(props: SharedStashPanelProps) {
     return (
       <li>
         <button
-          class="ss-row" data-ss-row classList={{ invalid: !s.valid, active: props.openSha === s.stash }}
+          class="ss-row" data-ss-row data-focus-key={`${s.remote}:${s.id}`} classList={{ invalid: !s.valid, active: props.openSha === s.stash }}
           aria-disabled={!s.valid} aria-haspopup={s.valid ? "menu" : undefined}
           title={s.valid ? s.title : t("ss.invalidTitle", { s: s.invalid_reason ?? "" })}
           onClick={() => s.valid && props.onOpen(s)}
           onContextMenu={(e) => open(e, e.currentTarget)}
-          onKeyDown={(e) => { if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10")) open(e, e.currentTarget); }}
+          onKeyDown={(e) => { if (isMenuKey(e)) open(e, e.currentTarget); }}
         >
           <span class="ss-line">
             <span class="ss-title">{s.title || s.id}</span>
@@ -73,7 +74,7 @@ export function SharedStashPanel(props: SharedStashPanelProps) {
             <span class="ss-author" title={s.valid && !s.verified ? t("ss.claimedTitle") : undefined}><User size={12} aria-hidden="true" /><span class="ss-ellip">{s.author_name}</span></span>
             <Show when={s.valid} fallback={<span class="ss-badge bad">{t("ss.invalid")}</span>}>
               <Show when={s.verified} fallback={<span class="sr-only">{t("ss.claimed")}</span>}>
-                <span class="ss-verified" title={t("ss.verifiedTitle")} aria-label={t("ss.verified")}><ShieldCheck size={12} /></span>
+                <span class="ss-verified" role="img" title={t("ss.verifiedTitle")} aria-label={t("ss.verified")}><ShieldCheck size={12} aria-hidden="true" /></span>
               </Show>
               <span class="ss-base" title={s.base}><GitBranch size={12} aria-hidden="true" /><span class="ss-ellip">{s.base_branch || t("ss.noBranch")}</span></span>
             </Show>
@@ -147,9 +148,9 @@ export function SharedStashPanel(props: SharedStashPanelProps) {
           <span class="ss-last muted">
             {m().fetch.lastFetched ? t("ss.lastFetched", { s: relativeTime(now(), m().fetch.lastFetched!) }) : t("ss.neverFetched")}
           </span>
-          <button class="icon" aria-pressed={glyphOn()} title={t("ss.glyphToggle")} aria-label={t("ss.glyphToggle")} onClick={() => setGlyph(!glyphOn())}><Layers size={15} /></button>
+          <button class="icon" aria-pressed={glyphOn()} title={t("ss.glyphToggle")} aria-label={t("ss.glyphToggle")} onClick={() => setGlyph(!glyphOn())}><Layers size={15} aria-hidden="true" /></button>
           <button class="icon" disabled={m().fetch.loading || props.readOnly} title={t("ss.refresh")} aria-label={t("ss.refresh")} onClick={() => void fetchShared(props.repoId)}>
-            <RefreshCw size={15} classList={{ spin: m().fetch.loading }} />
+            <RefreshCw size={15} aria-hidden="true" classList={{ spin: m().fetch.loading }} />
           </button>
         </div>
         <div class="seg ss-mode" role="group" aria-label={t("ss.fetchMode")}>
@@ -165,7 +166,7 @@ export function SharedStashPanel(props: SharedStashPanelProps) {
         {(e) => <div class="ss-note error" role="alert"><AlertTriangle size={14} aria-hidden="true" /><div>{t("ss.listError", { m: errorText(e()) })}
           <button class="mini" onClick={() => void fetchShared(props.repoId)}>{t("ss.retry")}</button></div></div>}
       </Show>
-      <div class="ss-list" role="group" aria-label={t("ss.listLabel")} onKeyDown={onKeys}>
+      <div class="ss-list" role="group" aria-label={t("ss.listLabel")} data-focus-group="shared-stash" onKeyDown={onKeys}>
         <Show when={m().listing && !groups().length}><p class="ss-empty muted">{t("ss.emptyAll")}</p></Show>
         <For each={names()}>{(name) => <Group name={name} />}</For>
       </div>

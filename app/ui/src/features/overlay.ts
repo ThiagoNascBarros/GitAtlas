@@ -104,11 +104,12 @@ export function keepFocus(): () => void {
     last = { el, group: group?.getAttribute("data-focus-group") ?? null, key: item?.getAttribute("data-focus-key") ?? null, index: item ? keys.indexOf(item) : -1 };
   };
   const recover = () => {
-    if (!last || last.el.isConnected) return;
+    // Removed, or disabled while focused (the browser then drops focus, e.g. Commit after committing).
+    if (!last || (last.el.isConnected && !last.el.matches(":disabled"))) return;
     const lost = last;
     last = null;
     const active = document.activeElement;
-    if (active && active !== document.body) return;
+    if (active && active !== document.body && active !== lost.el) return;
     let target: HTMLElement | undefined;
     const group = lost.group ? document.querySelector(`[data-focus-group="${CSS.escape(lost.group)}"]`) : null;
     if (group && lost.key !== null) {
@@ -116,12 +117,14 @@ export function keepFocus(): () => void {
       const i = neighbourIndex(items.map((x) => x.getAttribute("data-focus-key") ?? ""), lost.key, lost.index);
       if (i >= 0) target = focusables(items[i])[0] ?? (items[i] as HTMLElement);
     }
-    target ??= (group && focusables(group)[0]) || document.querySelector<HTMLElement>(".graph-scroller") || undefined;
+    // An emptied list: the first control of its section (e.g. the list's header toggle).
+    if (!target && group) target = focusables(group)[0] ?? focusables(group.closest("section, details, aside") ?? group)[0];
+    target ??= document.querySelector<HTMLElement>(".graph-scroller") ?? undefined;
     target?.focus();
   };
   document.addEventListener("focusin", onFocus);
   const mo = new MutationObserver(recover);
-  mo.observe(document.body, { childList: true, subtree: true });
+  mo.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["disabled"] });
   return () => {
     document.removeEventListener("focusin", onFocus);
     mo.disconnect();

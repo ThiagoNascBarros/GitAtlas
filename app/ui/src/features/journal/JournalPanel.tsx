@@ -10,7 +10,8 @@ const DEFAULT_KEEP = 50;
 export function JournalPanel(props: { repoId: number; onClose: () => void; onError: (e: unknown) => void }) {
   const [entries, { refetch }] = createResource(() => api.journal(props.repoId));
   let close: HTMLButtonElement | undefined;
-  useOverlay(() => props.onClose(), () => close);
+  let dialog: HTMLDialogElement | undefined;
+  useOverlay(() => props.onClose(), () => close, () => dialog);
   const [confirm, setConfirm] = createSignal(false);
   const [keep, setKeep] = createSignal(DEFAULT_KEEP);
   async function prune() {
@@ -27,8 +28,8 @@ export function JournalPanel(props: { repoId: number; onClose: () => void; onErr
   return (
     <div class="modal-back">
       <button type="button" class="backdrop" tabindex="-1" aria-label={t("journal.close")} onClick={props.onClose} />
-      <dialog open class="modal" aria-label={t("journal.title")}>
-        <h2>{t("journal.title")}</h2>
+      <dialog ref={dialog} open class="modal" aria-modal="true" aria-labelledby="journal-h">
+        <h2 id="journal-h">{t("journal.title")}</h2>
         <Show when={(entries() ?? []).length} fallback={<p class="muted">{t("journal.empty")}</p>}>
           <ul class="journal">
             <For each={[...(entries() ?? [])].reverse()}>

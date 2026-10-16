@@ -22,7 +22,7 @@ export function SharedStashMenu(props: { repoId: number; menu: SharedMenuState; 
   const [ask, setAsk] = createSignal<"branch" | "rename" | "update" | "unshare" | null>(null);
   const [pos, setPos] = createSignal({ x: props.menu.x, y: props.menu.y });
   let menuEl: HTMLMenuElement | undefined;
-  useOverlay(() => props.onClose(), () => menuEl?.querySelector("button") ?? undefined);
+  useOverlay(() => props.onClose(), () => menuEl?.querySelector("button") ?? undefined, () => menuEl);
   onMount(() => {
     if (!menuEl) return;
     const b = menuEl.getBoundingClientRect();
@@ -72,11 +72,14 @@ function UpdateDialog(props: { repoId: number; stash: SharedStashInfo; onSubmit:
   const [sha, setSha] = createSignal("");
   const [title, setTitle] = createSignal("");
   let sel: HTMLSelectElement | undefined;
-  useOverlay(() => props.onCancel(), () => sel);
+  let titleInput: HTMLInputElement | undefined;
+  let dialog: HTMLDialogElement | undefined;
+  // The stash list may still be loading: then focus starts on the title field.
+  useOverlay(() => props.onCancel(), () => sel ?? titleInput, () => dialog);
   const chosen = () => sha() || list()?.[0]?.sha || "";
   return (
     <div class="modal-back" onContextMenu={(e) => e.preventDefault()}>
-      <dialog open class="modal" aria-labelledby="ss-upd-h">
+      <dialog ref={dialog} open class="modal" aria-modal="true" aria-labelledby="ss-upd-h">
         <form onSubmit={(e) => { e.preventDefault(); if (chosen()) props.onSubmit(chosen(), cleanTitle(title()) || null); }}>
           <h2 id="ss-upd-h">{t("ss.update.title")}</h2>
           <p class="muted">{t("ss.update.hint", { s: props.stash.title })}</p>
@@ -88,7 +91,7 @@ function UpdateDialog(props: { repoId: number; stash: SharedStashInfo; onSubmit:
             </label>
           </Show>
           <label>{t("ss.update.newTitle")}
-            <input type="text" maxLength={120} autocomplete="off" placeholder={props.stash.title} value={title()} onInput={(e) => setTitle(e.currentTarget.value)} />
+            <input ref={titleInput} type="text" maxLength={120} autocomplete="off" placeholder={props.stash.title} value={title()} onInput={(e) => setTitle(e.currentTarget.value)} />
           </label>
           <div class="modal-actions">
             <button type="button" onClick={props.onCancel}>{t("refmenu.cancel")}</button>
@@ -102,10 +105,11 @@ function UpdateDialog(props: { repoId: number; stash: SharedStashInfo; onSubmit:
 
 function UnshareDialog(props: { stash: SharedStashInfo; onConfirm: () => void; onCancel: () => void }) {
   let cancel: HTMLButtonElement | undefined;
-  useOverlay(() => props.onCancel(), () => cancel);
+  let dialog: HTMLDialogElement | undefined;
+  useOverlay(() => props.onCancel(), () => cancel, () => dialog);
   return (
     <div class="modal-back" onContextMenu={(e) => e.preventDefault()}>
-      <dialog open class="modal" aria-labelledby="ss-un-h">
+      <dialog ref={dialog} open class="modal" aria-modal="true" aria-labelledby="ss-un-h">
         <h2 id="ss-un-h">{t("ss.unshare.title", { s: props.stash.title })}</h2>
         <p>{t("ss.unshare.body", { remote: props.stash.remote })}</p>
         <div class="modal-actions">

@@ -26,7 +26,10 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
   const [pos, setPos] = createSignal({ x: props.menu.x, y: props.menu.y });
   let menuEl: HTMLMenuElement | undefined;
   let cancel: HTMLButtonElement | undefined;
-  useOverlay(() => props.onClose(), () => menuEl?.querySelector("button") ?? undefined);
+  let dialog: HTMLDialogElement | undefined;
+  // Trap: the merge dialog while it shows, else the menu.
+  // Opened straight on the merge dialog (drag and drop): focus starts on its safe button.
+  useOverlay(() => props.onClose(), () => (ask() === "merge" ? cancel : menuEl?.querySelector("button") ?? undefined), () => (ask() ? dialog : menuEl));
   // Keep the menu inside the window when opened near the bottom or right edge.
   onMount(() => {
     if (!menuEl) return;
@@ -58,7 +61,7 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
       <Show
         when={ask()}
         fallback={
-          <menu ref={menuEl} class="ctx" role="menu" style={{ left: `${pos().x}px`, top: `${pos().y}px` }} onClick={(e) => e.stopPropagation()} onKeyDown={menuKeys}
+          <menu ref={menuEl} class="ctx" role="menu" aria-label={r().name} style={{ left: `${pos().x}px`, top: `${pos().y}px` }} onClick={(e) => e.stopPropagation()} onKeyDown={menuKeys}
             // Hover moves focus, so mouse and keyboard share one highlighted item (as in native menus).
             onPointerOver={(e) => (e.target as HTMLElement).closest<HTMLButtonElement>("button:not(:disabled)")?.focus()}>
             <Show when={local() && !r().isHead}>
@@ -87,9 +90,9 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
           </menu>
         }
       >
-        <dialog open class="modal" aria-label={t("merge.title", { s: r().name })}>
+        <dialog ref={dialog} open class="modal" aria-modal="true" aria-labelledby="merge-h">
           <Show when={ask() === "merge"}>
-            <h2>{t("merge.title", { s: r().name })}</h2>
+            <h2 id="merge-h">{t("merge.title", { s: r().name })}</h2>
             <Show when={preview()} fallback={<p class="muted">{t("loading")}</p>}>
               {(p) => (
                 <>

@@ -11,7 +11,7 @@ export interface LocalStashMenuState { x: number; y: number; stash: StashInfo }
 export function LocalStashMenu(props: { menu: LocalStashMenuState; onShare: (s: StashInfo) => void; onApply: (s: StashInfo) => void; onPop: (s: StashInfo) => void; onClose: () => void }) {
   const [pos, setPos] = createSignal({ x: props.menu.x, y: props.menu.y });
   let menuEl: HTMLMenuElement | undefined;
-  useOverlay(() => props.onClose(), () => menuEl?.querySelector("button") ?? undefined);
+  useOverlay(() => props.onClose(), () => menuEl?.querySelector("button") ?? undefined, () => menuEl);
   onMount(() => {
     if (!menuEl) return;
     const b = menuEl.getBoundingClientRect();
