@@ -188,7 +188,77 @@ sizes).
 
 ## 12. Implementation notes
 
-(Filled by the implementing agent.)
+Filled by the implementing agent (2026-10-16).
+
+**Where things are**
+- `i18n.ts`: `en` (now exported, for the parity test), `Locale`, `LocaleChoice`, `resolveLocale`,
+  `activeLocale`, `localeChoice`, `setLocaleChoice`, `initLocale`, `t`, `errorText`, `errorFix`
+  (contract of §5 unchanged). `initLocale` also listens to `languagechange` while the choice is
+  `system`. Invalid stored values fall back to `system`; storage errors are ignored.
+- `locales/pt-BR.ts`: `as const satisfies Record<Key, string>`, and `i18n.ts` assigns it to a
+  `Record<Locale, Readonly<Record<Key, string>>>`. Checked: an extra key fails `tsc` (excess
+  property), a missing key fails `tsc` (assignment); `i18n.test.ts` checks the same at runtime
+  plus placeholder parity per key.
+- `i18n.test.ts`: 16 tests (resolution, parity, placeholders, live switch, fallbacks,
+  persistence with valid/invalid/throwing storage, `<html lang>`, locale-aware formatting).
+
+**Decisions where the spec was silent**
+1. `initLocale()` is called at the top of `App()` (before any text renders), not next to
+   `initTheme()`: that call is in `main.tsx`, which is outside this module's file ownership.
+2. FR-8 audit (`crates/ak-core/src/**`, `app/src-tauri/src/**`): `CONFLICT` is **not** an error
+   code; it only appears as `contains("CONFLICT")` when parsing Git output (`ops/stash.rs`,
+   `ops/shared_stash_ops.rs`), so no `err.CONFLICT` was added. Added: `INVALID_PATH`,
+   `IO_ERROR` (+fix), `GIT_NOT_FOUND` (+fix), `NOT_A_REPO` (+fix, mentions `safe.directory`
+   because `rev-parse` also fails on repositories owned by another user), `READ_FAILED`,
+   `UNKNOWN_REPO` (+fix). No other code was missing. `UNKNOWN` (built by the UI for non-UiError
+   failures) and `UNKNOWN_COMMAND` (dev mock) keep showing the raw message.
+3. Core hints: the core sends an English `suggestion` with many codes, and `errorFix` shows it when
+   the table has no `.fix` key, so pt-BR showed English hints. For the 16 codes whose suggestion
+   is the same at every call site, an `err.<CODE>.fix` key was added with the **same English text**
+   as the core (English output unchanged) and a pt-BR translation. Codes whose suggestion varies
+   by call site keep the core's English hint as "core output": `REF_MOVED`, `READ_ONLY`,
+   `NOTHING_TO_COMMIT`, `INVALID_TODO`, `INVALID_BRANCH_NAME`, `HEAD_MOVED`, `WORKTREE_CHANGED`,
+   `NO_REMOTE`, `NO_UPSTREAM`, `GIT_FAILED`. Translating those needs a stable hint code from the
+   core (contract change, not done).
+4. FR-9 and the new codes: for `GIT_NOT_FOUND`, `NOT_A_REPO`, `READ_FAILED` and `IO_ERROR` the
+   shell's raw message is the only diagnostic (no `detail`), so the UI shows it under "Details"
+   (open-repo box: a `<details>`; error banner: the existing Details button). Other codes keep
+   their behaviour.
+5. Language picker: same markup as the theme picker (`label.theme-pick.lang-pick`, `sr-only`
+   name, `Languages` icon). The select is as wide as "Português (Brasil)" in both locales, which
+   squeezed the repository tabs (the "+" button was clipped at 1280 px in pt-BR, and at 900 px
+   in both). Below 1400 px it shows the icon and the active language code (EN/PT) over a
+   transparent select; the open list still shows the names; at 620 px it is icon-only like the
+   theme picker. Measured: the tab crumb keeps its full width at 1280, 1100 and 900 px in both
+   locales; the toolbar never scrolls.
+6. Formatting: `formatBytes` uses `toLocaleString(locale, {min,max}FractionDigits)`, so en output
+   is unchanged ("12.0 MB") and pt-BR gets "12,1 MB" (grouping separators now appear above 999).
+   Toasts keep the language they were created in (they are plain strings, gone after ≤10 s).
+   The perf overlay stays English (dev only, out of scope).
+7. pt-BR wording beyond §6: "diff", "checkout", "reset", "fast-forward", "pop" (stash) and
+   "amend" (in parentheses after "Corrigir o commit anterior") kept as Git terms; interactive
+   rebase actions are Portuguese with the Git verb in parentheses ("Usar (pick)", "Juntar ao
+   anterior (squash)"…); "Remote" panel → "Remotas", "Local" → "Locais"; theme names "Atlas
+   Escuro"/"Atlas Claro"; "Dismiss" → "Dispensar"; "detached HEAD" → "HEAD destacado"; ours/theirs
+   → "a nossa"/"a deles"; counts often equal to 1 use "(s)" ("1 preparado(s)").
+8. Shortened for space (checked at 1280 px): the uncommitted-changes row is "Alterações locais"
+   with chips "{n} a preparar" / "{n} preparado(s)" (longer texts made the canvas drop the staged
+   chip); the sidebar tab is "Compartilhados" (the panel title keeps "Stash compartilhado").
+
+**Verification**: `pnpm --dir app/ui test` 48 passed (baseline 32 + 16); `pnpm --dir app/ui
+build`, `node scripts/contrast.mjs`, `cargo build -p atlasgit --features custom-protocol` pass.
+Browser check with the dev mock (Playwright, 1280×800): live switch without reload, choice kept
+after reload, `system` gives pt-BR for browser locales pt-BR/pt-PT and en for fr-FR/en-GB, the
+canvas date column repaints on switch, no English UI text left in pt-BR across the main view,
+commit/ref/stash menus, journal, new-branch, share dialog, shared-stash tab, rebase editor and
+error banner (remaining English: fixture data, Git terms, Git's raw output). Screenshots:
+`docs/screenshots/phase5/i18n-pt-br/`.
+
+**Open questions for the owner**
+- Glossary choices in item 7, especially "Remotas", "a preparar", "HEAD destacado", "Pop".
+- The shared-stash glyph label "compartilhado" is twice as long as "shared" and truncates a
+  branch label on the same row in the default refs column width ("mai" for "main"). Keep, or use
+  a shorter word?
 
 ## 13. Instructions for the implementing agent
 
