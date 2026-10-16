@@ -1,20 +1,68 @@
 // SPDX-License-Identifier: Apache-2.0
-// Shared behaviour for menus and dialogs: Escape closes, focus goes in on open and back on close.
+// Shared behaviour for menus and dialogs: Escape closes, focus goes in on open and back on close,
+// Tab stays inside (accessibility A-4), plus the keyboard menu key and focus recovery helpers.
 import { onCleanup, onMount } from "solid-js";
 
-export function useOverlay(onClose: () => void, initial?: () => HTMLElement | undefined) {
+/** Menu key or Shift+F10: opens the context menu of the focused item (spec accessibility A-2). */
+export const isMenuKey = (e: { key: string; shiftKey: boolean }) => e.key === "ContextMenu" || (e.shiftKey && e.key === "F10");
+
+/**
+ * Focus trap step: index of the next element among `count` focusables when Tab (or Shift+Tab when
+ * `back`) is pressed on `current` (-1: focus is outside the container). -1 when there is none.
+ */
+export function cycleIndex(count: number, current: number, back: boolean): number {
+  if (count <= 0) return -1;
+  if (current < 0) return back ? count - 1 : 0;
+  return (current + (back ? -1 : 1) + count) % count;
+}
+
+const FOCUSABLE = "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), summary, a[href], [tabindex]:not([tabindex='-1'])";
+
+/** Focusable, rendered descendants of `root`, in tab order (no positive tabindex is used in the app). */
+export function focusables(root: Element): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => el.tabIndex >= 0 && el.getClientRects().length > 0);
+}
+
+/** Overlays with a trap, innermost last: only the innermost one handles Tab. */
+const traps: object[] = [];
+
+/**
+ * `initial` gets the focus on open. With `root` (the dialog or menu element; may change while the
+ * overlay is open), Tab and Shift+Tab cycle inside it, so the page behind is not reachable, and the
+ * browser's own context menu is suppressed inside it.
+ */
+export function useOverlay(onClose: () => void, initial?: () => HTMLElement | undefined, root?: () => HTMLElement | undefined) {
   const before = document.activeElement as HTMLElement | null;
+  const self = {};
   const key = (e: KeyboardEvent) => {
-    if (e.key !== "Escape") return;
+    if (e.key === "Escape") {
+      e.preventDefault();
+      onClose();
+      return;
+    }
+    const el = root?.();
+    if (e.key !== "Tab" || !el || traps[traps.length - 1] !== self) return;
+    const items = focusables(el);
+    const next = cycleIndex(items.length, items.indexOf(document.activeElement as HTMLElement), e.shiftKey);
     e.preventDefault();
-    onClose();
+    if (next >= 0) items[next].focus();
+  };
+  const menu = (e: MouseEvent) => {
+    if (root?.()?.contains(e.target as Node)) e.preventDefault();
   };
   onMount(() => {
     document.addEventListener("keydown", key);
+    if (root) {
+      traps.push(self);
+      document.addEventListener("contextmenu", menu);
+    }
     initial?.()?.focus();
   });
   onCleanup(() => {
     document.removeEventListener("keydown", key);
+    document.removeEventListener("contextmenu", menu);
+    const i = traps.indexOf(self);
+    if (i >= 0) traps.splice(i, 1);
     if (before?.isConnected) before.focus();
   });
 }
@@ -27,4 +75,55 @@ export function menuKeys(e: KeyboardEvent) {
   if (next === undefined || !items.length) return;
   e.preventDefault();
   items[(next + items.length) % items.length].focus();
+}
+
+/**
+ * Where focus goes when the focused item of a list disappeared: the item with the same key when
+ * the list was only re-rendered, else the one now at the same position (the next item), else the
+ * last one; -1 for an empty list.
+ */
+export function neighbourIndex(keys: readonly string[], key: string, index: number): number {
+  const same = keys.indexOf(key);
+  if (same >= 0) return same;
+  return keys.length ? Math.min(Math.max(index, 0), keys.length - 1) : -1;
+}
+
+/**
+ * Keeps keyboard focus when an operation re-renders the list holding the focused control
+ * (spec accessibility A-6). Items carry `data-focus-key` inside a `data-focus-group` container; when
+ * the focused element is removed and focus fell to the page, it goes to the same or the
+ * neighbouring item of that group, else to the commit graph. Installed once by the app.
+ */
+export function keepFocus(): () => void {
+  let last: { el: HTMLElement; group: string | null; key: string | null; index: number } | null = null;
+  const onFocus = (e: FocusEvent) => {
+    const el = e.target as HTMLElement;
+    const item = el.closest?.("[data-focus-key]");
+    const group = el.closest?.("[data-focus-group]");
+    const keys = group ? [...group.querySelectorAll("[data-focus-key]")] : [];
+    last = { el, group: group?.getAttribute("data-focus-group") ?? null, key: item?.getAttribute("data-focus-key") ?? null, index: item ? keys.indexOf(item) : -1 };
+  };
+  const recover = () => {
+    if (!last || last.el.isConnected) return;
+    const lost = last;
+    last = null;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    let target: HTMLElement | undefined;
+    const group = lost.group ? document.querySelector(`[data-focus-group="${CSS.escape(lost.group)}"]`) : null;
+    if (group && lost.key !== null) {
+      const items = [...group.querySelectorAll("[data-focus-key]")];
+      const i = neighbourIndex(items.map((x) => x.getAttribute("data-focus-key") ?? ""), lost.key, lost.index);
+      if (i >= 0) target = focusables(items[i])[0] ?? (items[i] as HTMLElement);
+    }
+    target ??= (group && focusables(group)[0]) || document.querySelector<HTMLElement>(".graph-scroller") || undefined;
+    target?.focus();
+  };
+  document.addEventListener("focusin", onFocus);
+  const mo = new MutationObserver(recover);
+  mo.observe(document.body, { childList: true, subtree: true });
+  return () => {
+    document.removeEventListener("focusin", onFocus);
+    mo.disconnect();
+  };
 }
