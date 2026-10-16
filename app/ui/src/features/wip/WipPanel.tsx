@@ -92,25 +92,27 @@ export function WipPanel(props: {
     void props.run(() => api.discard(id, [item.path]), { toast: t("toast.discarded", { s: item.path }) });
   }
 
+  // Id of a row's path text: the row's buttons are described by it ("Stage" → which file).
+  const pathId = (path: string, list: string) => `wip-${list}-${encodeURIComponent(path)}`;
   const row = (item: WipItem, staged: boolean) => (
-    <li classList={{ active: props.file?.path === item.path && props.file?.staged === staged }}>
+    <li classList={{ active: props.file?.path === item.path && props.file?.staged === staged }} data-focus-key={item.path}>
       <button
         class="file-open"
         onClick={() => props.onFile({ path: item.path, staged, untracked: item.untracked && !staged })}
         title={item.origPath ? `${item.origPath} → ${item.path}` : item.path}
       >
         <span class={`st st-${item.status === "U" ? "A" : item.status}`}>{item.status}</span>
-        <span class="path">{item.path}</span>
+        <span class="path" id={pathId(item.path, staged ? "s" : "u")}>{item.path}</span>
       </button>
       <span class="row-actions">
         <Show when={!staged}>
-          <button class="mini" onClick={() => props.run(() => api.stage(id, [item.path]))}><Plus size={14} aria-hidden="true" />{t("wip.stage")}</button>
-          <button class="mini danger" onClick={() => discard(item)}>
+          <button class="mini" aria-describedby={pathId(item.path, "u")} onClick={() => props.run(() => api.stage(id, [item.path]))}><Plus size={14} aria-hidden="true" />{t("wip.stage")}</button>
+          <button class="mini danger" aria-describedby={pathId(item.path, "u")} onClick={() => discard(item)}>
             {confirm() === item.path ? t("wip.discardConfirm") : t("wip.discard")}
           </button>
         </Show>
         <Show when={staged}>
-          <button class="mini" onClick={() => props.run(() => api.unstage(id, [item.path]))}><Minus size={14} aria-hidden="true" />{t("wip.unstage")}</button>
+          <button class="mini" aria-describedby={pathId(item.path, "s")} onClick={() => props.run(() => api.unstage(id, [item.path]))}><Minus size={14} aria-hidden="true" />{t("wip.unstage")}</button>
         </Show>
       </span>
     </li>
@@ -137,15 +139,15 @@ export function WipPanel(props: {
       <Show when={groups().conflicted.length}>
         <section>
           <h3><TriangleAlert size={14} aria-hidden="true" />{t("wip.conflicts")} <span class="muted">{groups().conflicted.length}</span></h3>
-          <ul class="files wip-list"><For each={groups().conflicted}>{(i) => <li>
-            <span class="st st-conflict">U</span><span class="path">{i.path}</span>
-            <button class="mini" onClick={() => void props.run(() => api.resolve(id, i.path, false))}>{t("merge.ours")}</button>
-            <button class="mini" onClick={() => void props.run(() => api.resolve(id, i.path, true))}>{t("merge.theirs")}</button>
-            <button class="mini" onClick={() => setEditing(i.path)}>{t("merge.edit")}</button>
+          <ul class="files wip-list" data-focus-group="wip-conflicted"><For each={groups().conflicted}>{(i) => <li data-focus-key={i.path}>
+            <span class="st st-conflict">U</span><span class="path" id={pathId(i.path, "c")}>{i.path}</span>
+            <button class="mini" aria-describedby={pathId(i.path, "c")} onClick={() => void props.run(() => api.resolve(id, i.path, false))}>{t("merge.ours")}</button>
+            <button class="mini" aria-describedby={pathId(i.path, "c")} onClick={() => void props.run(() => api.resolve(id, i.path, true))}>{t("merge.theirs")}</button>
+            <button class="mini" aria-describedby={pathId(i.path, "c")} onClick={() => setEditing(i.path)}>{t("merge.edit")}</button>
           </li>}</For></ul>
         </section>
       </Show>
-      <section class="wip-sec unstaged" classList={{ closed: !open().unstaged }}>
+      <section class="wip-sec unstaged" data-focus-group="wip-unstaged-section" classList={{ closed: !open().unstaged }}>
         <div class="files-head">
           <h3>
             <button class="sec-toggle" aria-expanded={open().unstaged} onClick={() => toggle("unstaged")}>
@@ -159,10 +161,10 @@ export function WipPanel(props: {
         </div>
         <Show when={open().unstaged}>
         <p class="wip-hint muted">{t("wip.unstagedHint")}</p>
-        <ul class="files wip-list"><For each={groups().unstaged} fallback={<li class="muted pad-s">{t("wip.empty")}</li>}>{(i) => row(i, false)}</For></ul>
+        <ul class="files wip-list" data-focus-group="wip-unstaged"><For each={groups().unstaged} fallback={<li class="muted pad-s">{t("wip.empty")}</li>}>{(i) => row(i, false)}</For></ul>
         </Show>
       </section>
-      <section class="wip-sec staged" classList={{ closed: !open().staged }}>
+      <section class="wip-sec staged" data-focus-group="wip-staged-section" classList={{ closed: !open().staged }}>
         <div class="files-head">
           <h3>
             <button class="sec-toggle" aria-expanded={open().staged} onClick={() => toggle("staged")}>
@@ -176,7 +178,7 @@ export function WipPanel(props: {
         </div>
         <Show when={open().staged}>
         <p class="wip-hint muted">{t("wip.stagedHint")}</p>
-        <ul class="files wip-list"><For each={groups().staged} fallback={<li class="muted pad-s">{t("wip.empty")}</li>}>{(i) => row(i, true)}</For></ul>
+        <ul class="files wip-list" data-focus-group="wip-staged"><For each={groups().staged} fallback={<li class="muted pad-s">{t("wip.empty")}</li>}>{(i) => row(i, true)}</For></ul>
         </Show>
       </section>
       <form

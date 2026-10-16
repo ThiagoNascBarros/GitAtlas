@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Canvas commit graph (roadmap T1.8): virtualized rows, lanes, refs,
-// selection, keyboard navigation and an accessible shadow of the selection.
-import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
+// selection, keyboard navigation and a hidden DOM mirror of the visible rows for assistive
+// technology (spec accessibility A-1: ARIA grid rows, aria-activedescendant).
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { api, FLAG_MERGE, GraphRow, OpenedRepo, RefInfo, RowMeta, SEG_IN, SEG_OUT, SEG_PASS, SharedStashInfo } from "../../api";
 import { activeTheme, laneColor, token } from "../../theme/theme";
-import { t } from "../../i18n";
+import { activeLocale, t } from "../../i18n";
 
 const ROW_H = 28;
 const LANE_W = 16;
@@ -13,6 +14,11 @@ const CHUNK = 200;
 const MAX_VISIBLE_LANES = 12;
 import { perfEnabled, perfStats, recordDraw } from "./perf";
 import { columns, ColumnWidths, loadWidths, saveWidths, clampWidth, resolveWidths } from "./columns";
+import { menuAnchor, rowId, rowText, visibleRange, wipText } from "./a11y";
+import { isMenuKey } from "../overlay";
+
+/** Rows mirrored in the DOM above and below the viewport (spec accessibility §4.2: ≤ 20). */
+const OVERSCAN = 10;
 
 interface Chunk { rows: GraphRow[]; meta: RowMeta[] }
 
@@ -69,11 +75,11 @@ export function GraphView(props: {
     window.addEventListener("pointerup", up);
   }
 
-  const refsByRow = () => {
+  const refsByRow = createMemo(() => {
     const m = new Map<number, RefInfo[]>();
     for (const r of props.repo.refs) if (r.row !== null) m.set(r.row, [...(m.get(r.row) ?? []), r]);
     return m;
-  };
+  });
   const graphW = () => Math.min(Math.max(props.repo.laneCount, 1), MAX_VISIBLE_LANES) * LANE_W + LANE_W;
 
   function ensure(chunk: number) {
@@ -110,6 +116,8 @@ export function GraphView(props: {
     let painted = 0;
     tick();
     activeTheme();
+    // Tracked like the theme: a language switch repaints dates and canvas labels.
+    const locale = activeLocale();
     const { w, h } = size();
     const dpr = window.devicePixelRatio || 1;
     // Assigning width/height reallocates the backing store: only do it on real size changes.
@@ -230,9 +238,10 @@ export function GraphView(props: {
       clipText(ctx, r.m.summary, col.msgX, cy, col.msgW);
       ctx.fillStyle = token("color.text.secondary");
       if (col.showAuthor) clipText(ctx, r.m.author, col.authorX, cy, widths().author - 12);
-      if (col.showDate) clipText(ctx, new Date(r.m.time * 1000).toLocaleDateString(), col.dateX, cy, widths().date - 8);
+      if (col.showDate) clipText(ctx, new Date(r.m.time * 1000).toLocaleDateString(locale), col.dateX, cy, widths().date - 8);
       ctx.font = "12.5px 'JetBrains Mono', 'DejaVu Sans Mono', monospace";
-      ctx.fillStyle = token("color.text.muted");
+      // Muted text is below 4.5:1 on the selection colour of Atlas Dark (3.86): use secondary there.
+      ctx.fillStyle = token(i === props.selected ? "color.text.secondary" : "color.text.muted");
       ctx.fillText(r.m.sha.slice(0, 7), col.shaX, cy);
       ctx.font = "13px Inter, Cantarell, system-ui, sans-serif";
     }
@@ -345,12 +354,35 @@ export function GraphView(props: {
     const r = rowAt(i);
     if (!r) return ensure(Math.floor(i / CHUNK));
     props.onSelect(i, r.m.sha);
+    reveal(i);
+  }
+
+  /** Scrolls just enough to show row `i`. */
+  function reveal(i: number) {
     const y = i * ROW_H + off();
     if (y < scroller.scrollTop) scroller.scrollTop = y;
     else if (y + ROW_H > scroller.scrollTop + scroller.clientHeight) scroller.scrollTop = y + ROW_H - scroller.clientHeight;
   }
 
+  /** Menu key / Shift+F10: the selected commit's menu, under its row at the message column. */
+  function openMenuFromKeyboard() {
+    const i = props.selected;
+    if (!props.onMenu || props.wip?.active || i === null) return;
+    const r = rowAt(i);
+    if (!r) return;
+    reveal(i);
+    const b = scroller.getBoundingClientRect();
+    const msgX = columns(size().w, graphW(), widths()).msgX;
+    const at = menuAnchor(i, { left: b.left, top: b.top, width: scroller.clientWidth, height: scroller.clientHeight }, scroller.scrollTop,
+      { rowH: ROW_H, offset: off(), msgX, viewW: innerWidth, viewH: innerHeight });
+    props.onMenu(r.m.sha, at.x, at.y);
+  }
+
   function onKey(e: KeyboardEvent) {
+    if (isMenuKey(e)) {
+      e.preventDefault();
+      return openMenuFromKeyboard();
+    }
     const page = Math.floor(scroller.clientHeight / ROW_H);
     const cur = props.selected ?? -1;
     const next = { ArrowDown: cur + 1, ArrowUp: cur - 1, PageDown: cur + page, PageUp: cur - page, Home: 0, End: props.repo.rowCount - 1 }[e.key];
@@ -367,10 +399,25 @@ export function GraphView(props: {
     const ro = new ResizeObserver(() => setSize({ w: scroller.clientWidth, h: scroller.clientHeight }));
     ro.observe(scroller);
     onCleanup(() => ro.disconnect());
-    scroller.focus();
+    // On open, or when the reload removed the focused old graph; never steal focus from a control
+    // that is still there (a sidebar or WIP button the operation started from, spec A-6).
+    const a = document.activeElement;
+    if (!a || a === document.body || !a.isConnected) scroller.focus();
   });
 
-  const selectedMeta = () => (props.selected === null ? undefined : rowAt(props.selected)?.m);
+  // Accessibility mirror: one hidden row per loaded row in the viewport ± OVERSCAN (plus the
+  // selected row), placed where the canvas draws it. Unloaded rows are left out, never empty.
+  const mirrored = () => {
+    tick();
+    return visibleRange(scrollTop(), size().h, ROW_H, off(), props.repo.rowCount, OVERSCAN, props.selected).filter((i) => rowAt(i));
+  };
+  // Never points at a row that is not in the DOM (selected but not loaded yet: none).
+  const activeRow = () => {
+    if (props.wip?.active) return rowId(props.repo.repoId, "wip");
+    tick();
+    const i = props.selected;
+    return i !== null && rowAt(i) ? rowId(props.repo.repoId, i) : undefined;
+  };
 
   return (
     <div class="graph">
@@ -398,7 +445,11 @@ export function GraphView(props: {
         tabindex="0"
         role="grid"
         aria-label={t("graph.label")}
-        aria-rowcount={props.repo.rowCount}
+        aria-describedby={`graph-keys-${props.repo.repoId}`}
+        aria-rowcount={props.repo.rowCount + (props.wip ? 1 : 0)}
+        aria-colcount={5}
+        aria-multiselectable="false"
+        aria-activedescendant={activeRow()}
         onScroll={() => {
           setScrollTop(scroller.scrollTop);
           savedScroll.set(props.repo.repoId, scroller.scrollTop);
@@ -411,6 +462,11 @@ export function GraphView(props: {
           select(Math.floor(yy / ROW_H));
         }}
         onContextMenu={(e) => {
+          // Raised by the keyboard (no mouse button): same as the menu key, never the row under (x, y).
+          if (e.button !== 2) {
+            e.preventDefault();
+            return openMenuFromKeyboard();
+          }
           const rect = scroller.getBoundingClientRect();
           const yy = e.clientY - rect.top + scroller.scrollTop - off();
           if (yy < 0) return;
@@ -424,8 +480,40 @@ export function GraphView(props: {
       >
         <canvas ref={canvas} class="graph-canvas" style={{ width: `${size().w}px`, height: `${size().h}px` }} />
         <div style={{ height: `${Math.max(0, props.repo.rowCount * ROW_H + off() - size().h)}px` }} />
+        <div class="graph-rows" role="rowgroup">
+          <Show when={props.wip}>
+            {(w) => (
+              <div role="row" id={rowId(props.repo.repoId, "wip")} aria-rowindex={1} aria-selected={w().active} style={{ top: "0px" }}>
+                <span role="gridcell" /><span role="gridcell">{wipText(w())}</span><span role="gridcell" /><span role="gridcell" /><span role="gridcell" />
+              </div>
+            )}
+          </Show>
+          <For each={mirrored()}>
+            {(i) => {
+              const cells = () => {
+                tick();
+                const r = rowAt(i);
+                return r && rowText(r.m, refsByRow().get(i) ?? [], props.shared?.get(r.m.sha) ?? [], activeLocale());
+              };
+              return (
+                <Show when={cells()}>
+                  {(c) => (
+                    <div role="row" id={rowId(props.repo.repoId, i)} aria-rowindex={i + 1 + (props.wip ? 1 : 0)}
+                      aria-selected={props.selected === i && !props.wip?.active} style={{ top: `${i * ROW_H + off()}px` }}>
+                      <span role="gridcell">{c().refs}</span>
+                      <span role="gridcell">{c().message}</span>
+                      <span role="gridcell">{c().author}</span>
+                      <span role="gridcell">{c().date}</span>
+                      <span role="gridcell">{c().sha}</span>
+                    </div>
+                  )}
+                </Show>
+              );
+            }}
+          </For>
+        </div>
       </div>
-      {/* Accessible shadow of the canvas: announces the selected commit. */}
+      <div id={`graph-keys-${props.repo.repoId}`} class="sr-only">{t("graph.keys")}</div>
       {loadError() && <div class="graph-error" role="alert">{loadError()}</div>}
       {perfEnabled() && (
         <div class="perf" aria-hidden="true">
@@ -435,9 +523,6 @@ export function GraphView(props: {
           <div>{props.repo.rowCount.toLocaleString()} commits · {props.repo.laneCount} lanes</div>
         </div>
       )}
-      <div class="sr-only" aria-live="polite" role="status">
-        {props.wip?.active ? `${t("wip.row")}: ${t("wip.chipUnstaged", { n: props.wip.unstaged })}, ${t("wip.chipStaged", { n: props.wip.staged })}` : selectedMeta() ? `${selectedMeta()!.summary}, ${selectedMeta()!.author}, ${selectedMeta()!.sha.slice(0, 7)}${(props.shared?.get(selectedMeta()!.sha) ?? []).map((x) => `, ${t("ss.glyphTitle", { s: x.title })}`).join("")}` : ""}
-      </div>
     </div>
   );
 }

@@ -12,7 +12,7 @@
 body { margin: 0; overflow: hidden; }
 button, select, input, textarea { font: inherit; color: inherit; }
 button { background: none; border: 0; cursor: pointer; padding: 0; }
-button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus-visible, [tabindex]:focus-visible {
   outline: 2px solid var(--ak-color-focus-ring);
   outline-offset: 2px;
 }
@@ -73,9 +73,16 @@ select { appearance: none; background-color: var(--ak-color-bg-raised); color: v
 .graph-header { user-select: none; position: relative; height: 24px; font-size: 12px; font-weight: 600; color: var(--ak-color-text-secondary); padding: 4px 8px; border-bottom: 1px solid var(--ak-color-border-default); }
 .graph-header span { position: absolute; top: 5px; white-space: nowrap; }
 .graph-scroller:focus { outline: none; }
-.graph-scroller:focus-visible { outline: 2px solid var(--ak-color-focus-ring); outline-offset: -2px; }
+/* The sticky canvas covers the scroller's own outline: draw the ring on the canvas (same box). */
+.graph-scroller:focus-visible { outline: none; }
+.graph-scroller:focus-visible > .graph-canvas { outline: 2px solid var(--ak-color-focus-ring); outline-offset: -2px; }
 .graph-scroller { flex: 1; overflow-y: auto; overflow-x: hidden; position: relative; }
 .graph-canvas { position: sticky; top: 0; display: block; }
+/* Accessibility mirror of the canvas rows (A-1): laid out where the canvas draws each row, so
+   screen magnifiers and focus highlighting land on it, but never painted or hit by the mouse. */
+.graph-rows { position: absolute; top: 0; left: 0; width: 100%; height: 0; opacity: 0; pointer-events: none; user-select: none; }
+/* Flex items are blocks: screen readers then read a space between the cells of a row. */
+.graph-rows [role="row"] { position: absolute; left: 0; right: 0; height: 28px; overflow: hidden; white-space: nowrap; display: flex; gap: 1ch; }
 
 .details { padding: 16px; display: grid; gap: 6px; }
 .details .sha { color: var(--ak-color-text-muted); margin: 0; }
@@ -161,7 +168,7 @@ select { appearance: none; background-color: var(--ak-color-bg-raised); color: v
 .modal-back { position: fixed; inset: 0; background: rgb(0 0 0 / .4); display: grid; place-items: center; z-index: 10; }
 /* `dialog` defaults (absolute position, Canvas/CanvasText colors) would ignore the theme. */
 .modal { position: relative; inset: auto; margin: 0; width: min(640px, 90vw); max-height: 80vh; overflow: auto; padding: 16px; border-radius: var(--r-l); color: var(--ak-color-text-primary); background: var(--ak-color-bg-overlay); border: 1px solid var(--ak-color-border-strong); box-shadow: 0 8px 32px rgb(0 0 0 / .35); }
-.modal:focus { outline: none; }
+.modal:focus, .modal h2[tabindex]:focus { outline: none; }
 .modal h2 { font-size: 15px; margin: 0 0 12px; }
 .modal label { display: grid; gap: 4px; color: var(--ak-color-text-secondary); }
 .modal ul:not(.journal) { margin: 4px 0; padding-left: 20px; }
@@ -539,3 +546,17 @@ menu.ctx button:focus svg { color: currentColor; }
 .sec-toggle:hover { color: var(--ak-color-text-primary); }
 .sec-toggle:focus-visible { outline: 2px solid var(--ak-color-accent-default); outline-offset: 1px; }
 .sec-toggle > svg:first-child { color: var(--ak-color-text-muted); }
+
+/* Language picker: full names on wide windows; below 1400 px the icon and the active language
+   code (the open list still shows the names), so the repository tabs keep their room. */
+.lang-pick .lang-code { display: none; }
+@media (max-width: 1400px) {
+  .toolbar .lang-pick select { width: 70px; color: transparent;
+    background-image: linear-gradient(45deg, transparent 50%, var(--ak-color-text-primary) 50%), linear-gradient(135deg, var(--ak-color-text-primary) 50%, transparent 50%); }
+  .toolbar .lang-pick option { color: var(--ak-color-text-primary); }
+  .lang-pick .lang-code { display: block; position: absolute; left: 28px; pointer-events: none; font-size: 12px; font-weight: 600; color: var(--ak-color-text-primary); }
+}
+@media (max-width: 620px) {
+  .toolbar .lang-pick select { width: var(--ctl-h); padding: 0; background-image: none; }
+  .lang-pick .lang-code { display: none; }
+}

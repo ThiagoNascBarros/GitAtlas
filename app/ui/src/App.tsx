@@ -7,7 +7,7 @@ import { listen } from "@tauri-apps/api/event";
 import { GraphView } from "./features/graph/GraphView";
 import { DiffView } from "./features/diff/DiffView";
 import { setTheme, themeChoice, ThemeChoice } from "./theme/theme";
-import { errorFix, errorText, t } from "./i18n";
+import { activeLocale, errorFix, errorText, initLocale, LocaleChoice, localeChoice, setLocaleChoice, t } from "./i18n";
 import { StashPanel } from "./features/stash/StashPanel";
 import { CommitMenu, CommitMenuState } from "./features/graph/CommitMenu";
 import { RebaseEditor } from "./features/rebase/RebaseEditor";
@@ -19,7 +19,7 @@ import { WipFile, WipPanel } from "./features/wip/WipPanel";
 import { changeCount, groupStatus } from "./features/wip/status";
 import { toTreeRows, visibleRows } from "./features/files/tree";
 import { markOpenStart, togglePerf } from "./features/graph/perf";
-import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Laptop, List, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Share2 } from "lucide-solid";
+import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Languages, Laptop, List, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Share2 } from "lucide-solid";
 import { Dynamic } from "solid-js/web";
 import { Splitter, storedSize } from "./features/split/Splitter";
 import { SharedStashPanel } from "./features/shared-stash/SharedStashPanel";
@@ -28,6 +28,7 @@ import { LocalStashMenu, LocalStashMenuState } from "./features/stash/LocalStash
 import { ShareDialog } from "./features/shared-stash/ShareDialog";
 import { basesIndex, formatBytes } from "./features/shared-stash/logic";
 import { forget, glyphOn, modelOf, reloadList } from "./features/shared-stash/model";
+import { isMenuKey, keepFocus } from "./features/overlay";
 
 interface Tab {
   repo: OpenedRepo; selected: number | null; sha: string | null; diffPath: string | null;
@@ -37,7 +38,13 @@ interface Tab {
 }
 interface Toast { text: string; repoId: number; undoId: string | null }
 
+/** Codes whose core message is the only diagnostic (the raw error text), shown under "Details". */
+const RAW_MESSAGE_CODES = new Set(["GIT_NOT_FOUND", "NOT_A_REPO", "READ_FAILED", "IO_ERROR"]);
+const errorDetail = (e: UiError) => e.detail ?? (RAW_MESSAGE_CODES.has(e.code) ? e.message : undefined);
+
 export function App() {
+  // Runs before any text renders (the theme counterpart, initTheme, runs in main.tsx).
+  initLocale();
   const [leftW, setLeftW, saveLeftW] = storedSize("left", 232);
   const [rightW, setRightW, saveRightW] = storedSize("right", 360);
   const [diffH, setDiffH, saveDiffH] = storedSize("diff", 320);
@@ -242,7 +249,7 @@ export function App() {
       const st = tabs().find((x) => x.repo.repoId === repo.repoId)?.status;
       if (st?.entries.length) patchRepo(repo.repoId, () => ({ wip: true }));
     } catch (e) {
-      setError(e as UiError);
+      fail(e);
     }
   }
 
@@ -259,6 +266,8 @@ export function App() {
   }
 
   onMount(() => {
+    // Lists re-render after operations: keep keyboard focus on the item or its neighbour (A-6).
+    onCleanup(keepFocus());
     window.addEventListener("keydown", (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target as HTMLElement)?.tagName ?? "");
       if (e.ctrlKey && !typing && e.key.toLowerCase() === "z" && tab()) {
@@ -302,16 +311,17 @@ export function App() {
       <header class="toolbar">
         <div class="crumb">
           <Show when={tabs().length} fallback={<strong class="repo">{t("app.name")}</strong>}>
-            <nav class="tabs" role="tablist" aria-label={t("tabs.label")}>
+            {/* Not an ARIA tablist: each tab holds two buttons (switch, close), which a tab cannot. */}
+            <nav class="tabs" aria-label={t("tabs.label")}>
               <For each={tabs()}>
                 {(x, i) => (
-                  <div class="tab" role="tab" aria-selected={i() === active()} classList={{ active: i() === active() }}>
-                    <button class="tab-name repo" onClick={() => setActive(i())}>{x.repo.name}</button>
-                    <button class="icon" aria-label={t("tabs.close", { s: x.repo.name })} onClick={() => closeTab(i())}><X size={14} /></button>
+                  <div class="tab" classList={{ active: i() === active() }}>
+                    <button class="tab-name repo" aria-current={i() === active() ? "page" : undefined} onClick={() => setActive(i())}>{x.repo.name}</button>
+                    <button class="icon" aria-label={t("tabs.close", { s: x.repo.name })} onClick={() => closeTab(i())}><X size={14} aria-hidden="true" /></button>
                   </div>
                 )}
               </For>
-              <button class="icon tab-add" title={t("open.button")} aria-label={t("open.button")} onClick={pick}><Plus size={16} /></button>
+              <button class="icon tab-add" title={t("open.button")} aria-label={t("open.button")} onClick={pick}><Plus size={16} aria-hidden="true" /></button>
             </nav>
           </Show>
           <Show when={tab()?.repo.branch}>
@@ -320,29 +330,38 @@ export function App() {
           <Show when={tab()?.repo.readOnlyReason}><span class="badge">{t("toolbar.readOnly")}</span></Show>
         </div>
         <div class="group">
-          <button class="tool" disabled={!tab()} title={t("toolbar.undoTitle")} onClick={() => undo(tab().repo.repoId, null)}><Undo2 size={16} /><span class="lbl">{t("toolbar.undo")}</span></button>
-          <button class="tool" disabled={!tab()} title={t("toolbar.redoTitle")} onClick={() => redo(tab().repo.repoId)}><Redo2 size={16} /><span class="lbl">{t("toolbar.redo")}</span></button>
+          <button class="tool" disabled={!tab()} title={t("toolbar.undoTitle")} onClick={() => undo(tab().repo.repoId, null)}><Undo2 size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.undo")}</span></button>
+          <button class="tool" disabled={!tab()} title={t("toolbar.redoTitle")} onClick={() => redo(tab().repo.repoId)}><Redo2 size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.redo")}</span></button>
         </div>
         <div class="group">
-          <button class="tool" disabled={!tab() || !!netBusy() || !!tab()?.repo.readOnlyReason} aria-busy={netBusy() === "fetch"} title={t("toolbar.fetchTitle")} onClick={() => void net("fetch")}><CloudDownload size={16} /><span class="lbl">{t("toolbar.fetch")}</span></button>
+          <button class="tool" disabled={!tab() || !!netBusy() || !!tab()?.repo.readOnlyReason} aria-busy={netBusy() === "fetch"} title={t("toolbar.fetchTitle")} onClick={() => void net("fetch")}><CloudDownload size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.fetch")}</span></button>
           <button class="tool" disabled={!tab() || !!netBusy() || !!tab()?.repo.readOnlyReason} aria-busy={netBusy() === "pull"} title={t("toolbar.pullTitle")} onClick={() => void net("pull")}>
-            <ArrowDownToLine size={16} /><span class="lbl">{t("toolbar.pull")}</span><Show when={tab()?.status?.behind}><span class="count">{tab()!.status!.behind}</span></Show>
+            <ArrowDownToLine size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.pull")}</span><Show when={tab()?.status?.behind}><span class="count">{tab()!.status!.behind}</span></Show>
           </button>
           <button class="tool" disabled={!tab() || !!netBusy() || !!tab()?.repo.readOnlyReason} aria-busy={netBusy() === "push"} title={t("toolbar.pushTitle")} onClick={() => void net("push")}>
-            <ArrowUpFromLine size={16} /><span class="lbl">{t("toolbar.push")}</span><Show when={tab()?.status?.ahead}><span class="count">{tab()!.status!.ahead}</span></Show>
+            <ArrowUpFromLine size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.push")}</span><Show when={tab()?.status?.ahead}><span class="count">{tab()!.status!.ahead}</span></Show>
           </button>
-          <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.newBranchTitle")} onClick={() => setAskName("branch")}><GitBranchPlus size={16} /><span class="lbl">{t("toolbar.newBranch")}</span></button>
+          <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.newBranchTitle")} onClick={() => setAskName("branch")}><GitBranchPlus size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.newBranch")}</span></button>
           <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.stashTitle")}
-            onClick={() => setAskName("stash")}><Archive size={16} /><span class="lbl">{t("toolbar.stash")}</span></button>
+            onClick={() => setAskName("stash")}><Archive size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.stash")}</span></button>
         </div>
         <div class="group">
-          <button class="tool" disabled={!tab()} title={t("toolbar.journalTitle")} onClick={() => setShowJournal(true)}><History size={16} /><span class="lbl">{t("toolbar.journal")}</span></button>
+          <button class="tool" disabled={!tab()} title={t("toolbar.journalTitle")} onClick={() => setShowJournal(true)}><History size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.journal")}</span></button>
           <label class="theme-pick" title={t("toolbar.theme")}>
             <SunMoon size={16} aria-hidden="true" /><span class="sr-only">{t("toolbar.theme")}</span>
             <select value={themeChoice()} onChange={(e) => setTheme(e.currentTarget.value as ThemeChoice)}>
               <option value="system">{t("theme.system")}</option>
               <option value="atlas-dark">{t("theme.dark")}</option>
               <option value="atlas-light">{t("theme.light")}</option>
+            </select>
+          </label>
+          <label class="theme-pick lang-pick" title={t("toolbar.language")}>
+            <Languages size={16} aria-hidden="true" /><span class="sr-only">{t("toolbar.language")}</span>
+            <span class="lang-code" aria-hidden="true">{activeLocale() === "pt-BR" ? "PT" : "EN"}</span>
+            <select value={localeChoice()} onChange={(e) => setLocaleChoice(e.currentTarget.value as LocaleChoice)}>
+              <option value="system">{t("lang.system")}</option>
+              <option value="en" lang="en">{t("lang.en")}</option>
+              <option value="pt-BR" lang="pt-BR">{t("lang.ptBR")}</option>
             </select>
           </label>
         </div>
@@ -356,7 +375,14 @@ export function App() {
             <h1>{t("open.title")}</h1>
             <p class="muted">{t("open.hint")}</p>
             <Show when={error()}>
-              <div class="error" role="alert"><strong>{t("error.title")}</strong><p>{error()!.message}</p></div>
+              <div class="error" role="alert">
+                <strong>{t("error.title")}</strong>
+                <p>{errorText(error()!)}</p>
+                <Show when={errorFix(error()!)}><p>{errorFix(error()!)}</p></Show>
+                <Show when={errorDetail(error()!)}>
+                  <details><summary>{t("err.details")}</summary><pre class="body-text mono">{errorDetail(error()!)}</pre></details>
+                </Show>
+              </div>
             </Show>
             <button class="primary" onClick={pick}>{t("open.button")}</button>
           </main>
@@ -393,17 +419,26 @@ export function App() {
                   <Show when={items().length}>
                     <details open={kind !== "remote" || !!refFilter()}>
                     <summary><Dynamic component={{ head: Laptop, remote: Cloud, tag: Tags }[kind]} size={14} aria-hidden="true" /><h2>{t(label)} <span class="muted">{items().length}</span></h2></summary>
-                    <ul>
+                    <ul data-focus-group={`refs-${kind}`}>
                       <For each={items()}>
                         {(r) => (
                           <li>
                             <button
                               classList={{ head: r.isHead }}
+                              data-focus-key={`${r.kind}:${r.name}`}
                               aria-disabled={r.row === null}
+                              aria-haspopup="menu"
                               title={r.row === null ? t("panel.refHidden") : undefined}
                               onClick={() => r.row !== null && patch({ selected: r.row, sha: null })}
                               onDblClick={() => r.kind === "head" && !r.isHead && void run(() => api.checkout(tab().repo.repoId, r.name, true), { graph: true, toast: t("toast.checkedOut", { s: r.name }) })}
                               onContextMenu={(e) => { e.preventDefault(); setRefMenu({ x: e.clientX, y: e.clientY, ref: r }); }}
+                              onKeyDown={(e) => {
+                                // Menu key / Shift+F10: the same menu (it also offers "merge into current", the drag-and-drop action).
+                                if (!isMenuKey(e)) return;
+                                e.preventDefault();
+                                const b = e.currentTarget.getBoundingClientRect();
+                                setRefMenu({ x: b.left + 24, y: b.bottom, ref: r });
+                              }}
                               draggable={r.kind !== "tag" && !r.isHead}
                               onDragStart={(e) => e.dataTransfer?.setData("text/x-atlas-ref", JSON.stringify(r))}
                               onDragOver={(e) => r.isHead && e.dataTransfer?.types.includes("text/x-atlas-ref") && e.preventDefault()}
@@ -492,7 +527,7 @@ export function App() {
                   <h2 class="message">{d().message.split("\n")[0]}</h2>
                   <Show when={d().message.includes("\n")}><pre class="body-text">{d().message.split("\n").slice(1).join("\n").trim()}</pre></Show>
                   <p class="meta"><User size={14} aria-hidden="true" />{d().author}</p>
-                  <p class="meta"><Clock size={14} aria-hidden="true" /><time datetime={new Date(d().time * 1000).toISOString()}>{new Date(d().time * 1000).toLocaleString()}</time></p>
+                  <p class="meta"><Clock size={14} aria-hidden="true" /><time datetime={new Date(d().time * 1000).toISOString()}>{new Date(d().time * 1000).toLocaleString(activeLocale())}</time></p>
                   <p class="meta"><GitMerge size={14} aria-hidden="true" />{t("details.parents")}: <span class="mono">{d().parents.map((p) => p.slice(0, 7)).join(", ") || "—"}</span></p>
                   <div class="files-head">
                     <h3><Files size={14} aria-hidden="true" />{t("details.files")} <span class="muted">{d().files.length}</span></h3>
@@ -564,9 +599,9 @@ export function App() {
           <div>
             <strong>{errorText(error()!)}</strong>
             <Show when={errorFix(error()!)}><p>{errorFix(error()!)}</p></Show>
-            <Show when={showDetail() && error()!.detail}><pre class="mono">{error()!.detail}</pre></Show>
+            <Show when={showDetail() && errorDetail(error()!)}><pre class="mono">{errorDetail(error()!)}</pre></Show>
           </div>
-          <Show when={error()!.detail}><button class="mini" onClick={() => setShowDetail(!showDetail())}>{t("err.details")}</button></Show>
+          <Show when={errorDetail(error()!)}><button class="mini" onClick={() => setShowDetail(!showDetail())}>{t("err.details")}</button></Show>
           <Show when={error()!.code === "PUSH_REJECTED"}>
             {/* Overwrites remote commits: needs a second click. */}
             <button class="mini danger" onClick={() => { if (!forceConfirm()) return setForceConfirm(true); setForceConfirm(false); setError(null); void net("push", true); }}>
@@ -627,7 +662,7 @@ export function App() {
 
       <footer class="statusbar">
         <Show when={tab()}>
-          <span><GitCommitHorizontal size={14} aria-hidden="true" />{t("status.commits", { n: tab()!.repo.rowCount.toLocaleString() })}</span>
+          <span><GitCommitHorizontal size={14} aria-hidden="true" />{t("status.commits", { n: tab()!.repo.rowCount.toLocaleString(activeLocale()) })}</span>
           <span><Terminal size={14} aria-hidden="true" />{t("status.git", { v: tab()!.repo.gitVersion })}</span>
           <Show when={tab()!.repo.readOnlyReason}><span class="warn">{tab()!.repo.readOnlyReason}</span></Show>
         </Show>

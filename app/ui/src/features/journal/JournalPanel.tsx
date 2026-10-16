@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createResource, createSignal, For, Show } from "solid-js";
 import { api } from "../../api";
-import { t } from "../../i18n";
+import { activeLocale, t } from "../../i18n";
 import { useOverlay } from "../overlay";
 
 const DEFAULT_KEEP = 50;
@@ -10,7 +10,8 @@ const DEFAULT_KEEP = 50;
 export function JournalPanel(props: { repoId: number; onClose: () => void; onError: (e: unknown) => void }) {
   const [entries, { refetch }] = createResource(() => api.journal(props.repoId));
   let close: HTMLButtonElement | undefined;
-  useOverlay(() => props.onClose(), () => close);
+  let dialog: HTMLDialogElement | undefined;
+  useOverlay(() => props.onClose(), () => close, () => dialog);
   const [confirm, setConfirm] = createSignal(false);
   const [keep, setKeep] = createSignal(DEFAULT_KEEP);
   async function prune() {
@@ -27,8 +28,8 @@ export function JournalPanel(props: { repoId: number; onClose: () => void; onErr
   return (
     <div class="modal-back">
       <button type="button" class="backdrop" tabindex="-1" aria-label={t("journal.close")} onClick={props.onClose} />
-      <dialog open class="modal" aria-label={t("journal.title")}>
-        <h2>{t("journal.title")}</h2>
+      <dialog ref={dialog} open class="modal" aria-modal="true" aria-labelledby="journal-h">
+        <h2 id="journal-h">{t("journal.title")}</h2>
         <Show when={(entries() ?? []).length} fallback={<p class="muted">{t("journal.empty")}</p>}>
           <ul class="journal">
             <For each={[...(entries() ?? [])].reverse()}>
@@ -36,7 +37,7 @@ export function JournalPanel(props: { repoId: number; onClose: () => void; onErr
                 <li classList={{ undone: e.undone }}>
                   <div>
                     <strong>{e.summary}</strong>
-                    <span class="muted"> · {e.kind} · {new Date(e.time * 1000).toLocaleString()}</span>
+                    <span class="muted"> · {e.kind} · {new Date(e.time * 1000).toLocaleString(activeLocale())}</span>
                     <Show when={e.undone}><span class="badge">{t("journal.undone")}</span></Show>
                   </div>
                   <For each={e.commands}>{(c) => <code class="mono">{c}</code>}</For>

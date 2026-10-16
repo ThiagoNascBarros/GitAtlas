@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Interactive rebase editor: choose an action per commit, reorder, reword (Phase 4).
-import { createResource, createSignal, For, Show } from "solid-js";
+import { createEffect, createResource, createSignal, For, Show } from "solid-js";
 import { ArrowDown, ArrowUp } from "lucide-solid";
 import { api, TodoItem } from "../../api";
 import { t } from "../../i18n";
@@ -17,7 +17,11 @@ export function RebaseEditor(props: { repoId: number; onto: string; label: strin
     (o) => api.rebaseTodo(props.repoId, o).then((x) => { setList(x); return true; }).catch((e) => { props.onError(e); props.onClose(); return false; }),
   );
   let cancel: HTMLButtonElement | undefined;
-  useOverlay(() => props.onClose(), () => cancel);
+  let dialog: HTMLDialogElement | undefined;
+  // While loading, the title holds focus (inside the dialog); Cancel takes it once it exists.
+  let heading: HTMLHeadingElement | undefined;
+  useOverlay(() => props.onClose(), () => cancel ?? heading, () => dialog);
+  createEffect(() => { if (loaded() && document.activeElement === heading) cancel?.focus(); });
   const set = (i: number, patch: Partial<TodoItem>) => setList(list().map((x, j) => (j === i ? { ...x, ...patch } : x)));
   const start = async () => {
     props.onClose();
@@ -25,8 +29,8 @@ export function RebaseEditor(props: { repoId: number; onto: string; label: strin
   };
   return (
     <div class="modal-back">
-      <dialog open class="modal rebase" aria-label={t("rebase.title", { s: props.label })}>
-        <h2>{t("rebase.title", { s: props.label })}</h2>
+      <dialog ref={dialog} open class="modal rebase" aria-modal="true" aria-labelledby="rebase-h">
+        <h2 id="rebase-h" ref={heading} tabindex="-1">{t("rebase.title", { s: props.label })}</h2>
         <Show when={loaded()} fallback={<p class="muted">{t("loading")}</p>}>
           <Show when={list().length} fallback={<p class="muted">{t("rebase.empty")}</p>}>
             <ol class="rebase-list">
@@ -40,8 +44,8 @@ export function RebaseEditor(props: { repoId: number; onto: string; label: strin
                     <Show when={item.action === "reword"} fallback={<span class="msg">{item.message}</span>}>
                       <input class="msg" aria-label={t("rebase.message")} value={item.message} onInput={(e) => set(i(), { message: e.currentTarget.value })} />
                     </Show>
-                    <button class="icon" aria-label={t("rebase.up")} disabled={i() === 0} onClick={() => setList(move(list(), i(), -1))}><ArrowUp size={14} /></button>
-                    <button class="icon" aria-label={t("rebase.down")} disabled={i() === list().length - 1} onClick={() => setList(move(list(), i(), 1))}><ArrowDown size={14} /></button>
+                    <button class="icon" aria-label={t("rebase.up")} disabled={i() === 0} onClick={() => setList(move(list(), i(), -1))}><ArrowUp size={14} aria-hidden="true" /></button>
+                    <button class="icon" aria-label={t("rebase.down")} disabled={i() === list().length - 1} onClick={() => setList(move(list(), i(), 1))}><ArrowDown size={14} aria-hidden="true" /></button>
                   </li>
                 )}
               </For>

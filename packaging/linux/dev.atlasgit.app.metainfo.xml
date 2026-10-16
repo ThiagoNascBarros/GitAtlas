@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: CC0-1.0 -->
+<component type="desktop-application">
+  <id>dev.atlasgit.app</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+
+  <name>AtlasGit</name>
+  <summary>Fast, friendly Git client</summary>
+  <summary xml:lang="pt-BR">Cliente Git rápido e amigável</summary>
+
+  <description>
+    <p>
+      AtlasGit is a desktop Git client for Linux. It draws the commit graph of large repositories
+      quickly and lets you stage, commit, branch, merge, rebase and sync with remotes without
+      leaving the window.
+    </p>
+    <p xml:lang="pt-BR">
+      AtlasGit é um cliente Git para desktop Linux. Ele desenha rapidamente o grafo de commits de
+      repositórios grandes e permite fazer stage, commit, branch, merge, rebase e sincronizar com
+      remotos sem sair da janela.
+    </p>
+    <ul>
+      <li>Commit graph that stays responsive on repositories with many commits</li>
+      <li xml:lang="pt-BR">Grafo de commits que continua responsivo em repositórios com muitos commits</li>
+      <li>Stage files or single hunks, commit, amend, and undo or redo your last operations</li>
+      <li xml:lang="pt-BR">Stage de arquivos ou de trechos, commit, amend, e desfazer ou refazer as últimas operações</li>
+      <li>Branches, merges with a three-pane conflict editor, stashes and interactive rebase</li>
+      <li xml:lang="pt-BR">Branches, merges com editor de conflitos em três painéis, stashes e rebase interativo</li>
+      <li>Fetch, pull and push using your existing Git credential helpers and SSH keys</li>
+      <li xml:lang="pt-BR">Fetch, pull e push usando os credential helpers do Git e as chaves SSH que você já usa</li>
+    </ul>
+    <p>
+      All changes are made with the Git command line, so your repositories stay compatible with
+      every other Git tool. Git 2.20 or newer is required.
+    </p>
+    <p xml:lang="pt-BR">
+      Todas as alterações são feitas pela linha de comando do Git, então seus repositórios
+      continuam compatíveis com qualquer outra ferramenta Git. É necessário o Git 2.20 ou mais novo.
+    </p>
+  </description>
+
+  <developer id="dev.atlasgit">
+    <name>AtlasGit contributors</name>
+  </developer>
+
+  <url type="homepage">https://github.com/ThiagoNascBarros/AtlasGit</url>
+  <url type="bugtracker">https://github.com/ThiagoNascBarros/AtlasGit/issues</url>
+  <url type="vcs-browser">https://github.com/ThiagoNascBarros/AtlasGit</url>
+
+  <launchable type="desktop-id">dev.atlasgit.app.desktop</launchable>
+
+  <content_rating type="oars-1.1"/>
+
+  <categories>
+    <category>Development</category>
+    <category>RevisionControl</category>
+  </categories>
+
+  <keywords>
+    <keyword>git</keyword>
+    <keyword>vcs</keyword>
+    <keyword>version control</keyword>
+    <keyword xml:lang="pt-BR">controle de versão</keyword>
+  </keywords>
+
+  <provides>
+    <binary>atlasgit</binary>
+  </provides>
+
+  <requires>
+    <display_length compare="ge">600</display_length>
+  </requires>
+  <recommends>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </recommends>
+
+  <releases>
+    <release version="0.1.0" date="2026-10-16" type="development">
+      <description>
+        <p>First MVP build: commit graph, staging, commits, branches, merges, stashes, remotes and rebase.</p>
+      </description>
+    </release>
+  </releases>
+</component>

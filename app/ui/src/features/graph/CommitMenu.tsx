@@ -16,7 +16,7 @@ export function CommitMenu(props: { repoId: number; menu: CommitMenuState; run: 
   const [ask, setAsk] = createSignal<"branch" | "tag" | null>(null);
   const [pos, setPos] = createSignal({ x: props.menu.x, y: props.menu.y });
   let menuEl: HTMLMenuElement | undefined;
-  useOverlay(() => props.onClose(), () => menuEl?.querySelector("button") ?? undefined);
+  useOverlay(() => props.onClose(), () => menuEl?.querySelector("button") ?? undefined, () => menuEl);
   onMount(() => {
     if (!menuEl) return;
     const b = menuEl.getBoundingClientRect();

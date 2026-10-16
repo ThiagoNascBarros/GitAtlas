@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-// All UI strings live here (PRD NFR-9). pt-BR is added in Phase 5.
-const en = {
+// All UI strings live here (PRD NFR-9): `en` is the source table; other locales live in
+// `locales/` and must define exactly the same keys (checked by tsc and i18n.test.ts).
+import { createSignal } from "solid-js";
+import { ptBR } from "./locales/pt-BR";
+
+export const en = {
   "app.name": "AtlasGit",
   "open.title": "Open a repository",
   "open.hint": "Choose a folder that contains a Git repository, or start AtlasGit with a path: atlasgit /path/to/repo",
@@ -12,6 +16,10 @@ const en = {
   "toolbar.undoTitle": "Undo the last operation",
   "toolbar.readOnly": "Read-only (old Git)",
   "toolbar.theme": "Theme",
+  "toolbar.language": "Language",
+  "lang.system": "Follow system",
+  "lang.en": "English",
+  "lang.ptBR": "Português (Brasil)",
   "theme.system": "Follow system",
   "theme.dark": "Atlas Dark",
   "theme.light": "Atlas Light",
@@ -22,6 +30,10 @@ const en = {
   "col.date": "Date",
   "col.sha": "SHA",
   "graph.label": "Commit graph. Use arrow keys to move between commits.",
+  "graph.keys": "Shift+F10 or the Menu key opens the actions of the selected commit.",
+  "graph.refCurrent": "{s} (current branch)",
+  "graph.refTag": "tag {s}",
+  "graph.refStash": "stash {s}",
   "panel.refs": "References",
   "panel.refHidden": "Not shown in the graph",
   "split.left": "Resize references panel",
@@ -341,21 +353,106 @@ const en = {
   "err.NOTHING_TO_UPDATE": "Choose a local stash or a new title; there is nothing to update.",
   "err.UNDO_NOT_SUPPORTED": "That operation cannot be undone.",
   "err.GIT_FAILED": "Git could not complete the operation.",
+  // Codes the core and the shell return that had no text before Phase 5.
+  "err.INVALID_PATH": "That file path is not valid or is outside the repository.",
+  "err.IO_ERROR": "AtlasGit could not write one of its own files (operation journal, backups or settings).",
+  "err.IO_ERROR.fix": "Check that the disk is not full and that you can write to that folder, then try again.",
+  "err.GIT_NOT_FOUND": "Git could not be found or did not run, so AtlasGit cannot open repositories.",
+  "err.GIT_NOT_FOUND.fix": "Install Git 2.20 or newer and make sure the git command is on your PATH.",
+  "err.NOT_A_REPO": "Git does not recognise that folder as a repository it can open.",
+  "err.NOT_A_REPO.fix": "Choose the folder that contains the repository. If another user owns it, Git refuses it until you add it with git config --global --add safe.directory <path>.",
+  "err.READ_FAILED": "Git could not read the data of this repository.",
+  "err.UNKNOWN_REPO": "That repository is no longer open in AtlasGit.",
+  "err.UNKNOWN_REPO.fix": "Open it again.",
+  // Hints the core always sends with these codes (same English text), so they can be translated.
+  "err.EMPTY_MESSAGE.fix": "Write a short summary of the change.",
+  "err.REPO_BUSY.fix": "Wait for it to finish and try again.",
+  "err.INVALID_HUNK.fix": "Refresh and try again.",
+  "err.UNSUPPORTED_PATH.fix": "Discard it from a terminal.",
+  "err.BRANCH_IS_CURRENT.fix": "Check out another branch first.",
+  "err.BRANCH_NOT_MERGED.fix": "Delete it anyway; Undo brings it back.",
+  "err.MERGE_IN_PROGRESS.fix": "Finish it or abort it first.",
+  "err.INVALID_STASH.fix": "Refresh and try again.",
+  "err.STASH_NOT_FOUND.fix": "Refresh and try again.",
+  "err.AUTH_FAILED.fix": "Check your username/password or SSH key, then try again.",
+  "err.PUSH_REJECTED.fix": "Pull first, then push again.",
+  "err.NETWORK_FAILED.fix": "Check your network connection and the remote URL.",
+  "err.UNSUPPORTED_REBASE.fix": "Use a terminal for this rebase.",
+  "err.SHARED_STASH_GONE.fix": "Refresh the list; its author may have unshared it.",
+  "err.STALE_SHARED_STASH.fix": "Refresh the list and try again.",
+  "err.INVALID_SHARED_STASH.fix": "Ask its author to share it again.",
 } as const;
 
 export type Key = keyof typeof en;
+export type Locale = "en" | "pt-BR";
+export type LocaleChoice = "system" | Locale;
+
+const TABLES: Record<Locale, Readonly<Record<Key, string>>> = { en, "pt-BR": ptBR };
+const STORAGE_KEY = "ak.lang";
+const CHOICES: readonly LocaleChoice[] = ["system", "en", "pt-BR"];
+
+/** The UI language for a choice: `system` takes the first pt/en entry of the system languages. */
+export function resolveLocale(choice: LocaleChoice, langs: readonly string[]): Locale {
+  if (choice !== "system") return choice;
+  for (const l of langs) {
+    const primary = l.toLowerCase().split(/[-_]/)[0];
+    if (primary === "pt") return "pt-BR";
+    if (primary === "en") return "en";
+  }
+  return "en";
+}
+
+function systemLanguages(): readonly string[] {
+  if (typeof navigator === "undefined") return [];
+  if (navigator.languages?.length) return navigator.languages;
+  return navigator.language ? [navigator.language] : [];
+}
+
+const [choice, setChoice] = createSignal<LocaleChoice>("system");
+const [locale, setLocale] = createSignal<Locale>("en");
+/** Read inside `t()`, so every reactive text re-renders when the language changes. */
+export const activeLocale = locale;
+export const localeChoice = choice;
+
+function apply(c: LocaleChoice) {
+  const l = resolveLocale(c, systemLanguages());
+  setChoice(c);
+  setLocale(l);
+  if (typeof document !== "undefined") document.documentElement.lang = l;
+}
+
+/** Switches the language live and remembers it for this viewer. */
+export function setLocaleChoice(c: LocaleChoice) {
+  apply(c);
+  try { localStorage.setItem(STORAGE_KEY, c); } catch { /* storage unavailable */ }
+}
+
+/** Applies the stored choice (default: follow the system language). */
+export function initLocale() {
+  let stored: string | null = null;
+  try { stored = localStorage.getItem(STORAGE_KEY); } catch { /* storage unavailable */ }
+  apply(CHOICES.includes(stored as LocaleChoice) ? (stored as LocaleChoice) : "system");
+  if (typeof window !== "undefined") {
+    window.addEventListener("languagechange", () => { if (choice() === "system") apply("system"); });
+  }
+}
+
+/** Text of `key` in the active language; the `en` fallback only guards against a broken table. */
+function text(key: Key): string {
+  return TABLES[locale()][key] ?? en[key];
+}
 
 export function t(key: Key, vars: Record<string, string | number> = {}): string {
-  return en[key].replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? `{${k}}`));
+  return text(key).replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? `{${k}}`));
 }
 
 /** Human text for an error code; falls back to the core's message. */
 export function errorText(e: { code: string; message: string }): string {
   const k = `err.${e.code}` as Key;
-  return k in en ? en[k] : e.message;
+  return k in en ? text(k) : e.message;
 }
 
 export function errorFix(e: { code: string; suggestion?: string }): string | undefined {
   const k = `err.${e.code}.fix` as Key;
-  return k in en ? en[k] : e.suggestion;
+  return k in en ? text(k) : e.suggestion;
 }
