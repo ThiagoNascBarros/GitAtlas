@@ -539,3 +539,17 @@ menu.ctx button:focus svg { color: currentColor; }
 .sec-toggle:hover { color: var(--ak-color-text-primary); }
 .sec-toggle:focus-visible { outline: 2px solid var(--ak-color-accent-default); outline-offset: 1px; }
 .sec-toggle > svg:first-child { color: var(--ak-color-text-muted); }
+
+/* Language picker: full names on wide windows; below 1400 px the icon and the active language
+   code (the open list still shows the names), so the repository tabs keep their room. */
+.lang-pick .lang-code { display: none; }
+@media (max-width: 1400px) {
+  .toolbar .lang-pick select { width: 70px; color: transparent;
+    background-image: linear-gradient(45deg, transparent 50%, var(--ak-color-text-primary) 50%), linear-gradient(135deg, var(--ak-color-text-primary) 50%, transparent 50%); }
+  .toolbar .lang-pick option { color: var(--ak-color-text-primary); }
+  .lang-pick .lang-code { display: block; position: absolute; left: 28px; pointer-events: none; font-size: 12px; font-weight: 600; color: var(--ak-color-text-primary); }
+}
+@media (max-width: 620px) {
+  .toolbar .lang-pick select { width: var(--ctl-h); padding: 0; background-image: none; }
+  .lang-pick .lang-code { display: none; }
+}

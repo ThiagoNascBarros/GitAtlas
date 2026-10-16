@@ -4,7 +4,7 @@
 import { createEffect, createSignal, onCleanup, onMount } from "solid-js";
 import { api, FLAG_MERGE, GraphRow, OpenedRepo, RefInfo, RowMeta, SEG_IN, SEG_OUT, SEG_PASS, SharedStashInfo } from "../../api";
 import { activeTheme, laneColor, token } from "../../theme/theme";
-import { t } from "../../i18n";
+import { activeLocale, t } from "../../i18n";
 
 const ROW_H = 28;
 const LANE_W = 16;
@@ -110,6 +110,8 @@ export function GraphView(props: {
     let painted = 0;
     tick();
     activeTheme();
+    // Tracked like the theme: a language switch repaints dates and canvas labels.
+    const locale = activeLocale();
     const { w, h } = size();
     const dpr = window.devicePixelRatio || 1;
     // Assigning width/height reallocates the backing store: only do it on real size changes.
@@ -230,7 +232,7 @@ export function GraphView(props: {
       clipText(ctx, r.m.summary, col.msgX, cy, col.msgW);
       ctx.fillStyle = token("color.text.secondary");
       if (col.showAuthor) clipText(ctx, r.m.author, col.authorX, cy, widths().author - 12);
-      if (col.showDate) clipText(ctx, new Date(r.m.time * 1000).toLocaleDateString(), col.dateX, cy, widths().date - 8);
+      if (col.showDate) clipText(ctx, new Date(r.m.time * 1000).toLocaleDateString(locale), col.dateX, cy, widths().date - 8);
       ctx.font = "12.5px 'JetBrains Mono', 'DejaVu Sans Mono', monospace";
       ctx.fillStyle = token("color.text.muted");
       ctx.fillText(r.m.sha.slice(0, 7), col.shaX, cy);

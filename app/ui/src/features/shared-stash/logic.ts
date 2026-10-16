@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Pure helpers for the Shared stash tab: grouping, formatting, fetch-state reducer.
 import type { KeptSharedStash, OpErrorInfo, RemoteStatus, SharedStashInfo } from "../../api";
-import { t } from "../../i18n";
+import { activeLocale, t } from "../../i18n";
 
 export interface RemoteGroup {
   remote: string;
@@ -52,13 +52,15 @@ export function relativeTime(now: number, ts: number): string {
   if (d < 3600) return t("time.minutes", { n: Math.floor(d / 60) });
   if (d < 86400) return t("time.hours", { n: Math.floor(d / 3600) });
   if (d < 86400 * 30) return t("time.days", { n: Math.floor(d / 86400) });
-  return new Date(ts * 1000).toLocaleDateString();
+  return new Date(ts * 1000).toLocaleDateString(activeLocale());
 }
 
 export function formatBytes(n: number): string {
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
-  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  const num = (v: number, digits: number) =>
+    v.toLocaleString(activeLocale(), { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  if (n < 1024) return `${num(n, 0)} B`;
+  if (n < 1024 * 1024) return `${num(n / 1024, 0)} KB`;
+  return `${num(n / 1024 / 1024, 1)} MB`;
 }
 
 /** Title offered when sharing: the stash message, single line, at most 120 characters. */

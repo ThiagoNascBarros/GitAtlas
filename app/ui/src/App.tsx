@@ -7,7 +7,7 @@ import { listen } from "@tauri-apps/api/event";
 import { GraphView } from "./features/graph/GraphView";
 import { DiffView } from "./features/diff/DiffView";
 import { setTheme, themeChoice, ThemeChoice } from "./theme/theme";
-import { errorFix, errorText, t } from "./i18n";
+import { activeLocale, errorFix, errorText, initLocale, LocaleChoice, localeChoice, setLocaleChoice, t } from "./i18n";
 import { StashPanel } from "./features/stash/StashPanel";
 import { CommitMenu, CommitMenuState } from "./features/graph/CommitMenu";
 import { RebaseEditor } from "./features/rebase/RebaseEditor";
@@ -19,7 +19,7 @@ import { WipFile, WipPanel } from "./features/wip/WipPanel";
 import { changeCount, groupStatus } from "./features/wip/status";
 import { toTreeRows, visibleRows } from "./features/files/tree";
 import { markOpenStart, togglePerf } from "./features/graph/perf";
-import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Laptop, List, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Share2 } from "lucide-solid";
+import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Languages, Laptop, List, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Share2 } from "lucide-solid";
 import { Dynamic } from "solid-js/web";
 import { Splitter, storedSize } from "./features/split/Splitter";
 import { SharedStashPanel } from "./features/shared-stash/SharedStashPanel";
@@ -37,7 +37,13 @@ interface Tab {
 }
 interface Toast { text: string; repoId: number; undoId: string | null }
 
+/** Codes whose core message is the only diagnostic (the raw error text), shown under "Details". */
+const RAW_MESSAGE_CODES = new Set(["GIT_NOT_FOUND", "NOT_A_REPO", "READ_FAILED", "IO_ERROR"]);
+const errorDetail = (e: UiError) => e.detail ?? (RAW_MESSAGE_CODES.has(e.code) ? e.message : undefined);
+
 export function App() {
+  // Runs before any text renders (the theme counterpart, initTheme, runs in main.tsx).
+  initLocale();
   const [leftW, setLeftW, saveLeftW] = storedSize("left", 232);
   const [rightW, setRightW, saveRightW] = storedSize("right", 360);
   const [diffH, setDiffH, saveDiffH] = storedSize("diff", 320);
@@ -242,7 +248,7 @@ export function App() {
       const st = tabs().find((x) => x.repo.repoId === repo.repoId)?.status;
       if (st?.entries.length) patchRepo(repo.repoId, () => ({ wip: true }));
     } catch (e) {
-      setError(e as UiError);
+      fail(e);
     }
   }
 
@@ -345,6 +351,15 @@ export function App() {
               <option value="atlas-light">{t("theme.light")}</option>
             </select>
           </label>
+          <label class="theme-pick lang-pick" title={t("toolbar.language")}>
+            <Languages size={16} aria-hidden="true" /><span class="sr-only">{t("toolbar.language")}</span>
+            <span class="lang-code" aria-hidden="true">{activeLocale() === "pt-BR" ? "PT" : "EN"}</span>
+            <select value={localeChoice()} onChange={(e) => setLocaleChoice(e.currentTarget.value as LocaleChoice)}>
+              <option value="system">{t("lang.system")}</option>
+              <option value="en" lang="en">{t("lang.en")}</option>
+              <option value="pt-BR" lang="pt-BR">{t("lang.ptBR")}</option>
+            </select>
+          </label>
         </div>
       </header>
 
@@ -356,7 +371,14 @@ export function App() {
             <h1>{t("open.title")}</h1>
             <p class="muted">{t("open.hint")}</p>
             <Show when={error()}>
-              <div class="error" role="alert"><strong>{t("error.title")}</strong><p>{error()!.message}</p></div>
+              <div class="error" role="alert">
+                <strong>{t("error.title")}</strong>
+                <p>{errorText(error()!)}</p>
+                <Show when={errorFix(error()!)}><p>{errorFix(error()!)}</p></Show>
+                <Show when={errorDetail(error()!)}>
+                  <details><summary>{t("err.details")}</summary><pre class="body-text mono">{errorDetail(error()!)}</pre></details>
+                </Show>
+              </div>
             </Show>
             <button class="primary" onClick={pick}>{t("open.button")}</button>
           </main>
@@ -492,7 +514,7 @@ export function App() {
                   <h2 class="message">{d().message.split("\n")[0]}</h2>
                   <Show when={d().message.includes("\n")}><pre class="body-text">{d().message.split("\n").slice(1).join("\n").trim()}</pre></Show>
                   <p class="meta"><User size={14} aria-hidden="true" />{d().author}</p>
-                  <p class="meta"><Clock size={14} aria-hidden="true" /><time datetime={new Date(d().time * 1000).toISOString()}>{new Date(d().time * 1000).toLocaleString()}</time></p>
+                  <p class="meta"><Clock size={14} aria-hidden="true" /><time datetime={new Date(d().time * 1000).toISOString()}>{new Date(d().time * 1000).toLocaleString(activeLocale())}</time></p>
                   <p class="meta"><GitMerge size={14} aria-hidden="true" />{t("details.parents")}: <span class="mono">{d().parents.map((p) => p.slice(0, 7)).join(", ") || "—"}</span></p>
                   <div class="files-head">
                     <h3><Files size={14} aria-hidden="true" />{t("details.files")} <span class="muted">{d().files.length}</span></h3>
@@ -564,9 +586,9 @@ export function App() {
           <div>
             <strong>{errorText(error()!)}</strong>
             <Show when={errorFix(error()!)}><p>{errorFix(error()!)}</p></Show>
-            <Show when={showDetail() && error()!.detail}><pre class="mono">{error()!.detail}</pre></Show>
+            <Show when={showDetail() && errorDetail(error()!)}><pre class="mono">{errorDetail(error()!)}</pre></Show>
           </div>
-          <Show when={error()!.detail}><button class="mini" onClick={() => setShowDetail(!showDetail())}>{t("err.details")}</button></Show>
+          <Show when={errorDetail(error()!)}><button class="mini" onClick={() => setShowDetail(!showDetail())}>{t("err.details")}</button></Show>
           <Show when={error()!.code === "PUSH_REJECTED"}>
             {/* Overwrites remote commits: needs a second click. */}
             <button class="mini danger" onClick={() => { if (!forceConfirm()) return setForceConfirm(true); setForceConfirm(false); setError(null); void net("push", true); }}>
@@ -627,7 +649,7 @@ export function App() {
 
       <footer class="statusbar">
         <Show when={tab()}>
-          <span><GitCommitHorizontal size={14} aria-hidden="true" />{t("status.commits", { n: tab()!.repo.rowCount.toLocaleString() })}</span>
+          <span><GitCommitHorizontal size={14} aria-hidden="true" />{t("status.commits", { n: tab()!.repo.rowCount.toLocaleString(activeLocale()) })}</span>
           <span><Terminal size={14} aria-hidden="true" />{t("status.git", { v: tab()!.repo.gitVersion })}</span>
           <Show when={tab()!.repo.readOnlyReason}><span class="warn">{tab()!.repo.readOnlyReason}</span></Show>
         </Show>

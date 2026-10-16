@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createResource, createSignal, For, Show } from "solid-js";
 import { api } from "../../api";
-import { t } from "../../i18n";
+import { activeLocale, t } from "../../i18n";
 import { useOverlay } from "../overlay";
 
 const DEFAULT_KEEP = 50;
@@ -36,7 +36,7 @@ export function JournalPanel(props: { repoId: number; onClose: () => void; onErr
                 <li classList={{ undone: e.undone }}>
                   <div>
                     <strong>{e.summary}</strong>
-                    <span class="muted"> · {e.kind} · {new Date(e.time * 1000).toLocaleString()}</span>
+                    <span class="muted"> · {e.kind} · {new Date(e.time * 1000).toLocaleString(activeLocale())}</span>
                     <Show when={e.undone}><span class="badge">{t("journal.undone")}</span></Show>
                   </div>
                   <For each={e.commands}>{(c) => <code class="mono">{c}</code>}</For>
