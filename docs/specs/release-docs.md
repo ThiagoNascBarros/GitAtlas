@@ -120,4 +120,71 @@ Documentation only.
 
 ## 11. Implementation notes
 
-(Filled by the implementing agent.)
+Filled by the implementing agent (2026-10-16), from `59f8170` (all three other Phase 5 modules
+merged).
+
+**Files**
+- Guide (`docs/user/`): `index.md`, `install.md`, `getting-started.md`, `history-and-diff.md`,
+  `committing-and-undo.md`, `branches-merge-stash.md`, `remotes-and-rebase.md`, `settings.md`,
+  `keyboard-and-accessibility.md`, `troubleshooting.md`. `shared-stash.md`: only facts that
+  changed since it was written (the visible claimed/verified badges became a shield mark for
+  verified only; the graph mark is a "shared" label; local stash menu by keyboard; read-only tab
+  behaviour). The guide links two existing Phase 5 screenshots (main window, keyboard commit
+  menu) instead of new ones.
+- `docs/release/checklist.md` (FR-3, 8 sections, checkboxes), `CHANGELOG.md` (FR-4), `README.md`
+  (status rows for the Shared Stash and Phase 5, pending owner checks, Install, User guide,
+  Layout), `docs/HANDOFF.md` (FR-6).
+- Screenshots: `docs/screenshots/phase5/release-docs/01…05` (pandoc 3.1.3 gfm → HTML,
+  Playwright/Chromium 1280×800; helper scripts outside the repo).
+
+**Decisions**
+1. Bold = text shown in the UI. Error messages quoted in the troubleshooting table are bold too,
+   so the label check also proves them. Labels with placeholders (for example "Commit {n} files
+   to {s}", "Forget all but the last {n}") are quoted in plain text with a concrete example,
+   never bold. The only bold that is not a UI label is the pre-existing warning sentence in
+   `shared-stash.md`.
+2. Strings that come from Rust and are not in the `en` table (status bar
+   `Git older than 2.20: read-only`) are quoted as code.
+3. CHANGELOG: one `Unreleased` section with a sub-section per phase (newest first) plus
+   "Interface additions between phases" for README's "Also in" items whose phase is not
+   recorded. No commit hashes.
+4. HANDOFF: rules kept verbatim except two obsolete "next" sentences: "Phase 3 starts as
+   `feature/branching-merge`" (replaced by a pointer to the release checklist) and the Phase 4
+   "Next: Shared Stash addendum…, then Phase 5". The Shared Stash status said "PR to `develop` not
+   opened yet"; `mvp-phase5.md` §1 records it merged (PR #12), so it was updated. "Next phases"
+   (3–5, all done) became "Next steps".
+5. The Flatpak sandbox limits are written from the manifest, the packaging notes and the
+   coordinator's list, and marked "to be verified" (the Flatpak was never built here).
+6. The global shared-stash fetch-mode default is documented as a file
+   (`~/.config/dev.atlasgit.app/settings.json`, from `app_config_dir()` + identifier); there is
+   no UI for it.
+
+**Mismatches between docs/HANDOFF and the code (reported, documented as the code behaves)**
+- The theme choice is not persisted: `initTheme()` always calls `setTheme("system")`. The guide
+  says so. (The language is persisted.)
+- The graph's tips are all refs except `refs/stash` (`read_gix.rs` `tips`, CLI `--all`), so
+  commits only reachable from `refs/atlaskraken/snapshots/*` (amend, reset, undone commits) and
+  `refs/atlasgit/*` (shared stash mirrors) appear as unlabelled rows. Documented in
+  troubleshooting.
+- `journal_prune` deletes each entry's `snapshot_ref` but not the `-redo` (undone commit/pull) and
+  `-wip` (hard reset) refs, so "Forget" does not remove everything Undo kept. Documented.
+- `shared-stash.md` described visible "claimed"/"verified" badges; since `a534f0a` only verified
+  stashes show a mark (claimed is screen-reader text plus the author tooltip). Fixed in the page.
+- Toolbar Undo takes the newest non-undone journal entry: after a shared stash publish (journaled
+  as "passive") it reports "That operation cannot be undone." instead of reaching older entries;
+  fetch/push are not journaled, so Undo after a push undoes the pushed commit locally. Documented.
+- "New branch" (toolbar and menus) creates the branch without checking it out, and a branch
+  created from a remote branch does not track it (`git branch <name> <sha>`); the first Push sets
+  the upstream. Documented.
+- The journal's "Keep last" value is not remembered (always 50). Not documented as a feature.
+
+**Verification** (§6): label check 270 bold strings, 269 in `en`, 1 allowed non-label, 0 missing;
+41 relative links (files and anchors), 0 broken; 33 paths/commands, 0 missing; a negative run with
+a fake label, a missing file, a missing anchor and a missing script reported all four.
+`git diff --stat 59f8170..HEAD` lists only `docs/`, `README.md`, `CHANGELOG.md` and the
+screenshots.
+
+**Open questions for the owner**
+- Everything in `mvp-phase5.md` §8/§8.1 (not resolved here), plus: persist the theme choice like
+  the language? Hide AtlasGit's own refs from the graph, and make "Forget" delete the `-redo`/`-wip`
+  refs? Both are code changes outside this module.
