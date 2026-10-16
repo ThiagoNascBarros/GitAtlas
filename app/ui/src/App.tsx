@@ -351,8 +351,9 @@ export function App() {
               <option value="atlas-light">{t("theme.light")}</option>
             </select>
           </label>
-          <label class="theme-pick" title={t("toolbar.language")}>
+          <label class="theme-pick lang-pick" title={t("toolbar.language")}>
             <Languages size={16} aria-hidden="true" /><span class="sr-only">{t("toolbar.language")}</span>
+            <span class="lang-code" aria-hidden="true">{activeLocale() === "pt-BR" ? "PT" : "EN"}</span>
             <select value={localeChoice()} onChange={(e) => setLocaleChoice(e.currentTarget.value as LocaleChoice)}>
               <option value="system">{t("lang.system")}</option>
               <option value="en" lang="en">{t("lang.en")}</option>
