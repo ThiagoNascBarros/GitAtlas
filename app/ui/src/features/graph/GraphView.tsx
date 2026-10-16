@@ -10,6 +10,8 @@ import { activeLocale, t } from "../../i18n";
 const ROW_H = 28;
 const LANE_W = 16;
 const CHUNK = 200;
+/** Chunks kept per repository; the ones farthest from the viewport are dropped first. */
+const MAX_CHUNKS = 40;
 /** Lanes shown before the graph column stops growing (the rest is clipped). */
 const MAX_VISIBLE_LANES = 12;
 import { perfEnabled, perfStats, recordDraw } from "./perf";
@@ -82,6 +84,17 @@ export function GraphView(props: {
   });
   const graphW = () => Math.min(Math.max(props.repo.laneCount, 1), MAX_VISIBLE_LANES) * LANE_W + LANE_W;
 
+  /** Drops chunks of other repositories (closed or inactive tabs) and, past MAX_CHUNKS, the farthest from the viewport. */
+  function evict() {
+    const mine = `${props.repo.repoId}:`;
+    for (const k of chunks.keys()) if (!k.startsWith(mine)) chunks.delete(k);
+    if (chunks.size <= MAX_CHUNKS) return;
+    const here = Math.floor(Math.max(0, scrollTop() - off()) / ROW_H / CHUNK);
+    const dist = (k: string) => Math.abs(Number(k.slice(mine.length)) - here);
+    const far = [...chunks.keys()].sort((a, b) => dist(b) - dist(a)).slice(0, chunks.size - MAX_CHUNKS);
+    for (const k of far) chunks.delete(k);
+  }
+
   function ensure(chunk: number) {
     const k = key(chunk);
     if (chunks.has(k) || pending.has(k) || chunk * CHUNK >= props.repo.rowCount) return;
@@ -91,6 +104,7 @@ export function GraphView(props: {
     Promise.all([api.window(repoId, start, CHUNK), api.rows(repoId, start, CHUNK)])
       .then(([w, meta]) => {
         chunks.set(k, { rows: w.rows, meta });
+        evict();
         setLoadError(null);
       })
       .catch((e) => {

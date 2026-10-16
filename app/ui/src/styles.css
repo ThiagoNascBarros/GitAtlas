@@ -560,3 +560,8 @@ menu.ctx button:focus svg { color: currentColor; }
   .toolbar .lang-pick select { width: var(--ctl-h); padding: 0; background-image: none; }
   .lang-pick .lang-code { display: none; }
 }
+
+/* Performance: persistent panes are solid (no backdrop blur over the repainting graph canvas);
+   blur stays only on short-lived overlays, with a smaller radius. */
+.toolbar .group, .toolbar .tabs, .toolbar .crumb .branch, .left, .right { background: var(--ak-color-bg-surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.modal, menu.ctx, .toast { -webkit-backdrop-filter: saturate(160%) blur(12px); backdrop-filter: saturate(160%) blur(12px); }

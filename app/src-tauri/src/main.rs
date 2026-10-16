@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod askpass;
+mod diag;
 mod settings;
 mod shared_stash;
 
@@ -577,6 +578,7 @@ fn main() {
     if let Ok(sock) = std::env::var(askpass::SOCK_ENV) {
         std::process::exit(askpass::client(&sock));
     }
+    diag::install();
     let initial_path = std::env::args_os().nth(1).map(PathBuf::from);
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
