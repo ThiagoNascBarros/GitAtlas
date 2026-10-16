@@ -153,6 +153,11 @@ Blocking for a real release, not for this phase's implementation:
   Tauri warns that an identifier ending in `.app` clashes with macOS bundles; Flatpak Git source
   pinned by tag + commit (kernel.org tarball blocked here); `--filesystem=home` may be narrowed.
 
+- Wave 2 (`accessibility`, merged): UI tests 81 passed (12 files), Rust 120 passed, UI build,
+  contrast, Tauri build ok. Owner checks from the audit: Orca on the packaged app, Shift+F10 /
+  Menu key not also opening a WebKit menu, pane order (F-15), graph headers outside the grid
+  (F-23), adding focus-ring pairs to `scripts/contrast.mjs`.
+
 ## 9. Agent status
 
 Updated by the coordinator.
@@ -161,5 +166,5 @@ Updated by the coordinator.
 |---|---|---|---|
 | agent `i18n-pt-br` (worktree) | `i18n-pt-br` | done, validated, merged | merge `5ae6256` (UI tests 48, build, contrast, Tauri build ok; 5 shots checked) |
 | agent `packaging` (worktree) | `packaging` | done, validated, merged (Flatpak bundle not built here: Flathub blocked by the container proxy; built by `release.yml`) | merge `a1c00ed` (.deb + AppImage built and launched, validators ok, 5 shots checked) |
-| agent `accessibility` (worktree) | `accessibility` | running (from `5ae6256`) | — |
-| — | `release-docs` | waiting (needs all) | — |
+| agent `accessibility` (worktree) | `accessibility` | done, validated, merged | merge `1abb716` (UI tests 81, build, contrast, Tauri build ok; 5 shots checked) |
+| agent `release-docs` (worktree) | `release-docs` | running (from `1abb716`+) | — |
