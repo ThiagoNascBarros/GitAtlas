@@ -240,7 +240,8 @@ export function GraphView(props: {
       if (col.showAuthor) clipText(ctx, r.m.author, col.authorX, cy, widths().author - 12);
       if (col.showDate) clipText(ctx, new Date(r.m.time * 1000).toLocaleDateString(locale), col.dateX, cy, widths().date - 8);
       ctx.font = "12.5px 'JetBrains Mono', 'DejaVu Sans Mono', monospace";
-      ctx.fillStyle = token("color.text.muted");
+      // Muted text is below 4.5:1 on the selection colour of Atlas Dark (3.86): use secondary there.
+      ctx.fillStyle = token(i === props.selected ? "color.text.secondary" : "color.text.muted");
       ctx.fillText(r.m.sha.slice(0, 7), col.shaX, cy);
       ctx.font = "13px Inter, Cantarell, system-ui, sans-serif";
     }
