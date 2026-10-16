@@ -147,7 +147,7 @@ export function WipPanel(props: {
           </li>}</For></ul>
         </section>
       </Show>
-      <section class="wip-sec unstaged" classList={{ closed: !open().unstaged }}>
+      <section class="wip-sec unstaged" data-focus-group="wip-unstaged-section" classList={{ closed: !open().unstaged }}>
         <div class="files-head">
           <h3>
             <button class="sec-toggle" aria-expanded={open().unstaged} onClick={() => toggle("unstaged")}>
@@ -164,7 +164,7 @@ export function WipPanel(props: {
         <ul class="files wip-list" data-focus-group="wip-unstaged"><For each={groups().unstaged} fallback={<li class="muted pad-s">{t("wip.empty")}</li>}>{(i) => row(i, false)}</For></ul>
         </Show>
       </section>
-      <section class="wip-sec staged" classList={{ closed: !open().staged }}>
+      <section class="wip-sec staged" data-focus-group="wip-staged-section" classList={{ closed: !open().staged }}>
         <div class="files-head">
           <h3>
             <button class="sec-toggle" aria-expanded={open().staged} onClick={() => toggle("staged")}>
