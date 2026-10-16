@@ -146,7 +146,7 @@ Updated by the coordinator.
 
 | Agent | Phase | Status | Branch / commit |
 |---|---|---|---|
-| agent `i18n-pt-br` (worktree) | `i18n-pt-br` | running | — |
+| agent `i18n-pt-br` (worktree) | `i18n-pt-br` | done, validated, merged | merge `5ae6256` (UI tests 48, build, contrast, Tauri build ok; 5 shots checked) |
 | agent `packaging` (worktree) | `packaging` | running | — |
-| — | `accessibility` | waiting (needs `i18n-pt-br`) | — |
+| agent `accessibility` (worktree) | `accessibility` | running (from `5ae6256`) | — |
 | — | `release-docs` | waiting (needs all) | — |
