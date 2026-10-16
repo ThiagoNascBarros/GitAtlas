@@ -57,3 +57,9 @@ jobs:
       - run: pnpm --dir app/ui build
       - run: node scripts/contrast.mjs
       - run: cargo build -p atlasgit --features custom-protocol
+      - name: Packaging tools
+        run: sudo apt-get install -y desktop-file-utils appstream
+      - name: Validate desktop entry
+        run: desktop-file-validate packaging/linux/dev.atlasgit.app.desktop
+      - name: Validate AppStream metainfo
+        run: appstreamcli validate --no-net packaging/linux/dev.atlasgit.app.metainfo.xml
