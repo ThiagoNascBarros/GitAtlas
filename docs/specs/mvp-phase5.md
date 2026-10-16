@@ -20,7 +20,7 @@ contracts, the file ownership per agent and the integration checks.
 | 3 — Branching & merge | Done (same manual test pending) | `ops/{branch,merge,stash}.rs`, `features/{refs,stash,conflict}` |
 | 4 — Remotes & rebase | Done | `ops/{remote,history,rebase}.rs`, `askpass.rs`, `features/rebase` |
 | 4 addendum — Shared Stash | Done, merged (PR #12) | `ops/shared_stash*.rs`, `tests/shared_stash.rs` (31 tests = spec §9), `features/shared-stash` |
-| **5 — MVP release** | **Not started** | see §2 |
+| **5 — MVP release** | **Implemented; release blocked on owner checks (§8, §8.1, `docs/release/checklist.md`)** | see §2, §8.1 |
 
 Baseline measured on this branch before any Phase 5 change: `cargo test --workspace` 120 passed
 (2 ignored), `pnpm --dir app/ui test` 32 passed, `pnpm --dir app/ui build` ok,
@@ -158,6 +158,16 @@ Blocking for a real release, not for this phase's implementation:
   Menu key not also opening a WebKit menu, pane order (F-15), graph headers outside the grid
   (F-23), adding focus-ring pairs to `scripts/contrast.mjs`.
 
+- Wave 3 (`release-docs`, merged) and final run on `e4b9fe9`: Rust 120 passed / 0 failed /
+  2 ignored, clippy `-D warnings` clean, UI 81 passed, UI build, contrast, Tauri build,
+  desktop/metainfo validators ok; no `.rs` file changed in Phase 5.
+- Pre-existing behaviour found while documenting (verified in code, out of Phase 5 scope, owner
+  decision): the graph walks every ref except `refs/stash` (`read_gix.rs` `tips`), so commits
+  kept only by `refs/atlaskraken/snapshots/*` or `refs/atlasgit/*` show as unlabelled rows;
+  `Engine::prune_journal` deletes `snapshot_ref` but not the `-redo`/`-wip` refs; the theme
+  choice is not remembered across launches (language is); the global shared-stash fetch-mode
+  default has no UI; the journal "Keep last" value resets to 50.
+
 ## 9. Agent status
 
 Updated by the coordinator.
@@ -167,4 +177,4 @@ Updated by the coordinator.
 | agent `i18n-pt-br` (worktree) | `i18n-pt-br` | done, validated, merged | merge `5ae6256` (UI tests 48, build, contrast, Tauri build ok; 5 shots checked) |
 | agent `packaging` (worktree) | `packaging` | done, validated, merged (Flatpak bundle not built here: Flathub blocked by the container proxy; built by `release.yml`) | merge `a1c00ed` (.deb + AppImage built and launched, validators ok, 5 shots checked) |
 | agent `accessibility` (worktree) | `accessibility` | done, validated, merged | merge `1abb716` (UI tests 81, build, contrast, Tauri build ok; 5 shots checked) |
-| agent `release-docs` (worktree) | `release-docs` | running (from `1abb716`+) | — |
+| agent `release-docs` (worktree) | `release-docs` | done, validated, merged | merge `e4b9fe9` (label/link/path checks ok: 270 labels, 41 links, 33 paths; 5 shots checked) |
