@@ -184,7 +184,72 @@ same `rowAt` data. Overlay behaviour is centralized in `overlay.ts`. No Tauri/co
 
 ## 11. Implementation notes
 
-(Filled by the implementing agent.)
+Filled by the implementing agent (2026-10-16). Audit with every finding and its commit:
+`docs/a11y/audit.md`.
+
+**Where things are**
+- `features/graph/a11y.ts` (pure, `a11y.test.ts`): `visibleRange`, `rowId`, `rowText`,
+  `wipText`, `menuAnchor`. `features/overlay.ts` (`overlay.test.ts` for the pure parts):
+  `isMenuKey`, `cycleIndex` (trap step), `focusables`, `useOverlay(onClose, initial, root)`,
+  `neighbourIndex` + `keepFocus()` (A-6).
+- `GraphView.tsx`: `div.graph-rows[role=rowgroup]` inside the scroller holds the mirror; rows are
+  absolutely positioned where the canvas draws them (`top = i·28 + offset`), `opacity: 0`,
+  `pointer-events: none`, so magnifiers/focus highlighting land on the right place and nothing
+  changes visually. Row ids `graph-row-<repoId>-<row>` / `graph-row-<repoId>-wip` (one graph is
+  mounted at a time; the repo id keeps ids distinct when the view switches tabs). The row is a
+  flex box so screen readers read spaces between cells.
+
+**Decisions**
+1. **Focus trap helper, not `showModal()`** (A-4). `useOverlay` takes a third argument, the
+   dialog/menu element; the innermost overlay handles Tab/Shift+Tab by cycling through its
+   focusable descendants, and every dialog has `aria-modal="true"` + `aria-labelledby`. Why:
+   `showModal()` moves the dialog to the top layer, which ignores the `.modal-back` layout and
+   glass styling (visual change) and makes everything else inert, including the error banner and
+   toasts that operations started from a dialog rely on; nested overlays (menu → name dialog)
+   and WebKitGTK top-layer support vary by distro version. The trap gives the same keyboard
+   result without touching layout. Menus use the same trap (Tab cycles; Escape closes).
+2. `rowText` replaces the canvas glyphs with words: "main (current branch)", "tag v1.0",
+   "stash stash@{0}"; shared stashes are appended with `ss.glyphTitle`. New keys
+   `graph.keys`, `graph.refCurrent`, `graph.refTag`, `graph.refStash` (en + pt-BR).
+3. Overscan 10 rows each side (spec ≤ 20); unloaded rows are filtered out; the selected row is
+   always mirrored when loaded, so `aria-activedescendant` never points at a missing id (none
+   while the selected row is not loaded; WIP row id while the uncommitted-changes row is active).
+4. Keyboard menu key handling is on `keydown` (prevented, so neither Chromium nor WebKit raises its
+   own `contextmenu`); as a safety net, a `contextmenu` event on the graph without the right mouse
+   button opens the selected commit's menu instead of the row under the computed point.
+   `useOverlay` also suppresses the browser menu inside open menus/dialogs.
+5. Local stash rows: the message `span` becomes `role="button" tabindex=0 aria-haspopup="menu"`
+   (Enter, Menu, Shift+F10 open the menu); only when a menu exists (not in read-only repos). The
+   whole row also accepts Menu/Shift+F10 from its Apply/Pop/Drop buttons.
+6. A-3: the ref menu already offers "Merge into current branch…" for exactly the refs that can be
+   dragged (`!isHead && kind !== "tag"`); nothing added.
+7. A-6 focus recovery (`keepFocus`, installed once in `App`): items carry `data-focus-key` inside a
+   `data-focus-group`; when the focused element is removed (or disabled while focused) and focus
+   fell to the page, focus goes to the same item, else the one now at its position, else the
+   first control of the group's section, else the graph. `GraphView` now focuses itself on mount
+   only when nothing else has focus (before, every graph reload pulled focus from the sidebar or
+   WIP panel).
+8. Repository tabs: not an ARIA tablist (each tab has a close button, which a `tab` cannot own);
+   a `nav` of buttons with `aria-current="page"`.
+9. Two small visual changes, both accessibility fixes: the graph focus ring is now drawn on the
+   canvas box (the sticky canvas covered the scroller's outline, so it was never visible), and
+   the SHA on the *selected* graph row uses secondary text (muted was 3.86:1 on the Atlas Dark
+   selection colour). `scripts/contrast.mjs` is outside this module's files, so the extra pairs
+   are recorded in the audit (§6) instead of added to the script.
+10. Tab order between panes stays toolbar → sidebar → graph → diff → details/WIP (DOM order,
+    which matches the layout); getting details before the diff needs a layout change (deferred).
+
+**Verification**: `pnpm --dir app/ui test` 81 passed (baseline 48; +33 in `a11y.test.ts` and
+`overlay.test.ts`); `pnpm --dir app/ui build`, `node scripts/contrast.mjs` (0 failures),
+`cargo build -p atlasgit --features custom-protocol` pass. Perf before/after in the audit §6
+(canvas draw unchanged at ~1.2 ms median; mirror ~0.6 ms per scroll step; 45–46 rows in the DOM
+for 2,001 rows). Screenshots: `docs/screenshots/phase5/accessibility/`.
+
+**Open questions for the owner**
+- Orca and WebKitGTK checks of audit §7 (cannot run here).
+- Keep the graph header outside the grid (F-23) or add a header row of `columnheader`s?
+- F-15: is toolbar → sidebar → graph → diff → details acceptable, or should the diff move after
+  the details panel (layout change)?
 
 ## 12. Instructions for the implementing agent
 
