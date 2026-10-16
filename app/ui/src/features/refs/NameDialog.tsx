@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-import { createSignal } from "solid-js";
+import { createSignal, createUniqueId } from "solid-js";
 import { t } from "../../i18n";
 import { useOverlay } from "../overlay";
 
@@ -10,7 +10,9 @@ import { useOverlay } from "../overlay";
 export function NameDialog(props: { label: string; initial?: string; optional?: boolean; secret?: boolean; onSubmit: (v: string) => void; onCancel: () => void }) {
   const [value, setValue] = createSignal(props.initial ?? "");
   let input: HTMLInputElement | undefined;
-  useOverlay(() => props.onCancel(), () => input);
+  let dialog: HTMLDialogElement | undefined;
+  const labelId = createUniqueId();
+  useOverlay(() => props.onCancel(), () => input, () => dialog);
   const submit = (e: Event) => {
     e.preventDefault();
     // Passwords are sent exactly as typed.
@@ -19,9 +21,9 @@ export function NameDialog(props: { label: string; initial?: string; optional?: 
   };
   return (
     <div class="modal-back" onContextMenu={(e) => e.preventDefault()}>
-      <dialog open class="modal" aria-label={props.label}>
+      <dialog ref={dialog} open class="modal" aria-modal="true" aria-labelledby={labelId}>
         <form onSubmit={submit}>
-          <label>{props.label}
+          <label><span id={labelId}>{props.label}</span>
             <input type={props.secret ? "password" : "text"} autocomplete="off" ref={(el) => { input = el; queueMicrotask(() => el.select()); }} value={value()} onInput={(e) => setValue(e.currentTarget.value)} />
           </label>
           <div class="modal-actions">

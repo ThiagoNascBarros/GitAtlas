@@ -38,9 +38,9 @@ export function DiffView(props: { repoId: number; source: DiffSource; path: stri
           <button aria-pressed={mode() === "split"} onClick={() => setMode("split")}>{t("diff.split")}</button>
         </div>
         <button class="icon" onClick={() => setFull(!full())} aria-pressed={full()} aria-label={full() ? t("diff.exitFull") : t("diff.full")} title={full() ? t("diff.exitFull") : t("diff.full")}>
-          {full() ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          {full() ? <Minimize2 size={16} aria-hidden="true" /> : <Maximize2 size={16} aria-hidden="true" />}
         </button>
-        <button class="icon" onClick={props.onClose} aria-label={t("diff.close")}><X size={16} /></button>
+        <button class="icon" onClick={props.onClose} aria-label={t("diff.close")}><X size={16} aria-hidden="true" /></button>
       </header>
       <div class="diff-body">
         <Show when={!patch.loading} fallback={<p class="muted">{t("loading")}</p>}>

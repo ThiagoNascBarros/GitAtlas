@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // 3-pane conflict editor: ours | theirs on top, editable result below with per-conflict choices.
-import { createResource, createSignal, For, Show } from "solid-js";
+import { createEffect, createResource, createSignal, For, Show } from "solid-js";
 import { api } from "../../api";
 import { t } from "../../i18n";
 import { useOverlay } from "../overlay";
@@ -16,7 +16,11 @@ export function ConflictEditor(props: { repoId: number; path: string; run: Run; 
   );
   const chunks = () => findChunks(result());
   let cancel: HTMLButtonElement | undefined;
-  useOverlay(() => props.onClose(), () => cancel);
+  let dialog: HTMLDialogElement | undefined;
+  // While loading, the title holds focus (inside the dialog); Cancel takes it once it exists.
+  let heading: HTMLHeadingElement | undefined;
+  useOverlay(() => props.onClose(), () => cancel ?? heading, () => dialog);
+  createEffect(() => { if (v() && document.activeElement === heading) cancel?.focus(); });
   const save = async () => {
     if (await props.run(() => api.resolveWith(props.repoId, props.path, result()), { toast: t("toast.resolved", { s: props.path }) })) props.onClose();
   };
@@ -28,8 +32,8 @@ export function ConflictEditor(props: { repoId: number; path: string; run: Run; 
   );
   return (
     <div class="modal-back">
-      <dialog open class="modal conflict" aria-label={t("conflict.title", { s: props.path })}>
-        <h2>{t("conflict.title", { s: props.path })}</h2>
+      <dialog ref={dialog} open class="modal conflict" aria-modal="true" aria-labelledby="conflict-h">
+        <h2 id="conflict-h" ref={heading} tabindex="-1">{t("conflict.title", { s: props.path })}</h2>
         <Show when={v()} fallback={<p class="muted">{t("loading")}</p>}>
           <div class="conflict-sides">
             {side(v()!.ours, t("conflict.ours"))}

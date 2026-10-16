@@ -28,6 +28,7 @@ import { LocalStashMenu, LocalStashMenuState } from "./features/stash/LocalStash
 import { ShareDialog } from "./features/shared-stash/ShareDialog";
 import { basesIndex, formatBytes } from "./features/shared-stash/logic";
 import { forget, glyphOn, modelOf, reloadList } from "./features/shared-stash/model";
+import { isMenuKey, keepFocus } from "./features/overlay";
 
 interface Tab {
   repo: OpenedRepo; selected: number | null; sha: string | null; diffPath: string | null;
@@ -265,6 +266,8 @@ export function App() {
   }
 
   onMount(() => {
+    // Lists re-render after operations: keep keyboard focus on the item or its neighbour (A-6).
+    onCleanup(keepFocus());
     window.addEventListener("keydown", (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target as HTMLElement)?.tagName ?? "");
       if (e.ctrlKey && !typing && e.key.toLowerCase() === "z" && tab()) {
@@ -308,16 +311,17 @@ export function App() {
       <header class="toolbar">
         <div class="crumb">
           <Show when={tabs().length} fallback={<strong class="repo">{t("app.name")}</strong>}>
-            <nav class="tabs" role="tablist" aria-label={t("tabs.label")}>
+            {/* Not an ARIA tablist: each tab holds two buttons (switch, close), which a tab cannot. */}
+            <nav class="tabs" aria-label={t("tabs.label")}>
               <For each={tabs()}>
                 {(x, i) => (
-                  <div class="tab" role="tab" aria-selected={i() === active()} classList={{ active: i() === active() }}>
-                    <button class="tab-name repo" onClick={() => setActive(i())}>{x.repo.name}</button>
-                    <button class="icon" aria-label={t("tabs.close", { s: x.repo.name })} onClick={() => closeTab(i())}><X size={14} /></button>
+                  <div class="tab" classList={{ active: i() === active() }}>
+                    <button class="tab-name repo" aria-current={i() === active() ? "page" : undefined} onClick={() => setActive(i())}>{x.repo.name}</button>
+                    <button class="icon" aria-label={t("tabs.close", { s: x.repo.name })} onClick={() => closeTab(i())}><X size={14} aria-hidden="true" /></button>
                   </div>
                 )}
               </For>
-              <button class="icon tab-add" title={t("open.button")} aria-label={t("open.button")} onClick={pick}><Plus size={16} /></button>
+              <button class="icon tab-add" title={t("open.button")} aria-label={t("open.button")} onClick={pick}><Plus size={16} aria-hidden="true" /></button>
             </nav>
           </Show>
           <Show when={tab()?.repo.branch}>
@@ -326,23 +330,23 @@ export function App() {
           <Show when={tab()?.repo.readOnlyReason}><span class="badge">{t("toolbar.readOnly")}</span></Show>
         </div>
         <div class="group">
-          <button class="tool" disabled={!tab()} title={t("toolbar.undoTitle")} onClick={() => undo(tab().repo.repoId, null)}><Undo2 size={16} /><span class="lbl">{t("toolbar.undo")}</span></button>
-          <button class="tool" disabled={!tab()} title={t("toolbar.redoTitle")} onClick={() => redo(tab().repo.repoId)}><Redo2 size={16} /><span class="lbl">{t("toolbar.redo")}</span></button>
+          <button class="tool" disabled={!tab()} title={t("toolbar.undoTitle")} onClick={() => undo(tab().repo.repoId, null)}><Undo2 size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.undo")}</span></button>
+          <button class="tool" disabled={!tab()} title={t("toolbar.redoTitle")} onClick={() => redo(tab().repo.repoId)}><Redo2 size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.redo")}</span></button>
         </div>
         <div class="group">
-          <button class="tool" disabled={!tab() || !!netBusy() || !!tab()?.repo.readOnlyReason} aria-busy={netBusy() === "fetch"} title={t("toolbar.fetchTitle")} onClick={() => void net("fetch")}><CloudDownload size={16} /><span class="lbl">{t("toolbar.fetch")}</span></button>
+          <button class="tool" disabled={!tab() || !!netBusy() || !!tab()?.repo.readOnlyReason} aria-busy={netBusy() === "fetch"} title={t("toolbar.fetchTitle")} onClick={() => void net("fetch")}><CloudDownload size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.fetch")}</span></button>
           <button class="tool" disabled={!tab() || !!netBusy() || !!tab()?.repo.readOnlyReason} aria-busy={netBusy() === "pull"} title={t("toolbar.pullTitle")} onClick={() => void net("pull")}>
-            <ArrowDownToLine size={16} /><span class="lbl">{t("toolbar.pull")}</span><Show when={tab()?.status?.behind}><span class="count">{tab()!.status!.behind}</span></Show>
+            <ArrowDownToLine size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.pull")}</span><Show when={tab()?.status?.behind}><span class="count">{tab()!.status!.behind}</span></Show>
           </button>
           <button class="tool" disabled={!tab() || !!netBusy() || !!tab()?.repo.readOnlyReason} aria-busy={netBusy() === "push"} title={t("toolbar.pushTitle")} onClick={() => void net("push")}>
-            <ArrowUpFromLine size={16} /><span class="lbl">{t("toolbar.push")}</span><Show when={tab()?.status?.ahead}><span class="count">{tab()!.status!.ahead}</span></Show>
+            <ArrowUpFromLine size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.push")}</span><Show when={tab()?.status?.ahead}><span class="count">{tab()!.status!.ahead}</span></Show>
           </button>
-          <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.newBranchTitle")} onClick={() => setAskName("branch")}><GitBranchPlus size={16} /><span class="lbl">{t("toolbar.newBranch")}</span></button>
+          <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.newBranchTitle")} onClick={() => setAskName("branch")}><GitBranchPlus size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.newBranch")}</span></button>
           <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.stashTitle")}
-            onClick={() => setAskName("stash")}><Archive size={16} /><span class="lbl">{t("toolbar.stash")}</span></button>
+            onClick={() => setAskName("stash")}><Archive size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.stash")}</span></button>
         </div>
         <div class="group">
-          <button class="tool" disabled={!tab()} title={t("toolbar.journalTitle")} onClick={() => setShowJournal(true)}><History size={16} /><span class="lbl">{t("toolbar.journal")}</span></button>
+          <button class="tool" disabled={!tab()} title={t("toolbar.journalTitle")} onClick={() => setShowJournal(true)}><History size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.journal")}</span></button>
           <label class="theme-pick" title={t("toolbar.theme")}>
             <SunMoon size={16} aria-hidden="true" /><span class="sr-only">{t("toolbar.theme")}</span>
             <select value={themeChoice()} onChange={(e) => setTheme(e.currentTarget.value as ThemeChoice)}>
@@ -415,17 +419,26 @@ export function App() {
                   <Show when={items().length}>
                     <details open={kind !== "remote" || !!refFilter()}>
                     <summary><Dynamic component={{ head: Laptop, remote: Cloud, tag: Tags }[kind]} size={14} aria-hidden="true" /><h2>{t(label)} <span class="muted">{items().length}</span></h2></summary>
-                    <ul>
+                    <ul data-focus-group={`refs-${kind}`}>
                       <For each={items()}>
                         {(r) => (
                           <li>
                             <button
                               classList={{ head: r.isHead }}
+                              data-focus-key={`${r.kind}:${r.name}`}
                               aria-disabled={r.row === null}
+                              aria-haspopup="menu"
                               title={r.row === null ? t("panel.refHidden") : undefined}
                               onClick={() => r.row !== null && patch({ selected: r.row, sha: null })}
                               onDblClick={() => r.kind === "head" && !r.isHead && void run(() => api.checkout(tab().repo.repoId, r.name, true), { graph: true, toast: t("toast.checkedOut", { s: r.name }) })}
                               onContextMenu={(e) => { e.preventDefault(); setRefMenu({ x: e.clientX, y: e.clientY, ref: r }); }}
+                              onKeyDown={(e) => {
+                                // Menu key / Shift+F10: the same menu (it also offers "merge into current", the drag-and-drop action).
+                                if (!isMenuKey(e)) return;
+                                e.preventDefault();
+                                const b = e.currentTarget.getBoundingClientRect();
+                                setRefMenu({ x: b.left + 24, y: b.bottom, ref: r });
+                              }}
                               draggable={r.kind !== "tag" && !r.isHead}
                               onDragStart={(e) => e.dataTransfer?.setData("text/x-atlas-ref", JSON.stringify(r))}
                               onDragOver={(e) => r.isHead && e.dataTransfer?.types.includes("text/x-atlas-ref") && e.preventDefault()}
