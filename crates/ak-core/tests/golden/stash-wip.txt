@@ -1,2 +1,0 @@
-  0 lane 0 | App v2 | out 0>0
-  1 lane 0 | App v1 | in 0>0

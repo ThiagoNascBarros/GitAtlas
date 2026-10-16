@@ -1,8 +1,0 @@
-  0 lane 0 | Merge side | out 0>0, out 0>1
-  1 lane 0 | Main 2 | pass 1>1, in 0>0, out 0>0
-  2 lane 1 | Side 2 | pass 0>0, in 1>1, out 1>1
-  3 lane 1 | Merge main~1 | pass 0>0, in 1>1, out 1>1, out 1>2
-  4 lane 0 | Merge side | pass 1>1, pass 2>2, in 0>0, out 0>2, out 0>1
-  5 lane 2 | Main 1 | pass 1>1, in 2>2, out 2>2
-  6 lane 1 | Side 1 | pass 2>2, in 1>1, out 1>2
-  7 lane 2 | Root | in 2>2
