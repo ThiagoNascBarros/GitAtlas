@@ -196,4 +196,120 @@ Adds a `packaging/` tree and two scripts; changes only the `bundle` section of
 
 ## 12. Implementation notes
 
-(Filled by the implementing agent.)
+Filled by the implementing agent (2026-10-16). Container: Ubuntu 24.04, tauri-cli 2.12.2,
+flatpak 1.14.6, flatpak-builder 1.4.2, AppStream 1.0.2, desktop-file-utils 0.27.
+
+### Files
+
+| File | Purpose |
+|---|---|
+| `packaging/linux/dev.atlasgit.app.desktop` | FR-1 canonical desktop entry |
+| `packaging/linux/dev.atlasgit.app.metainfo.xml` | FR-2 AppStream metainfo (EN + pt-BR) |
+| `app/src-tauri/icons/{32x32,48x48,64x64,128x128,256x256}.png` | FR-3, from `icon.png` (512) via `tauri icon icons/icon.png -p 32,48,64,128,256,512` (the 512 output is byte-identical to `icon.png`, so it was not added) |
+| `app/src-tauri/tauri.conf.json` (`bundle` only) | FR-3/4/5 |
+| `packaging/flatpak/dev.atlasgit.app.yml` | FR-6 |
+| `scripts/package.sh`, `scripts/package-flatpak.sh` | FR-7 |
+| `.github/workflows/ci.yml` (`app` job), `.github/workflows/release.yml` | FR-8, FR-9 |
+
+### Tauri keys used (checked against `@tauri-apps/cli` 2.12.2 `config.schema.json`)
+
+- `bundle.icon`: the six hicolor PNGs. `bundle.publisher`, `homepage`, `shortDescription`,
+  `longDescription` (deb `Maintainer`, `Homepage`, `Description`).
+- `bundle.linux.deb`: `depends` = `["git (>= 1:2.20)"]` (Tauri adds `libwebkit2gtk-4.1-0` and
+  `libgtk-3-0` itself), `section` = `vcs`, `priority` = `optional`, `desktopTemplate` = the
+  canonical desktop file (it has no Handlebars variables, so it is copied verbatim), `files` =
+  metainfo to `/usr/share/metainfo/` and the icons as `dev.atlasgit.app.png`.
+- `bundle.linux.appimage`: `bundleMediaFramework` = false, same `files`. The AppImage bundler
+  reuses `deb.desktopTemplate` (verified: the AppDir desktop entry is the canonical one).
+- The installed CLI has **no key to rename the deb package or the desktop file**: the package is
+  `atlas-git` and the entry `/usr/share/applications/AtlasGit.desktop`, both derived from
+  `productName` (shared contract, not changed). Consequences: the metainfo `launchable`
+  (`dev.atlasgit.app.desktop`) does not resolve in the .deb/AppImage (software centres cannot
+  offer "Launch" for them; the menu entry itself works); Tauri also installs its own
+  `atlasgit.png` icons next to `dev.atlasgit.app.png` (~430 KB duplicated). Owner question below.
+- `package.sh` sets `TAURI_APP_PATH`/`TAURI_FRONTEND_PATH`: started from `app/ui` the CLI cannot find
+  `tauri.conf.json` (it only searches subfolders), and started from `app/src-tauri` it runs
+  `beforeBuildCommand` (`pnpm --dir ../ui build`) from `app/`, which fails.
+- Side effect to know: `tauri build` patches `target/release/atlasgit` with the bundle type of the
+  last bundle (`appimage`). The Flatpak repacks that binary; harmless today (no updater).
+
+### Desktop entry and window class
+
+`StartupWMClass=atlasgit` verified: under Xvfb, `xprop` on the window of the installed .deb and of
+the AppImage reports `WM_CLASS = "atlasgit", "Atlasgit"` (GTK uses the binary name; Tauri's
+`enableGTKAppId` is off). Not checked on a real Wayland session (owner check: the shell should show
+the AtlasGit icon, not a generic one). `Exec=atlasgit %f` as specified; a directory argument through
+the Flatpak document portal (`@@ %f @@`) is not verified.
+
+### Validators
+
+- `desktop-file-validate`: exit 0, no warnings (also with `--warn-kde`).
+- `appstreamcli validate --no-net` (and `--pedantic`): exit 0, no warnings. The first draft failed
+  with `release-time-missing`, so the `0.1.0` release has `date="2026-10-16"` and
+  `type="development"`; update the date (and `type`) when the release is cut. No screenshot
+  warning with `--no-net` in AppStream 1.0.2, but Flathub's linter will require screenshots
+  (release checklist). `requires/display_length >= 600` matches the window `minHeight`.
+
+### Flatpak
+
+- **Runtime: `org.gnome.Platform`/`org.gnome.Sdk` 51.** Checked in gnome-build-meta (GitHub mirror):
+  `gnome-51` is the newest branch (no `gnome-52`), built on freedesktop-sdk 26.08, and its
+  `elements/sdk-platform.bst` contains `sdk/webkit2gtk-4.1.bst` (Tauri 2 API) next to
+  `webkitgtk-6.0`, plus `libsecret`.
+- **Git/ssh in the sandbox** (freedesktop-sdk `release/26.08` `elements/platform.bst` and
+  `sdk.bst`): the Platform ships `openssh` (client, `ssh-keygen`; only `sshd`/`sftp-server` are
+  split out) and `gnupg`, but **not Git** (Git is only in the Sdk). So the manifest builds Git
+  **2.56.0** (latest release, the version freedesktop-sdk tracks) with `NO_TCLTK NO_PERL NO_PYTHON
+  NO_RUST` plus `contrib/credential/libsecret`. No openssh module is needed.
+- Source pinning deviation: kernel.org and codeload.github.com are blocked here, so no tarball
+  sha256 could be computed; the Git source is a `type: git` source pinned by `tag: v2.56.0` and
+  `commit: a018953688f1b10bddf91bff8747068f5f4746a4` (flatpak-builder rejects a mismatch). Verified:
+  `flatpak-builder --download-only` fetched it (exit 0) and the tag resolves to that commit. The
+  owner may switch to the kernel.org `.tar.xz` + sha256.
+- Git module build verified outside the Sdk: replaying its build-commands on Ubuntu 24.04 gives
+  `git version 2.56.0`, `git-remote-https` and `git-credential-libsecret`. Git 2.56 builds its Rust
+  part by default and the GNOME Sdk has no Rust toolchain, hence `NO_RUST` (found by that replay).
+- finish-args kept, all with a comment in the manifest: `--share=ipc`, `--socket=wayland`,
+  `--socket=fallback-x11`, `--device=dri`, `--share=network`, `--filesystem=home`,
+  `--socket=ssh-auth`, `--talk-name=org.freedesktop.secrets` (useful because the bundled
+  `git-credential-libsecret` is reachable by the short name `credential.helper=libsecret`),
+  `--filesystem=xdg-run/gnupg:ro`. None dropped (no build here to show one is useless); none added.
+- Sandbox notes (§5): askpass re-exec uses `std::env::current_exe()` = `/app/bin/atlasgit` and a socket
+  in `$XDG_RUNTIME_DIR` (per-app, writable in Flatpak). Credential helpers configured by absolute
+  host path (`/usr/lib/git-core/git-credential-libsecret`, `/usr/share/doc/git/contrib/...`) do not
+  exist in the sandbox; the short name `libsecret`, `store`, `cache` and the askpass bridge work.
+  `/etc/gitconfig` of the host is not visible (the sandbox Git reads `/app/etc/gitconfig`).
+  Repositories outside home need `flatpak override --user --filesystem=/path dev.atlasgit.app`.
+- **Not built here**: `dl.flathub.org` (and `flathub.org`, `gitlab.gnome.org`) are refused by the
+  container's egress proxy (CONNECT 403), so neither the Flathub remote nor the GNOME 51 runtime
+  could be installed. Validated instead: `flatpak-builder --show-manifest` parses it, sources
+  download, Git module replay; `scripts/package-flatpak.sh` stops with the "missing runtime" message.
+  `flatpak run --command=git dev.atlasgit.app --version` is run by `release.yml` instead.
+
+### Build image and glibc
+
+The local release binary (Ubuntu 24.04) needs `GLIBC_2.39`. `release.yml` therefore builds the
+.deb/AppImage on **ubuntu-22.04** (glibc 2.35, the oldest image already used in CI): minimum
+supported distro = Ubuntu 22.04 / Debian 12-era glibc ≥ 2.35 with WebKitGTK 4.1. The Flatpak job
+(ubuntu-24.04) repacks that same binary; the GNOME 51 runtime has a newer glibc.
+
+### What was built and checked here
+
+- `scripts/package.sh` → `AtlasGit_0.1.0_amd64.deb` (5.1 MiB) and `AtlasGit_0.1.0_amd64.AppImage`
+  (79.5 MiB; linuxdeploy downloads from GitHub worked; `APPIMAGE_EXTRACT_AND_RUN=1` because there is
+  no FUSE). `dpkg-deb -I`: `Depends: git (>= 1:2.20), libwebkit2gtk-4.1-0, libgtk-3-0`.
+- `apt-get install ./AtlasGit_0.1.0_amd64.deb` then `atlasgit tests/fixtures/out/demo` under Xvfb:
+  window renders the repository; the AppImage renders `tests/fixtures/out/merges` the same way
+  (screenshots in `docs/screenshots/phase5/packaging/`). Git is not bundled in the AppImage.
+- Regression: `pnpm --dir app/ui build` and `cargo build -p atlasgit --features custom-protocol` pass;
+  `scripts/run.sh`, `scripts/install-shortcut.sh` and `scripts/launch.sh` are unchanged.
+- Workflows parse as YAML. The release workflow has `permissions: contents: read`, no secrets, and
+  only `actions/upload-artifact`. It has not run on GitHub yet (needs a `v*` tag or a manual run).
+
+### Open questions for the owner
+
+1. Deb package name `atlas-git` and desktop file `AtlasGit.desktop` come from `productName`: accept,
+   or change `productName`/add a post-processing step (shared contract)?
+2. Release date/type in the metainfo for the real release; developer name "AtlasGit contributors".
+3. Git source for the Flatpak: keep the tag+commit pin or switch to the kernel.org tarball + sha256.
+4. Narrow `--filesystem=home` later (e.g. portal-based folder picking)?
