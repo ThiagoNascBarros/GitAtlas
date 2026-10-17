@@ -5,7 +5,13 @@ import { t } from "../../i18n";
 import { menuKeys, useOverlay } from "../overlay";
 import { NameDialog } from "./NameDialog";
 import { ConfirmDialog, Modal } from "../../components";
-import { Check, GitBranchPlus, GitMerge, Pencil, Trash2, Upload } from "lucide-solid";
+import { MENU_ICONS, type MenuAction } from "../icons";
+
+/** The icon of a menu action, from the one table in features/icons.ts. */
+const menuIcon = (action: MenuAction) => {
+  const Icon = MENU_ICONS[action];
+  return <Icon size={14} aria-hidden="true" />;
+};
 
 /** `merge` opens straight on the merge dialog (used by drag-and-drop of a ref onto the current branch). */
 export interface RefMenuState { x: number; y: number; ref: RefInfo; merge?: boolean }
@@ -93,28 +99,28 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
               // Hover moves focus, so mouse and keyboard share one highlighted item (as in native menus).
               onPointerOver={(e) => (e.target as HTMLElement).closest<HTMLButtonElement>("button:not(:disabled)")?.focus()}>
               <Show when={local() && !r().isHead}>
-                <li role="none"><button role="menuitem" onClick={() => go(() => api.checkout(props.repoId, r().name, true), t("toast.checkedOut", { s: r().name }))}><Check size={14} aria-hidden="true" />{t("refmenu.checkout")}</button></li>
+                <li role="none"><button role="menuitem" onClick={() => go(() => api.checkout(props.repoId, r().name, true), t("toast.checkedOut", { s: r().name }))}>{menuIcon("ref.checkout")}{t("refmenu.checkout")}</button></li>
               </Show>
               <Show when={r().kind === "tag" || r().kind === "remote"}>
-                <li role="none"><button role="menuitem" onClick={() => go(() => api.checkout(props.repoId, r().name, false), t("toast.checkedOutDetached", { s: r().name }))}><Check size={14} aria-hidden="true" />{t("refmenu.checkoutDetached")}</button></li>
+                <li role="none"><button role="menuitem" onClick={() => go(() => api.checkout(props.repoId, r().name, false), t("toast.checkedOutDetached", { s: r().name }))}>{menuIcon("ref.checkoutDetached")}{t("refmenu.checkoutDetached")}</button></li>
               </Show>
               <Show when={!r().isHead && r().kind !== "tag"}>
-                <li role="none"><button role="menuitem" onClick={() => setAsk("merge")}><GitMerge size={14} aria-hidden="true" />{t("refmenu.merge")}</button></li>
-                <li role="none"><button role="menuitem" onClick={() => go(() => api.rebase(props.repoId, r().name), t("toast.rebased"))}><GitMerge size={14} aria-hidden="true" />{t("refmenu.rebase")}</button></li>
-                <li role="none"><button role="menuitem" onClick={() => { props.onClose(); props.onRebase(r().name); }}><GitMerge size={14} aria-hidden="true" />{t("refmenu.rebaseInteractive")}</button></li>
+                <li role="none"><button role="menuitem" onClick={() => setAsk("merge")}>{menuIcon("ref.merge")}{t("refmenu.merge")}</button></li>
+                <li role="none"><button role="menuitem" onClick={() => go(() => api.rebase(props.repoId, r().name), t("toast.rebased"))}>{menuIcon("ref.rebase")}{t("refmenu.rebase")}</button></li>
+                <li role="none"><button role="menuitem" onClick={() => { props.onClose(); props.onRebase(r().name); }}>{menuIcon("ref.rebaseInteractive")}{t("refmenu.rebaseInteractive")}</button></li>
               </Show>
               <Show when={r().kind === "tag"}>
-                <li role="none"><button role="menuitem" onClick={() => go(() => api.net(props.repoId, "push-tag", false, r().name), t("toast.tagPushed", { s: r().name }))}><Upload size={14} aria-hidden="true" />{t("refmenu.pushTag")}</button></li>
-                <li role="none"><button role="menuitem" classList={{ danger: true }} onClick={() => go(() => api.history(props.repoId, "tag-delete", "", { name: r().name }), t("toast.tagDeleted", { s: r().name }))}><Trash2 size={14} aria-hidden="true" />{t("refmenu.deleteTag")}</button></li>
+                <li role="none"><button role="menuitem" onClick={() => go(() => api.net(props.repoId, "push-tag", false, r().name), t("toast.tagPushed", { s: r().name }))}>{menuIcon("ref.pushTag")}{t("refmenu.pushTag")}</button></li>
+                <li role="none"><button role="menuitem" classList={{ danger: true }} onClick={() => go(() => api.history(props.repoId, "tag-delete", "", { name: r().name }), t("toast.tagDeleted", { s: r().name }))}>{menuIcon("ref.deleteTag")}{t("refmenu.deleteTag")}</button></li>
               </Show>
-              <li role="none"><button role="menuitem" onClick={() => setAsk("new")}><GitBranchPlus size={14} aria-hidden="true" />{t("refmenu.newBranch")}</button></li>
+              <li role="none"><button role="menuitem" onClick={() => setAsk("new")}>{menuIcon("ref.newBranch")}{t("refmenu.newBranch")}</button></li>
               <Show when={local()}>
-                <li role="none"><button role="menuitem" onClick={() => setAsk("rename")}><Pencil size={14} aria-hidden="true" />{t("refmenu.rename")}</button></li>
+                <li role="none"><button role="menuitem" onClick={() => setAsk("rename")}>{menuIcon("ref.rename")}{t("refmenu.rename")}</button></li>
                 <Show when={!r().isHead}>
                   <li role="separator" class="menu-sep" />
-                  <li role="none"><button role="menuitem" classList={{ danger: true }} onClick={() => go(() => api.branchDelete(props.repoId, r().name, false), t("toast.branchDeleted", { s: r().name }))}><Trash2 size={14} aria-hidden="true" />{t("refmenu.delete")}</button></li>
+                  <li role="none"><button role="menuitem" classList={{ danger: true }} onClick={() => go(() => api.branchDelete(props.repoId, r().name, false), t("toast.branchDeleted", { s: r().name }))}>{menuIcon("ref.delete")}{t("refmenu.delete")}</button></li>
                   {/* Deletes commits that are not merged: confirmed first (FUN-07). */}
-                  <li role="none"><button role="menuitem" classList={{ danger: true }} onClick={() => setAsk("force")}><Trash2 size={14} aria-hidden="true" />{t("refmenu.forceDelete")}</button></li>
+                  <li role="none"><button role="menuitem" classList={{ danger: true }} onClick={() => setAsk("force")}>{menuIcon("ref.forceDelete")}{t("refmenu.forceDelete")}</button></li>
                 </Show>
               </Show>
             </menu>
