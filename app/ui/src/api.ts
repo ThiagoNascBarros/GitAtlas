@@ -8,6 +8,8 @@ export interface OpenedRepo {
   repoId: number; root: string; name: string; head: string | null; branch: string | null;
   rowCount: number; laneCount: number; refs: RefInfo[]; gitVersion: string; readOnlyReason: string | null;
 }
+/** Name and base of a branch to create (core `branch_plan`). */
+export interface BranchPlan { name: string; base: string }
 export interface RowMeta { sha: string; summary: string; author: string; email: string; time: number }
 export interface FileChange { status: string; path: string; orig_path: string | null }
 export interface CommitDetails {
@@ -81,6 +83,12 @@ export const api = {
   discard: (repoId: number, paths: string[]) => invoke<OpOutcome>("op_discard", { repoId, paths }),
   commit: (repoId: number, message: string, amend: boolean) => invoke<OpOutcome>("op_commit", { repoId, message, amend }),
   branchCreate: (repoId: number, name: string, at: string | null) => invoke<OpOutcome>("op_branch_create", { repoId, name, at }),
+  /** New branch at `base` (null = HEAD); `checkout` switches to it as part of the same undoable step. */
+  branchCreateFrom: (repoId: number, name: string, base: string | null, checkout: boolean) =>
+    invoke<OpOutcome>("op_branch_create_from", { repoId, name, base, checkout }),
+  /** Final name and base of a branch to create, computed by the core (no repository needed). */
+  branchPlan: (kind: string, template: string, ticket: string, title: string, main: string, develop: string) =>
+    invoke<BranchPlan>("branch_plan", { kind, template, ticket, title, main, develop }),
   branchRename: (repoId: number, old: string, newName: string) => invoke<OpOutcome>("op_branch_rename", { repoId, old, new: newName }),
   branchDelete: (repoId: number, name: string, force: boolean) => invoke<OpOutcome>("op_branch_delete", { repoId, name, force }),
   checkout: (repoId: number, target: string, isBranch: boolean) => invoke<OpOutcome>("op_checkout", { repoId, target, isBranch }),

@@ -16,6 +16,7 @@ pub use rebase::TodoItem;
 pub use shared_stash::{InvalidShared, SharedStashInfo, SharedStashMeta, ValidShared};
 pub use shared_stash_ops::{KeptSharedStash, ProbeResult, RemoteFetch, RemoteStatus, SharedStashOutcome};
 pub use stash::StashInfo;
+pub mod flow;
 pub mod journal;
 pub mod lock;
 
@@ -111,6 +112,9 @@ pub enum Operation {
     Discard { paths: Vec<String> },
     /// New local branch at `at` (default HEAD); it is not checked out.
     BranchCreate { name: String, at: Option<String> },
+    /// New local branch at `base` (default HEAD); with `checkout` it is also switched to,
+    /// as one journal entry (see `flow` for the Git Flow names and bases).
+    BranchCreateFrom { name: String, base: Option<String>, checkout: bool },
     BranchRename { old: String, new: String },
     /// `force` deletes even if the branch is not merged (the tip stays recoverable via Undo).
     BranchDelete { name: String, force: bool },
@@ -277,6 +281,7 @@ impl Engine {
             Operation::StageHunk { path, hunk, unstage } => self.stage_hunk(path, *hunk, *unstage),
             Operation::Discard { paths } => self.discard(paths),
             Operation::BranchCreate { name, at } => self.branch_create(name, at.as_deref()),
+            Operation::BranchCreateFrom { name, base, checkout } => self.branch_create_from(name, base.as_deref(), *checkout),
             Operation::BranchRename { old, new } => self.branch_rename(old, new),
             Operation::BranchDelete { name, force } => self.branch_delete(name, *force),
             Operation::Checkout { target, is_branch } => self.checkout(target, *is_branch),

@@ -487,6 +487,80 @@ fn checkout_branch_and_detached_with_undo() {
     assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "dirty\n");
 }
 
+fn current_branch(d: &Path) -> String {
+    git(d, &["symbolic-ref", "--short", "-q", "HEAD"])
+}
+
+#[test]
+fn branch_create_from_with_checkout_is_one_undoable_entry() {
+    let (d, e) = base_repo();
+    let out = e.run(&Operation::BranchCreateFrom { name: "feature/ACT-1-login".into(), base: None, checkout: true }).unwrap();
+    assert_eq!(current_branch(&d), "feature/ACT-1-login");
+    assert_eq!(branches(&d), "feature/ACT-1-login,main");
+    // One journal entry covers both the branch and the switch.
+    assert_eq!(e.journal().iter().filter(|x| x.kind == "branch_create").count(), 1);
+    e.undo(out.id.as_deref().unwrap()).unwrap();
+    assert_eq!(current_branch(&d), "main");
+    assert_eq!(branches(&d), "main");
+    e.redo_last().unwrap();
+    assert_eq!(current_branch(&d), "feature/ACT-1-login");
+    assert_eq!(branches(&d), "feature/ACT-1-login,main");
+}
+
+#[test]
+fn branch_create_from_uses_given_base_and_without_checkout_stays_put() {
+    let (d, e) = base_repo();
+    e.run(&Operation::BranchCreate { name: "develop".into(), at: None }).unwrap();
+    write(&d, "a.txt", "2");
+    git(&d, &["commit", "-qam", "main moves on"]);
+    let dev = git(&d, &["rev-parse", "develop"]);
+    e.run(&Operation::BranchCreateFrom { name: "release/1.0".into(), base: Some("develop".into()), checkout: true }).unwrap();
+    assert_eq!(git(&d, &["rev-parse", "release/1.0"]), dev);
+    assert_eq!(current_branch(&d), "release/1.0");
+    e.run(&Operation::Checkout { target: "main".into(), is_branch: true }).unwrap();
+    let plain = e.run(&Operation::BranchCreateFrom { name: "fix/x".into(), base: Some("develop".into()), checkout: false }).unwrap();
+    assert_eq!(current_branch(&d), "main");
+    assert_eq!(git(&d, &["rev-parse", "fix/x"]), dev);
+    assert!(plain.id.is_some());
+}
+
+#[test]
+fn branch_create_from_undo_returns_to_detached_head() {
+    let (d, e) = base_repo();
+    let sha = git(&d, &["rev-parse", "HEAD"]);
+    e.run(&Operation::Checkout { target: sha.clone(), is_branch: false }).unwrap();
+    let out = e.run(&Operation::BranchCreateFrom { name: "hotfix/crash".into(), base: None, checkout: true }).unwrap();
+    assert_eq!(current_branch(&d), "hotfix/crash");
+    e.undo(out.id.as_deref().unwrap()).unwrap();
+    // A detached HEAD makes `symbolic-ref -q` exit with 1.
+    assert!(Command::new("git").arg("-C").arg(&d).args(["symbolic-ref", "-q", "HEAD"]).output().unwrap().status.code() == Some(1));
+    assert_eq!(git(&d, &["rev-parse", "HEAD"]), sha);
+    assert_eq!(branches(&d), "main");
+}
+
+#[test]
+fn branch_create_from_rolls_back_when_checkout_is_blocked() {
+    let (d, e) = base_repo();
+    git(&d, &["checkout", "-q", "-b", "side"]);
+    write(&d, "a.txt", "2");
+    git(&d, &["commit", "-qam", "side"]);
+    git(&d, &["checkout", "-q", "main"]);
+    write(&d, "a.txt", "dirty\n");
+    assert_eq!(code(e.run(&Operation::BranchCreateFrom { name: "x".into(), base: Some("side".into()), checkout: true })), "GIT_FAILED");
+    assert_eq!(branches(&d), "main,side");
+    assert_eq!(current_branch(&d), "main");
+    assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "dirty\n");
+}
+
+#[test]
+fn branch_create_from_stable_error_codes() {
+    let (_d, e) = base_repo();
+    assert_eq!(code(e.run(&Operation::BranchCreateFrom { name: "bad name".into(), base: None, checkout: true })), "INVALID_BRANCH_NAME");
+    assert_eq!(code(e.run(&Operation::BranchCreateFrom { name: "main".into(), base: None, checkout: true })), "BRANCH_EXISTS");
+    assert_eq!(code(e.run(&Operation::BranchCreateFrom { name: "new".into(), base: Some("nope".into()), checkout: true })), "INVALID_REF");
+    assert_eq!(code(e.run(&Operation::BranchCreateFrom { name: "new".into(), base: Some("nope".into()), checkout: false })), "INVALID_REF");
+}
+
 fn conflict_repo() -> (PathBuf, Engine) {
     let (d, e) = base_repo();
     git(&d, &["checkout", "-q", "-b", "feature/conflict"]);
