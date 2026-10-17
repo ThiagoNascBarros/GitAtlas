@@ -2,7 +2,7 @@
 import { createEffect, createSignal, createUniqueId, For, onCleanup, Show } from "solid-js";
 import { api } from "../../api";
 import { type Key, t } from "../../i18n";
-import { useOverlay } from "../overlay";
+import { Modal } from "../../components";
 import { canCreate, type BranchKind, DEFAULT_BRANCH_TEMPLATE, effectiveBase, isFlowKind, kindOptions } from "./branchDialog.logic";
 import "./branchDialog.css";
 
@@ -44,10 +44,8 @@ export function BranchDialog(props: {
   const [preview, setPreview] = createSignal<{ key: string; name: string; base: string } | null>(null);
   const [previewFailed, setPreviewFailed] = createSignal(false);
   const key = () => `${kind()}\n${ticket()}\n${title()}`;
-  const titleId = createUniqueId();
+  const formId = createUniqueId();
   let first: HTMLInputElement | undefined;
-  let dialog: HTMLDialogElement | undefined;
-  useOverlay(() => props.onCancel(), () => first, () => dialog);
 
   createEffect(() => {
     const req = { kind: kind(), ticket: ticket(), title: title(), k: key() };
@@ -83,11 +81,21 @@ export function BranchDialog(props: {
     props.onSubmit({ name: p.name, base: b, checkout: checkout() });
   };
 
+  // Modal provides the frame, Escape, the close button and focus; the form inside submits with Enter.
   return (
-    <div class="modal-back" onContextMenu={(e) => e.preventDefault()}>
-      <dialog ref={dialog} open class="modal branch-dialog" aria-modal="true" aria-labelledby={titleId}>
-        <form onSubmit={submit}>
-          <h2 id={titleId}>{t("branch.title")}</h2>
+    <Modal
+      title={t("branch.title")}
+      size="md"
+      onClose={props.onCancel}
+      initialFocus={() => first}
+      footer={
+        <>
+          <button type="button" onClick={props.onCancel}>{t("refmenu.cancel")}</button>
+          <button type="submit" form={formId} class="primary" disabled={!ok()}>{t("branch.create")}</button>
+        </>
+      }
+    >
+        <form id={formId} class="branch-form" onSubmit={submit}>
           <label>
             <span>{t("branch.type")}</span>
             <select value={kind()} onChange={(e) => setKind(e.currentTarget.value as BranchKind)}>
@@ -97,7 +105,7 @@ export function BranchDialog(props: {
           <div class="branch-row">
             <label>
               <span>{t("branch.ticket")}</span>
-              <input ref={(el) => { first = el; queueMicrotask(() => el.focus()); }} type="text" autocomplete="off" placeholder="ACT-1010" value={ticket()} onInput={(e) => setTicket(e.currentTarget.value)} />
+              <input ref={(el) => { first = el; }} type="text" autocomplete="off" placeholder="ACT-1010" value={ticket()} onInput={(e) => setTicket(e.currentTarget.value)} />
             </label>
             <label>
               <span>{t("branch.titleField")}</span>
@@ -122,12 +130,7 @@ export function BranchDialog(props: {
             <input type="checkbox" checked={checkout()} onChange={(e) => setCheckout(e.currentTarget.checked)} />
             <span>{t("branch.checkout")}</span>
           </label>
-          <div class="modal-actions">
-            <button type="button" onClick={props.onCancel}>{t("refmenu.cancel")}</button>
-            <button type="submit" class="primary" disabled={!ok()}>{t("branch.create")}</button>
-          </div>
         </form>
-      </dialog>
-    </div>
+    </Modal>
   );
 }

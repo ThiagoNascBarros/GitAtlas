@@ -1,8 +1,7 @@
-/* New-branch dialog: narrower than the 640 px name prompt, with a two-column ticket/title row. */
-.branch-dialog { width: min(480px, 92vw); }
-.branch-dialog .branch-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.branch-dialog .hint { margin: 4px 0; font-size: 12px; color: var(--ak-color-text-secondary); }
-.branch-dialog .branch-preview { display: block; margin: 8px 0; font-size: 12px; color: var(--ak-color-text-secondary); }
-.branch-dialog .branch-preview code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ak-color-text-primary); word-break: break-all; }
-.branch-dialog .branch-error { color: var(--ak-color-status-deleted); }
-.branch-dialog label.check { display: flex; align-items: center; gap: 8px; }
+/* New-branch dialog body (the frame and its size come from components/Modal): a two-column ticket/title row. */
+.branch-form .branch-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.branch-form .hint { margin: 4px 0; font-size: 12px; color: var(--ak-color-text-secondary); }
+.branch-form .branch-preview { display: block; margin: 8px 0; font-size: 12px; color: var(--ak-color-text-secondary); }
+.branch-form .branch-preview code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ak-color-text-primary); word-break: break-all; }
+.branch-form .branch-error { color: var(--ak-color-status-deleted); }
+.branch-form label.check { display: flex; align-items: center; gap: 8px; }
