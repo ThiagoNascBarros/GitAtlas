@@ -17,6 +17,23 @@ export const en = {
   "toolbar.readOnly": "Read-only (old Git)",
   "toolbar.theme": "Theme",
   "toolbar.language": "Language",
+  "toolbar.settings": "Settings",
+  "toolbar.settingsTitle": "Settings: theme, zoom, language and animations",
+  "settings.title": "Settings",
+  "settings.note": "A repository's values override the global ones. Saved in settings.json.",
+  "settings.scope": "Apply to",
+  "settings.scope.global": "All repositories",
+  "settings.scope.repo": "This repository ({s})",
+  "settings.inherit": "Same as global",
+  "settings.theme": "Theme",
+  "settings.zoom": "Zoom",
+  "settings.zoomIn": "Zoom in",
+  "settings.zoomOut": "Zoom out",
+  "settings.zoomReset": "Reset zoom to 100 %",
+  "settings.language": "Language",
+  "settings.animations": "Reduce animations",
+  "settings.close": "Close settings",
+  "settings.saveFailed": "Could not save this setting.",
   "lang.system": "Follow system",
   "lang.en": "English",
   "lang.ptBR": "Português (Brasil)",
@@ -388,8 +405,6 @@ export type Locale = "en" | "pt-BR";
 export type LocaleChoice = "system" | Locale;
 
 const TABLES: Record<Locale, Readonly<Record<Key, string>>> = { en, "pt-BR": ptBR };
-const STORAGE_KEY = "ak.lang";
-const CHOICES: readonly LocaleChoice[] = ["system", "en", "pt-BR"];
 
 /** The UI language for a choice: `system` takes the first pt/en entry of the system languages. */
 export function resolveLocale(choice: LocaleChoice, langs: readonly string[]): Locale {
@@ -421,17 +436,14 @@ function apply(c: LocaleChoice) {
   if (typeof document !== "undefined") document.documentElement.lang = l;
 }
 
-/** Switches the language live and remembers it for this viewer. */
+/** Switches the language live. The choice is saved by the settings store (settings.json), not here. */
 export function setLocaleChoice(c: LocaleChoice) {
   apply(c);
-  try { localStorage.setItem(STORAGE_KEY, c); } catch { /* storage unavailable */ }
 }
 
-/** Applies the stored choice (default: follow the system language). */
+/** Applies the current choice (set by the settings store before the first render) and follows system changes. */
 export function initLocale() {
-  let stored: string | null = null;
-  try { stored = localStorage.getItem(STORAGE_KEY); } catch { /* storage unavailable */ }
-  apply(CHOICES.includes(stored as LocaleChoice) ? (stored as LocaleChoice) : "system");
+  apply(choice());
   if (typeof window !== "undefined") {
     window.addEventListener("languagechange", () => { if (choice() === "system") apply("system"); });
   }

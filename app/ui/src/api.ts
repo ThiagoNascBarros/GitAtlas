@@ -47,6 +47,14 @@ export interface JournalEntry {
   id: string; time: number; kind: string; summary: string; undone: boolean; commands: string[]; paths: string[]; untracked: string[];
 }
 
+/** UI preferences as stored (`settings.json`, global or per repository). */
+export type ThemeSetting = "system" | "atlas-dark" | "atlas-light";
+export type LanguageSetting = "system" | "en" | "pt-BR";
+export type AnimationsSetting = "on" | "reduced";
+export interface Prefs { theme?: ThemeSetting; zoom?: number; language?: LanguageSetting; animations?: AnimationsSetting }
+export interface EffectivePrefs { theme: ThemeSetting; zoom: number; language: LanguageSetting; animations: AnimationsSetting }
+export interface PrefsView { global: Prefs; repo: Prefs | null; effective: EffectivePrefs }
+
 export const api = {
   initialPath: () => invoke<string | null>("get_initial_path"),
   open: (path: string) => invoke<OpenedRepo>("repo_open", { path }),
@@ -109,6 +117,11 @@ export const api = {
     decodeWindow(toArrayBuffer(await invoke<unknown>("graph_window", { repoId, start, count }))),
   details: (repoId: number, sha: string) => invoke<CommitDetails>("commit_details", { repoId, sha }),
   diff: (repoId: number, sha: string, path: string) => invoke<string>("diff_file", { repoId, sha, path }),
+  /** `repoId` null reads the global scope only. */
+  prefsGet: (repoId: number | null) => invoke<PrefsView>("prefs_get", { repoId }),
+  /** A `null` value in `patch` removes that key from `scope`. */
+  prefsSet: (repoId: number | null, scope: "global" | "repo", patch: Record<string, unknown>) =>
+    invoke<PrefsView>("prefs_set", { repoId, scope, patch }),
 };
 
 export const SEG_PASS = 0, SEG_IN = 1, SEG_OUT = 2;
