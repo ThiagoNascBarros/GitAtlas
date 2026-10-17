@@ -47,6 +47,11 @@ export interface JournalEntry {
   id: string; time: number; kind: string; summary: string; undone: boolean; commands: string[]; paths: string[]; untracked: string[];
 }
 
+/** A repository in the recent list (most recent first). `exists` is false when its folder is gone. */
+export interface RecentRepo { path: string; name: string; lastOpened: number; exists: boolean }
+/** What was open last time: tabs whose folder still exists, the tab in front, and the recent list. */
+export interface SessionView { tabs: string[]; active: number; recents: RecentRepo[] }
+
 export const api = {
   initialPath: () => invoke<string | null>("get_initial_path"),
   open: (path: string) => invoke<OpenedRepo>("repo_open", { path }),
@@ -109,6 +114,10 @@ export const api = {
     decodeWindow(toArrayBuffer(await invoke<unknown>("graph_window", { repoId, start, count }))),
   details: (repoId: number, sha: string) => invoke<CommitDetails>("commit_details", { repoId, sha }),
   diff: (repoId: number, sha: string, path: string) => invoke<string>("diff_file", { repoId, sha, path }),
+  sessionGet: () => invoke<SessionView>("session_get"),
+  /** Called after every change of the open tabs; `tabs` are repository roots in order. */
+  sessionSaveTabs: (tabs: string[], active: number) => invoke<void>("session_save_tabs", { tabs, active }),
+  recentsRemove: (path: string) => invoke<void>("recents_remove", { path }),
 };
 
 export const SEG_PASS = 0, SEG_IN = 1, SEG_OUT = 2;
