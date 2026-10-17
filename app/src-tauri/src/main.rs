@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod askpass;
+mod diagnostics;
 mod settings;
 mod shared_stash;
 
@@ -25,7 +26,7 @@ use ak_gitcli::{Git, Mode};
 use notify::{RecursiveMode, Watcher};
 use serde::Serialize;
 use tauri::ipc::Response;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// What stays in memory per repository: topology and layout only. Commit text
 /// (summary, author) is fetched from Git for the rows on screen.
@@ -189,10 +190,11 @@ fn watch_tree(g: &mut notify::RecommendedWatcher, root: &Path, ignored: &HashSet
 
 /// A directory created while watching: watched unless git ignores it, and so are the folders in it.
 fn adopt_new_dir(w: &SharedWatcher, root: &Path, dir: &Path) {
-    if is_ignored_dir(root, &dir_key(root, dir)) {
+    // `.git` is bookkeeping (see `relevant`): never adopted, so its churn does not refresh the view.
+    if dir.file_name().is_some_and(|n| n == ".git") || is_ignored_dir(root, &dir_key(root, dir)) {
         return;
     }
-    if w.lock().unwrap().watch(dir, RecursiveMode::NonRecursive).is_err() {
+    if diagnostics::lock(w).watch(dir, RecursiveMode::NonRecursive).is_err() {
         return;
     }
     if let Ok(entries) = std::fs::read_dir(dir) {
@@ -226,7 +228,7 @@ fn setup_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<SharedWatc
     // Every directory git does not ignore, at any depth (node_modules and target trees are skipped).
     let ignored = ignored_dirs(root);
     {
-        let mut g = w.lock().unwrap();
+        let mut g = diagnostics::lock(&w);
         watch_tree(&mut g, root, &ignored)?;
     }
     let weak = Arc::downgrade(&w);
@@ -334,15 +336,17 @@ fn get_initial_path(state: State<'_, AppState>) -> Option<String> {
 
 #[tauri::command]
 async fn repo_open(path: String, app: AppHandle, state: State<'_, AppState>) -> Result<OpenedRepo> {
-    let (mut repo, opened) = blocking(move || load(&PathBuf::from(&path))).await?;
+    let (mut repo, opened) = blocking(move || load(&PathBuf::from(&path)))
+        .await
+        .inspect_err(|e| tracing::warn!(code = e.code, "falha ao abrir repositório"))?;
     let repo_id = {
-        let mut id = state.next_id.lock().unwrap();
+        let mut id = diagnostics::lock(&state.next_id);
         *id += 1;
         *id
     };
     let root = repo.reader.root().to_path_buf();
     repo._watcher = blocking(move || Ok(start_watcher(app, repo_id, &root))).await?;
-    state.repos.lock().unwrap().insert(repo_id, Arc::new(repo));
+    diagnostics::lock(&state.repos).insert(repo_id, Arc::new(repo));
     Ok(OpenedRepo { repo_id, ..opened })
 }
 
@@ -353,18 +357,18 @@ async fn repo_refresh(repo_id: u32, app: AppHandle, state: State<'_, AppState>) 
     let watch_root = root.clone();
     let (mut repo, opened) = blocking(move || load(&root)).await?;
     repo._watcher = blocking(move || Ok(start_watcher(app, repo_id, &watch_root))).await?;
-    state.repos.lock().unwrap().insert(repo_id, Arc::new(repo));
+    diagnostics::lock(&state.repos).insert(repo_id, Arc::new(repo));
     Ok(OpenedRepo { repo_id, ..opened })
 }
 
 #[tauri::command]
 fn repo_close(repo_id: u32, state: State<'_, AppState>) {
-    state.repos.lock().unwrap().remove(&repo_id);
-    state.shared_tab_open.lock().unwrap().remove(&repo_id);
+    diagnostics::lock(&state.repos).remove(&repo_id);
+    diagnostics::lock(&state.shared_tab_open).remove(&repo_id);
 }
 
 fn get(state: &AppState, repo_id: u32) -> Result<Arc<Repo>> {
-    state.repos.lock().unwrap().get(&repo_id).cloned().ok_or_else(|| UiError::new("UNKNOWN_REPO", repo_id))
+    diagnostics::lock(&state.repos).get(&repo_id).cloned().ok_or_else(|| UiError::new("UNKNOWN_REPO", repo_id))
 }
 
 fn engine(r: &Repo) -> Result<&Engine> {
@@ -634,11 +638,17 @@ fn main() {
         std::process::exit(askpass::client(&sock));
     }
     let initial_path = std::env::args_os().nth(1).map(PathBuf::from);
+    let diag = diagnostics::init();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(AppState { initial_path, ..Default::default() })
+        .manage(diag)
         .invoke_handler(tauri::generate_handler![
             get_initial_path,
+            diagnostics_status,
+            diagnostics_dismiss_crash,
+            diagnostics_open_log_dir,
             repo_open,
             repo_refresh,
             repo_close,
@@ -690,8 +700,30 @@ fn main() {
             shared_stash::shared_stash_settings_get,
             shared_stash::shared_stash_settings_set
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running AtlasGit");
+        .build(tauri::generate_context!())
+        .expect("error while building AtlasGit")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                app.state::<diagnostics::Diagnostics>().finish();
+            }
+        });
+}
+
+#[tauri::command]
+fn diagnostics_status(diag: State<'_, diagnostics::Diagnostics>) -> diagnostics::DiagnosticsStatus {
+    diag.status()
+}
+
+#[tauri::command]
+fn diagnostics_dismiss_crash(diag: State<'_, diagnostics::Diagnostics>) {
+    diag.dismiss_crash();
+}
+
+#[tauri::command]
+fn diagnostics_open_log_dir(app: AppHandle, diag: State<'_, diagnostics::Diagnostics>) -> Result<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let dir = diag.status().log_dir;
+    app.opener().open_path(dir, None::<&str>).map_err(|e| UiError::new("OPEN_FAILED", e))
 }
 
 #[cfg(test)]

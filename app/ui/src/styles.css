@@ -162,6 +162,9 @@ select { appearance: none; background-color: var(--ak-color-bg-raised); color: v
 /* Top, under the toolbar: at the bottom it would cover the error banner. */
 .toast { z-index: 30; position: fixed; left: 50%; top: 86px; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; padding: 8px 14px; border-radius: var(--r-m); background: var(--ak-color-bg-overlay); border: 1px solid var(--ak-color-border-strong); box-shadow: 0 4px 16px rgb(0 0 0 / .3); }
 .toast button { color: var(--ak-color-accent-default); font-weight: 600; }
+.crash-banner { z-index: 40; position: fixed; left: 16px; bottom: 16px; max-width: min(560px, calc(100vw - 32px)); display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 14px; border-radius: var(--r-m); background: var(--ak-color-bg-overlay); border: 1px solid var(--ak-color-border-strong); box-shadow: 0 4px 16px rgb(0 0 0 / .3); }
+.crash-banner button { color: var(--ak-color-accent-default); font-weight: 600; }
+.crash-details { flex-basis: 100%; max-height: 40vh; overflow: auto; margin: 0; padding: 8px; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
 /* In the column layout a flex child would grow to its content (millions of px for 100k rows). */
 .center > .graph, .center > .diff { flex: 1 1 0; min-height: 0; }
 
