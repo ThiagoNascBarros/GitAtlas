@@ -174,7 +174,12 @@ export async function installDevMock(first: string, next = "hubbi") {
         if (cmd.endsWith("set")) ssMode = args.mode ?? "panel";
         return { effective: ssMode, repo: ssMode, global: null };
       case "merge_preview": return { up_to_date: false, fast_forward: false, conflicts: [] };
-      case "conflict_versions": return { base: "a\n", ours: "mine\n", theirs: "yours\n", merged: "<<<<<<< HEAD\nmine\n=======\nyours\n>>>>>>> topic\n" };
+      case "conflict_versions": return {
+        base: "a\n", ours: "mine\n", theirs: "yours\n",
+        merged: "<<<<<<< HEAD\nmine\n=======\nyours\n>>>>>>> topic\n",
+        merged_diff3: "<<<<<<< HEAD\nmine\n||||||| base\na\n=======\nyours\n>>>>>>> topic\n",
+      };
+      case "open_external": return null;
       case "op_history": return { id: "h1", head: null };
       case "op_net": return { id: null, head: null };
       case "credentials_answer": return null;

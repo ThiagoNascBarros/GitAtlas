@@ -19,7 +19,7 @@ export interface StatusEntry {
 }
 export interface StatusReport { branch: string | null; oid: string | null; entries: StatusEntry[]; merging?: boolean; in_progress?: string | null; upstream?: string | null; ahead?: number; behind?: number }
 export interface MergePreview { up_to_date: boolean; fast_forward: boolean; conflicts: string[] | null }
-export interface ConflictVersions { base: string | null; ours: string | null; theirs: string | null; merged: string }
+export interface ConflictVersions { base: string | null; ours: string | null; theirs: string | null; merged: string; merged_diff3: string | null }
 export interface TodoItem { sha: string; action: "pick" | "reword" | "squash" | "fixup" | "drop"; message: string }
 export interface StashInfo { index: number; sha: string; message: string; time: number }
 export interface OpOutcome { id: string | null; head: string | null; conflicted?: boolean; shared_stash?: SharedStashOutcome | null }
@@ -69,6 +69,7 @@ export const api = {
   mergeAbort: (repoId: number) => invoke<OpOutcome>("op_merge_abort", { repoId }),
   conflictVersions: (repoId: number, path: string) => invoke<ConflictVersions>("conflict_versions", { repoId, path }),
   resolveWith: (repoId: number, path: string, content: string) => invoke<OpOutcome>("op_resolve_with", { repoId, path, content }),
+  openExternal: (repoId: number, path: string) => invoke<void>("open_external", { repoId, path }),
   resolve: (repoId: number, path: string, theirs: boolean) => invoke<OpOutcome>("op_resolve", { repoId, path, theirs }),
   stashList: (repoId: number) => invoke<StashInfo[]>("stash_list", { repoId }),
   stash: (repoId: number, action: "push" | "apply" | "pop" | "drop", index = 0, message: string | null = null) =>
