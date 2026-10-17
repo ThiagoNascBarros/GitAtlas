@@ -408,6 +408,11 @@ impl Engine {
             self.journal.set_undone(id, true, now_ns())?;
             return Ok(OpOutcome { id: None, head: self.head(), ..Default::default() });
         }
+        if entry.kind == "resolve" {
+            self.undo_resolve(&entry)?;
+            self.journal.set_undone(id, true, now_ns())?;
+            return Ok(OpOutcome { id: None, head: self.head(), ..Default::default() });
+        }
         if branch::is_ref_kind(&entry.kind) {
             self.apply_ref_entry(&entry, false)?;
             self.journal.set_undone(id, true, now_ns())?;
@@ -458,6 +463,8 @@ impl Engine {
         let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
         if entry.kind == "discard" {
             self.redo_discard(&entry)?;
+        } else if entry.kind == "resolve" {
+            self.redo_resolve(&entry)?;
         } else if branch::is_ref_kind(&entry.kind) {
             self.apply_ref_entry(&entry, true)?;
         } else {

@@ -11,7 +11,8 @@ use serde::{Deserialize, Serialize};
 pub struct JournalEntry {
     pub id: String,
     pub time: i64,
-    /// `commit`, `commit_amend` or `discard`.
+    /// `commit`, `commit_amend`, `discard`, `resolve` (conflict resolution; `paths` holds the file
+    /// and `args` the index records to restore on Undo) or a merge/ref kind.
     pub kind: String,
     pub summary: String,
     pub branch: Option<String>,
