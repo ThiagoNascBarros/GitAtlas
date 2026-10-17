@@ -116,6 +116,8 @@ export const ptBR = {
   "err.details": "Detalhes",
   "err.GIT_IDENTITY_MISSING": "O Git não sabe seu nome e e-mail, então não pode criar o commit.",
   "err.GIT_IDENTITY_MISSING.fix": "Execute: git config --global user.name \"Seu Nome\" e git config --global user.email voce@exemplo.com",
+  "err.GIT_TIMEOUT": "O Git demorou demais e foi interrompido. Um hook, um pedido de senha ou a rede pode estar travado.",
+  "err.GIT_TIMEOUT.fix": "Verifique o hook, a rede ou o pedido de credenciais e tente de novo.",
   "err.NOTHING_TO_COMMIT": "Não há nada preparado para o commit.",
   "err.EMPTY_MESSAGE": "Escreva primeiro um resumo para o commit.",
   "err.REPO_BUSY": "Outra operação ainda está em andamento neste repositório.",
