@@ -75,7 +75,12 @@ impl OpError {
                 err
             }
             GitError::NotAllowed { .. } => Self::new("READ_ONLY", "This repository is open in read-only mode.", None),
-            other => Self::new("GIT_FAILED", &other.to_string(), None),
+            GitError::TimedOut { subcommand, .. } => Self::new(
+                "GIT_TIMEOUT",
+                &format!("git {subcommand} took too long and was stopped."),
+                Some("A hook, a credential prompt or the network may be waiting. Check it and try again."),
+            ),
+            other =>Self::new("GIT_FAILED", &other.to_string(), None),
         }
     }
 }
@@ -542,6 +547,19 @@ impl Engine {
         for p in paths {
             check_rel(p)?;
         }
+        // A new folder is one status entry (`dir/`): discard the files in it, one by one.
+        let mut expanded = vec![];
+        for p in paths {
+            if p.ends_with('/') {
+                expanded.extend(crate::read::untracked_under(&self.git, &self.root, p)?);
+            } else {
+                expanded.push(p.clone());
+            }
+        }
+        if expanded.is_empty() {
+            return Err(OpError::new("INVALID_PATH", "No valid file was given.", None));
+        }
+        let paths = expanded.as_slice();
         let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
         let mut tracked = std::collections::HashSet::new();
         for chunk in paths.chunks(PATH_CHUNK) {

@@ -2,7 +2,7 @@
 // Canvas commit graph (roadmap T1.8): virtualized rows, lanes, refs,
 // selection, keyboard navigation and a hidden DOM mirror of the visible rows for assistive
 // technology (spec accessibility A-1: ARIA grid rows, aria-activedescendant).
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { api, FLAG_MERGE, GraphRow, OpenedRepo, RefInfo, RowMeta, SEG_IN, SEG_OUT, SEG_PASS, SharedStashInfo } from "../../api";
 import { activeTheme, laneColor, token } from "../../theme/theme";
 import { activeLocale, t } from "../../i18n";
@@ -12,10 +12,13 @@ const LANE_W = 16;
 const CHUNK = 200;
 /** Lanes shown before the graph column stops growing (the rest is clipped). */
 const MAX_VISIBLE_LANES = 12;
+/** Row chunks kept in memory per view (PERF-03): 20 x 200 rows, enough for the viewport and overscan. */
+const MAX_CACHED_CHUNKS = 20;
 import { perfEnabled, perfStats, recordDraw } from "./perf";
 import { columns, ColumnWidths, loadWidths, saveWidths, clampWidth, resolveWidths } from "./columns";
 import { menuAnchor, rowId, rowText, visibleRange, wipText } from "./a11y";
 import { isMenuKey } from "../overlay";
+import { ChunkCache } from "./chunkCache";
 
 /** Rows mirrored in the DOM above and below the viewport (spec accessibility §4.2: ≤ 20). */
 const OVERSCAN = 10;
@@ -27,6 +30,53 @@ const PENCIL = typeof Path2D === "undefined" ? null : new Path2D("M13 21h8 M21.1
 
 // Survives remounts (graph reload after commit/undo/redo) so the view keeps its place.
 const savedScroll = new Map<number, number>();
+
+/** Called when a tab closes: its scroll position is no longer needed (PERF-03). */
+export function forgetGraphScroll(repoId: number): void {
+  savedScroll.delete(repoId);
+}
+
+// Text widths and date strings repeat on every repaint of the same rows: keep them, bounded (PERF-10).
+const textWidths = new ChunkCache<number>(4000);
+const dateStrings = new ChunkCache<string>(2000);
+// Widths measured before a web font finished loading used the fallback face: measure again.
+if (typeof document !== "undefined" && document.fonts) document.fonts.addEventListener("loadingdone", () => textWidths.clear());
+
+function measure(ctx: CanvasRenderingContext2D, text: string): number {
+  const key = `${ctx.font}\u0000${text}`;
+  let w = textWidths.get(key);
+  if (w === undefined) {
+    w = ctx.measureText(text).width;
+    textWidths.set(key, w);
+  }
+  return w;
+}
+
+function dateText(time: number, locale: string): string {
+  const key = `${locale}|${time}`;
+  let s = dateStrings.get(key);
+  if (s === undefined) {
+    s = new Date(time * 1000).toLocaleDateString(locale);
+    dateStrings.set(key, s);
+  }
+  return s;
+}
+
+/** Theme colours of the paint loop, resolved once per frame instead of once per row (PERF-10). */
+function paletteNow() {
+  return {
+    canvas: token("color.bg.canvas"),
+    selected: token("color.bg.selected"),
+    text: token("color.text.primary"),
+    textSecondary: token("color.text.secondary"),
+    textMuted: token("color.text.muted"),
+    accent: token("color.accent.default"),
+    accentMuted: token("color.accent.muted"),
+    raised: token("color.bg.raised"),
+    onAccent: token("color.text.onAccent"),
+    lanes: Array.from({ length: 10 }, (_, i) => laneColor(i)),
+  };
+}
 
 function refLabel(ref: RefInfo): string {
   if (ref.kind === "tag") return `◆ ${ref.name}`;
@@ -48,11 +98,18 @@ export function GraphView(props: {
 }) {
   let scroller!: HTMLDivElement;
   let canvas!: HTMLCanvasElement;
-  // Cache keys include the repo id: the component is reused across tabs.
-  const chunks = new Map<string, Chunk>();
+  // Cache keys include the repo id. The component is reused across tabs, so the cache is bounded
+  // (LRU) and emptied when the shown repo changes; the instance itself is discarded on unmount.
+  const chunks = new ChunkCache<Chunk>(MAX_CACHED_CHUNKS);
   const pending = new Set<string>();
+  let mounted = true;
   const [loadError, setLoadError] = createSignal<string | null>(null);
   const key = (chunk: number) => `${props.repo.repoId}:${chunk}`;
+  createEffect(on(() => props.repo.repoId, () => chunks.clear(), { defer: true }));
+  onCleanup(() => {
+    mounted = false;
+    chunks.clear();
+  });
   const [tick, setTick] = createSignal(0);
   const [size, setSize] = createSignal({ w: 800, h: 600 });
   const [scrollTop, setScrollTop] = createSignal(0);
@@ -90,7 +147,8 @@ export function GraphView(props: {
     const repoId = props.repo.repoId;
     Promise.all([api.window(repoId, start, CHUNK), api.rows(repoId, start, CHUNK)])
       .then(([w, meta]) => {
-        chunks.set(k, { rows: w.rows, meta });
+        // A chunk that arrives after the view moved to another repo (or unmounted) is dropped.
+        if (mounted && props.repo.repoId === repoId) chunks.set(k, { rows: w.rows, meta });
         setLoadError(null);
       })
       .catch((e) => {
@@ -116,6 +174,7 @@ export function GraphView(props: {
     let painted = 0;
     tick();
     activeTheme();
+    const pal = paletteNow();
     // Tracked like the theme: a language switch repaints dates and canvas labels.
     const locale = activeLocale();
     const { w, h } = size();
@@ -126,7 +185,7 @@ export function GraphView(props: {
     if (canvas.height !== bh) canvas.height = bh;
     const ctx = canvas.getContext("2d")!;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = token("color.bg.canvas");
+    ctx.fillStyle = pal.canvas;
     ctx.fillRect(0, 0, w, h);
 
     const top = scrollTop() - off();
@@ -145,7 +204,7 @@ export function GraphView(props: {
       const cy = y + ROW_H / 2;
       const r = rowAt(i);
       if (i === props.selected) {
-        ctx.fillStyle = token("color.bg.selected");
+        ctx.fillStyle = pal.selected;
         ctx.fillRect(0, y, w, ROW_H);
       }
       if (!r) continue;
@@ -157,7 +216,7 @@ export function GraphView(props: {
       ctx.clip();
       ctx.lineWidth = 2;
       for (const s of r.g.segs) {
-        ctx.strokeStyle = laneColor(s.color);
+        ctx.strokeStyle = pal.lanes[s.color % 10];
         ctx.beginPath();
         if (s.kind === SEG_PASS) {
           ctx.moveTo(laneX(s.from), y);
@@ -175,9 +234,9 @@ export function GraphView(props: {
       const nx = laneX(r.g.lane);
       ctx.beginPath();
       ctx.arc(nx, cy, r.g.flags & FLAG_MERGE ? 4 : 6, 0, Math.PI * 2);
-      ctx.fillStyle = laneColor(r.g.color);
+      ctx.fillStyle = pal.lanes[r.g.color % 10];
       ctx.fill();
-      ctx.strokeStyle = token("color.bg.canvas");
+      ctx.strokeStyle = pal.canvas;
       ctx.lineWidth = 2;
       ctx.stroke();
       ctx.restore();
@@ -186,7 +245,7 @@ export function GraphView(props: {
         const fx = gx + graphW() - 12;
         const grad = ctx.createLinearGradient(fx, 0, fx + 12, 0);
         grad.addColorStop(0, "transparent");
-        grad.addColorStop(1, i === props.selected ? token("color.bg.selected") : token("color.bg.canvas"));
+        grad.addColorStop(1, i === props.selected ? pal.selected : pal.canvas);
         ctx.fillStyle = grad;
         ctx.fillRect(fx, y, 12, ROW_H);
       }
@@ -196,19 +255,19 @@ export function GraphView(props: {
       if (sharedHere && widths().refs > 48) {
         // Same shape as the stash ref labels, so it reads as a label and not as a button.
         const label = sharedHere.length > 1 ? t("ss.glyphMany", { n: String(sharedHere.length) }) : t("ss.glyphOne");
-        const tw = Math.min(ctx.measureText(label).width + 26, widths().refs - rx - 8);
-        ctx.fillStyle = token("color.accent.muted");
+        const tw = Math.min(measure(ctx, label) + 26, widths().refs - rx - 8);
+        ctx.fillStyle = pal.accentMuted;
         ctx.fillRect(rx, y + 4, tw, ROW_H - 8);
         // Arrow leaving a tray: "shared out of this commit".
         const ax = rx + 11, ay = cy;
-        ctx.strokeStyle = token("color.accent.default");
+        ctx.strokeStyle = pal.accent;
         ctx.lineWidth = 1.5;
         ctx.beginPath();
         ctx.moveTo(ax, ay + 2); ctx.lineTo(ax, ay - 5);
         ctx.moveTo(ax - 3, ay - 2); ctx.lineTo(ax, ay - 5); ctx.lineTo(ax + 3, ay - 2);
         ctx.moveTo(ax - 4.5, ay + 5); ctx.lineTo(ax + 4.5, ay + 5);
         ctx.stroke();
-        ctx.fillStyle = token("color.text.primary");
+        ctx.fillStyle = pal.text;
         ctx.save();
         ctx.beginPath();
         ctx.rect(rx, y, tw - 4, ROW_H);
@@ -219,11 +278,11 @@ export function GraphView(props: {
       }
       for (const ref of refs.get(i) ?? []) {
         const label = refLabel(ref);
-        const tw = Math.min(ctx.measureText(label).width + 12, widths().refs - rx - 8);
+        const tw = Math.min(measure(ctx, label) + 12, widths().refs - rx - 8);
         if (tw < 24) break;
-        ctx.fillStyle = ref.isHead ? token("color.accent.default") : ref.kind === "stash" ? token("color.accent.muted") : token("color.bg.raised");
+        ctx.fillStyle = ref.isHead ? pal.accent : ref.kind === "stash" ? pal.accentMuted : pal.raised;
         ctx.fillRect(rx, y + 4, tw, ROW_H - 8);
-        ctx.fillStyle = ref.isHead ? token("color.text.onAccent") : token("color.text.primary");
+        ctx.fillStyle = ref.isHead ? pal.onAccent : pal.text;
         ctx.save();
         ctx.beginPath();
         ctx.rect(rx, y, tw - 4, ROW_H);
@@ -234,14 +293,14 @@ export function GraphView(props: {
       }
       // Text columns: message, author, date, sha
       const col = columns(w, graphW(), widths());
-      ctx.fillStyle = token("color.text.primary");
+      ctx.fillStyle = pal.text;
       clipText(ctx, r.m.summary, col.msgX, cy, col.msgW);
-      ctx.fillStyle = token("color.text.secondary");
+      ctx.fillStyle = pal.textSecondary;
       if (col.showAuthor) clipText(ctx, r.m.author, col.authorX, cy, widths().author - 12);
-      if (col.showDate) clipText(ctx, new Date(r.m.time * 1000).toLocaleDateString(locale), col.dateX, cy, widths().date - 8);
+      if (col.showDate) clipText(ctx, dateText(r.m.time, locale), col.dateX, cy, widths().date - 8);
       ctx.font = "12.5px 'JetBrains Mono', 'DejaVu Sans Mono', monospace";
       // Muted text is below 4.5:1 on the selection colour of Atlas Dark (3.86): use secondary there.
-      ctx.fillStyle = token(i === props.selected ? "color.text.secondary" : "color.text.muted");
+      ctx.fillStyle = (i === props.selected ? pal.textSecondary : pal.textMuted);
       ctx.fillText(r.m.sha.slice(0, 7), col.shaX, cy);
       ctx.font = "13px Inter, Cantarell, system-ui, sans-serif";
     }
@@ -529,11 +588,11 @@ export function GraphView(props: {
 
 function clipText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, max: number) {
   if (max <= 0) return;
-  if (ctx.measureText(text).width <= max) return ctx.fillText(text, x, y);
+  if (measure(ctx, text) <= max) return ctx.fillText(text, x, y);
   let lo = 0, hi = text.length;
   while (lo < hi) {
     const mid = (lo + hi + 1) >> 1;
-    if (ctx.measureText(text.slice(0, mid) + "…").width <= max) lo = mid;
+    if (measure(ctx, text.slice(0, mid) + "…") <= max) lo = mid;
     else hi = mid - 1;
   }
   ctx.fillText(text.slice(0, lo) + "…", x, y);

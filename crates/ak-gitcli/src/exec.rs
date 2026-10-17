@@ -2,8 +2,10 @@
 //! Spawning git with a fixed environment (SDD §5).
 
 use std::ffi::OsStr;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Output, Stdio};
+use std::time::{Duration, Instant};
 
 use crate::caps::{GitCaps, GitVersion};
 
@@ -17,7 +19,27 @@ pub enum GitError {
     NotAllowed { subcommand: String },
     #[error("git {subcommand} failed with status {code:?}: {stderr}")]
     Failed { subcommand: String, code: Option<i32>, stderr: String },
+    #[error("git {subcommand} did not finish within {} s and was stopped", .after.as_secs())]
+    TimedOut { subcommand: String, after: Duration },
 }
+
+/// Longest a single git process may run (PERF-11). A hook, a lock or a stuck network
+/// connection must not keep the app busy forever.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Timeouts {
+    /// Commands that stay on this machine (status, log, commit, merge...).
+    pub local: Duration,
+    /// Commands that talk to a remote (fetch, pull, push, ls-remote, clone).
+    pub network: Duration,
+}
+
+impl Default for Timeouts {
+    fn default() -> Self {
+        Self { local: Duration::from_secs(300), network: Duration::from_secs(600) }
+    }
+}
+
+const NETWORK_SUBCOMMANDS: &[&str] = &["fetch", "pull", "push", "ls-remote", "clone"];
 
 /// Read-only mode only permits subcommands that never write to the repo
 /// (roadmap Phase 1 constraint).
@@ -28,7 +50,7 @@ pub enum Mode {
 }
 
 const READ_ONLY_SUBCOMMANDS: &[&str] = &[
-    "rev-parse", "rev-list", "for-each-ref", "cat-file", "show", "diff", "status", "log", "ls-tree", "version",
+    "rev-parse", "rev-list", "for-each-ref", "cat-file", "show", "diff", "status", "log", "ls-tree", "ls-files", "version",
 ];
 
 /// Environment variables never forwarded to git (credentials of other tools,
@@ -43,6 +65,7 @@ pub struct Git {
     exe: PathBuf,
     mode: Mode,
     caps: GitCaps,
+    timeouts: Timeouts,
 }
 
 impl Git {
@@ -59,11 +82,27 @@ impl Git {
         // Below the supported floor the app still opens, but read-only.
         let caps = GitCaps::from_version(version);
         let mode = if caps.supported() { mode } else { Mode::ReadOnly };
-        Ok(Self { exe, mode, caps })
+        Ok(Self { exe, mode, caps, timeouts: Timeouts::default() })
+    }
+
+    /// Same handle with other time limits for git processes.
+    pub fn with_timeouts(mut self, timeouts: Timeouts) -> Self {
+        self.timeouts = timeouts;
+        self
     }
 
     pub fn caps(&self) -> &GitCaps {
         &self.caps
+    }
+
+    fn limit_for(&self, subcommand: &str) -> Duration {
+        if NETWORK_SUBCOMMANDS.contains(&subcommand) { self.timeouts.network } else { self.timeouts.local }
+    }
+
+    /// Runs a prepared command to completion, within the limit for `subcommand`.
+    fn output_of(&self, mut cmd: Command, subcommand: &str) -> Result<Output, GitError> {
+        let child = cmd.stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+        wait_limited(child, self.limit_for(subcommand), subcommand)
     }
 
     pub fn mode(&self) -> Mode {
@@ -126,7 +165,7 @@ impl Git {
         let writer = std::thread::spawn(move || {
             let _ = stdin.write_all(&data);
         });
-        let out = child.wait_with_output()?;
+        let out = wait_limited(child, self.limit_for(&subcommand), &subcommand)?;
         let _ = writer.join();
         if !out.status.success() {
             return Err(GitError::Failed {
@@ -145,7 +184,9 @@ impl Git {
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
-        let out = self.command(repo, args)?.output()?;
+        let args: Vec<_> = args.into_iter().map(|a| a.as_ref().to_owned()).collect();
+        let subcommand = first_subcommand(&args);
+        let out = self.output_of(self.command(repo, &args)?, &subcommand)?;
         Ok((
             out.status.code(),
             String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -159,7 +200,11 @@ impl Git {
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
-        let out = self.command(repo, args)?.envs(env.iter().map(|(k, v)| (k, v))).output()?;
+        let args: Vec<_> = args.into_iter().map(|a| a.as_ref().to_owned()).collect();
+        let subcommand = first_subcommand(&args);
+        let mut cmd = self.command(repo, &args)?;
+        cmd.envs(env.iter().map(|(k, v)| (k, v)));
+        let out = self.output_of(cmd, &subcommand)?;
         Ok((
             out.status.code(),
             String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -174,8 +219,8 @@ impl Git {
         S: AsRef<OsStr>,
     {
         let args: Vec<_> = args.into_iter().map(|a| a.as_ref().to_owned()).collect();
-        let subcommand = args.first().map(|a| a.to_string_lossy().into_owned()).unwrap_or_default();
-        let out = self.command(repo, &args)?.output()?;
+        let subcommand = first_subcommand(&args);
+        let out = self.output_of(self.command(repo, &args)?, &subcommand)?;
         if !out.status.success() {
             return Err(GitError::Failed {
                 subcommand,
@@ -184,6 +229,46 @@ impl Git {
             });
         }
         Ok(out.stdout)
+    }
+}
+
+fn first_subcommand(args: &[std::ffi::OsString]) -> String {
+    args.first().map(|a| a.to_string_lossy().into_owned()).unwrap_or_default()
+}
+
+/// Waits for a child whose stdout and stderr are piped, at most `limit`. On timeout the child is
+/// killed. The pipes are drained on threads, so a full pipe never blocks git.
+fn wait_limited(mut child: Child, limit: Duration, subcommand: &str) -> Result<Output, GitError> {
+    fn drain<R: Read + Send + 'static>(pipe: Option<R>) -> std::thread::JoinHandle<Vec<u8>> {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            if let Some(mut p) = pipe {
+                let _ = p.read_to_end(&mut buf);
+            }
+            buf
+        })
+    }
+    let (out, err) = (drain(child.stdout.take()), drain(child.stderr.take()));
+    let started = Instant::now();
+    let mut pause = Duration::from_micros(500);
+    let mut status = None;
+    loop {
+        if status.is_none() {
+            status = child.try_wait()?;
+        }
+        // Done when git has exited and both pipes reached EOF (a leftover helper can hold them open).
+        if let Some(st) = status {
+            if out.is_finished() && err.is_finished() {
+                return Ok(Output { status: st, stdout: out.join().unwrap_or_default(), stderr: err.join().unwrap_or_default() });
+            }
+        }
+        if started.elapsed() >= limit {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(GitError::TimedOut { subcommand: subcommand.to_owned(), after: limit });
+        }
+        std::thread::sleep(pause);
+        pause = (pause * 2).min(Duration::from_millis(20));
     }
 }
 
@@ -206,6 +291,22 @@ mod tests {
         let cmd = git.command(Path::new("."), ["status"]).unwrap();
         let joined: Vec<String> = cmd.get_args().map(|a| a.to_string_lossy().into_owned()).collect();
         assert!(!joined.iter().any(|a| a.contains("safe.directory")));
+    }
+
+    #[test]
+    fn network_commands_get_the_network_limit() {
+        let t = Timeouts { local: Duration::from_secs(1), network: Duration::from_secs(2) };
+        let git = Git::discover(Mode::ReadOnly).expect("git installed").with_timeouts(t);
+        assert_eq!(git.limit_for("fetch"), Duration::from_secs(2));
+        assert_eq!(git.limit_for("status"), Duration::from_secs(1));
+    }
+
+    #[test]
+    fn a_process_past_its_limit_is_stopped() {
+        let t = Timeouts { local: Duration::ZERO, network: Duration::ZERO };
+        let git = Git::discover(Mode::ReadOnly).expect("git installed").with_timeouts(t);
+        let err = git.run(Path::new("."), ["rev-parse", "--git-dir"]).unwrap_err();
+        assert!(matches!(err, GitError::TimedOut { ref subcommand, .. } if subcommand == "rev-parse"), "{err:?}");
     }
 
     #[test]

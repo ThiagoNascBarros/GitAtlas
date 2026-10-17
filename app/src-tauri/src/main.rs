@@ -73,6 +73,11 @@ impl From<OpError> for UiError {
 
 type Result<T> = std::result::Result<T, UiError>;
 
+/// Runs blocking git work off the async runtime (PERF-05): a slow read must not hold a runtime thread.
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
+    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| UiError::new("READ_FAILED", e))?
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RefInfo {
@@ -134,13 +139,69 @@ fn start_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<SharedWatc
     w
 }
 
-fn is_ignored_dir(root: &Path, name: &str) -> bool {
+/// Directory key used by the watcher: path relative to the repository root, with a trailing `/`.
+fn dir_key(root: &Path, dir: &Path) -> String {
+    let rel = dir.strip_prefix(root).unwrap_or(dir);
+    format!("{}/", rel.to_string_lossy().replace('\\', "/"))
+}
+
+fn is_ignored_dir(root: &Path, key: &str) -> bool {
     std::process::Command::new("git")
         .current_dir(root)
-        .args(["check-ignore", "-q", "--", &format!("{name}/")])
+        .args(["check-ignore", "-q", "--", key])
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
+}
+
+/// Ignored directories at any depth (`packages/a/node_modules/`), from one git call (PERF-07).
+fn ignored_dirs(root: &Path) -> HashSet<String> {
+    std::process::Command::new("git")
+        .current_dir(root)
+        .args(["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).split('\0').filter(|d| d.ends_with('/')).map(str::to_owned).collect())
+        .unwrap_or_default()
+}
+
+/// `dir` and the directories below it that git does not ignore (symlinks are not followed).
+fn collect_watch_dirs(root: &Path, dir: &Path, ignored: &HashSet<String>, out: &mut Vec<PathBuf>) {
+    out.push(dir.to_path_buf());
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for e in entries.flatten() {
+        let path = e.path();
+        if e.file_type().map(|t| t.is_dir()).unwrap_or(false) && !ignored.contains(&dir_key(root, &path)) {
+            collect_watch_dirs(root, &path, ignored, out);
+        }
+    }
+}
+
+/// Watches the directories from [`collect_watch_dirs`], one non-recursive watch each: ignored trees
+/// such as `packages/*/node_modules` cost no inotify watches.
+fn watch_tree(g: &mut notify::RecommendedWatcher, root: &Path, ignored: &HashSet<String>) -> Option<()> {
+    let mut dirs = Vec::new();
+    collect_watch_dirs(root, root, ignored, &mut dirs);
+    for d in &dirs {
+        g.watch(d, RecursiveMode::NonRecursive).ok()?;
+    }
+    Some(())
+}
+
+/// A directory created while watching: watched unless git ignores it, and so are the folders in it.
+fn adopt_new_dir(w: &SharedWatcher, root: &Path, dir: &Path) {
+    if is_ignored_dir(root, &dir_key(root, dir)) {
+        return;
+    }
+    if w.lock().unwrap().watch(dir, RecursiveMode::NonRecursive).is_err() {
+        return;
+    }
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for e in entries.flatten() {
+            if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                adopt_new_dir(w, root, &e.path());
+            }
+        }
+    }
 }
 
 fn setup_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<SharedWatcher> {
@@ -148,10 +209,10 @@ fn setup_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<SharedWatc
     let base = root.to_path_buf();
     let w = notify::recommended_watcher(move |ev: notify::Result<notify::Event>| {
         if let Ok(ev) = ev {
-            // A new top-level directory: the root is watched non-recursively, so add it later
+            // A new directory (at any depth, outside git's bookkeeping): watch it later
             // (not here: adding a watch from inside the event callback can deadlock the backend).
             if matches!(ev.kind, notify::EventKind::Create(_)) {
-                for p in ev.paths.iter().filter(|p| p.parent() == Some(base.as_path()) && p.is_dir()) {
+                for p in ev.paths.iter().filter(|p| relevant(p, &base) && p.is_dir()) {
                     let _ = tx.send(WatchMsg::NewDir(p.clone()));
                 }
             }
@@ -162,33 +223,19 @@ fn setup_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<SharedWatc
     })
     .ok()?;
     let w = Arc::new(Mutex::new(w));
-    // Watch each top-level entry except ignored dirs (node_modules, target...): saves inotify watches.
-    let ignored: Vec<String> = std::process::Command::new("git")
-        .current_dir(root)
-        .args(["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).split('\0').map(|d| d.trim_end_matches('/').to_string()).collect())
-        .unwrap_or_default();
+    // Every directory git does not ignore, at any depth (node_modules and target trees are skipped).
+    let ignored = ignored_dirs(root);
     {
         let mut g = w.lock().unwrap();
-        g.watch(root, RecursiveMode::NonRecursive).ok()?;
-        for e in std::fs::read_dir(root).ok()?.flatten() {
-            let name = e.file_name().to_string_lossy().to_string();
-            if e.path().is_dir() && !ignored.contains(&name) {
-                g.watch(&e.path(), RecursiveMode::Recursive).ok()?;
-            }
-        }
+        watch_tree(&mut g, root, &ignored)?;
     }
     let weak = Arc::downgrade(&w);
     let root = root.to_path_buf();
     std::thread::spawn(move || {
         let handle = |m: WatchMsg| {
             if let WatchMsg::NewDir(p) = m {
-                let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                if name != ".git" && !is_ignored_dir(&root, &name) {
-                    if let Some(w) = weak.upgrade() {
-                        let _ = w.lock().unwrap().watch(&p, RecursiveMode::Recursive);
-                    }
+                if let Some(w) = weak.upgrade() {
+                    adopt_new_dir(&w, &root, &p);
                 }
             }
         };
@@ -287,13 +334,14 @@ fn get_initial_path(state: State<'_, AppState>) -> Option<String> {
 
 #[tauri::command]
 async fn repo_open(path: String, app: AppHandle, state: State<'_, AppState>) -> Result<OpenedRepo> {
-    let (mut repo, opened) = load(&PathBuf::from(&path))?;
+    let (mut repo, opened) = blocking(move || load(&PathBuf::from(&path))).await?;
     let repo_id = {
         let mut id = state.next_id.lock().unwrap();
         *id += 1;
         *id
     };
-    repo._watcher = start_watcher(app, repo_id, repo.reader.root());
+    let root = repo.reader.root().to_path_buf();
+    repo._watcher = blocking(move || Ok(start_watcher(app, repo_id, &root))).await?;
     state.repos.lock().unwrap().insert(repo_id, Arc::new(repo));
     Ok(OpenedRepo { repo_id, ..opened })
 }
@@ -302,8 +350,9 @@ async fn repo_open(path: String, app: AppHandle, state: State<'_, AppState>) -> 
 #[tauri::command]
 async fn repo_refresh(repo_id: u32, app: AppHandle, state: State<'_, AppState>) -> Result<OpenedRepo> {
     let root = get(&state, repo_id)?.reader.root().to_path_buf();
-    let (mut repo, opened) = load(&root)?;
-    repo._watcher = start_watcher(app, repo_id, &root);
+    let watch_root = root.clone();
+    let (mut repo, opened) = blocking(move || load(&root)).await?;
+    repo._watcher = blocking(move || Ok(start_watcher(app, repo_id, &watch_root))).await?;
     state.repos.lock().unwrap().insert(repo_id, Arc::new(repo));
     Ok(OpenedRepo { repo_id, ..opened })
 }
@@ -334,18 +383,24 @@ async fn graph_rows(repo_id: u32, start: u32, count: u32, state: State<'_, AppSt
     let r = get(&state, repo_id)?;
     let s = (start as usize).min(r.shas.len());
     let e = (s + count.min(2000) as usize).min(r.shas.len());
-    let wanted: Vec<&str> = r.shas[s..e].iter().map(String::as_str).collect();
-    r.reader.rows_text(&wanted).map_err(|e| UiError::new("READ_FAILED", e))
+    let wanted: Vec<String> = r.shas[s..e].to_vec();
+    blocking(move || {
+        let wanted: Vec<&str> = wanted.iter().map(String::as_str).collect();
+        r.reader.rows_text(&wanted).map_err(|e| UiError::new("READ_FAILED", e))
+    })
+    .await
 }
 
 #[tauri::command]
 async fn commit_details(repo_id: u32, sha: String, state: State<'_, AppState>) -> Result<CommitDetails> {
-    get(&state, repo_id)?.reader.commit_details(&sha).map_err(|e| UiError::new("READ_FAILED", e))
+    let r = get(&state, repo_id)?;
+    blocking(move || r.reader.commit_details(&sha).map_err(|e| UiError::new("READ_FAILED", e))).await
 }
 
 #[tauri::command]
 async fn diff_file(repo_id: u32, sha: String, path: String, state: State<'_, AppState>) -> Result<String> {
-    get(&state, repo_id)?.reader.file_diff(&sha, &path).map_err(|e| UiError::new("READ_FAILED", e))
+    let r = get(&state, repo_id)?;
+    blocking(move || r.reader.file_diff(&sha, &path).map_err(|e| UiError::new("READ_FAILED", e))).await
 }
 
 #[tauri::command]
@@ -356,18 +411,19 @@ async fn diff_worktree(
     untracked: bool,
     state: State<'_, AppState>,
 ) -> Result<String> {
-    get(&state, repo_id)?
-        .reader
-        .worktree_diff(&path, staged, untracked)
-        .map_err(|e| UiError::new("READ_FAILED", e))
+    let r = get(&state, repo_id)?;
+    blocking(move || r.reader.worktree_diff(&path, staged, untracked).map_err(|e| UiError::new("READ_FAILED", e))).await
 }
 
 #[tauri::command]
 async fn status_get(repo_id: u32, state: State<'_, AppState>) -> Result<StatusWithMerge> {
     let r = get(&state, repo_id)?;
-    let status = r.reader.status().map_err(|e| UiError::new("READ_FAILED", e))?;
-    let in_progress = engine(&r)?.in_progress();
-    Ok(StatusWithMerge { status, merging: in_progress.is_some(), in_progress })
+    blocking(move || {
+        let status = r.reader.status().map_err(|e| UiError::new("READ_FAILED", e))?;
+        let in_progress = engine(&r)?.in_progress();
+        Ok(StatusWithMerge { status, merging: in_progress.is_some(), in_progress })
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -382,39 +438,39 @@ struct StatusWithMerge {
 #[tauri::command]
 async fn merge_preview(repo_id: u32, source: String, state: State<'_, AppState>) -> Result<MergePreview> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.merge_preview(&source)?)
+    blocking(move || Ok(engine(&r)?.merge_preview(&source)?)).await
 }
 
 #[tauri::command]
 async fn stash_list(repo_id: u32, state: State<'_, AppState>) -> Result<Vec<StashInfo>> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.stashes()?)
+    blocking(move || Ok(engine(&r)?.stashes()?)).await
 }
 
 #[tauri::command]
 async fn op_merge(repo_id: u32, source: String, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Merge { source })
+    run_op(&state, repo_id, Operation::Merge { source }).await
 }
 
 #[tauri::command]
 async fn op_merge_abort(repo_id: u32, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::MergeAbort)
+    run_op(&state, repo_id, Operation::MergeAbort).await
 }
 
 #[tauri::command]
 async fn conflict_versions(repo_id: u32, path: String, state: State<'_, AppState>) -> Result<ConflictVersions> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.conflict_versions(&path)?)
+    blocking(move || Ok(engine(&r)?.conflict_versions(&path)?)).await
 }
 
 #[tauri::command]
 async fn op_resolve_with(repo_id: u32, path: String, content: String, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::ResolveWith { path, content })
+    run_op(&state, repo_id, Operation::ResolveWith { path, content }).await
 }
 
 #[tauri::command]
 async fn op_resolve(repo_id: u32, path: String, theirs: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::ResolveConflict { path, theirs })
+    run_op(&state, repo_id, Operation::ResolveConflict { path, theirs }).await
 }
 
 #[tauri::command]
@@ -425,22 +481,22 @@ async fn op_stash(repo_id: u32, action: String, index: usize, message: Option<St
         "pop" => Operation::StashPop { index },
         _ => Operation::StashDrop { index },
     };
-    run_op(&state, repo_id, op)
+    run_op(&state, repo_id, op).await
 }
 
-fn run_op(state: &AppState, repo_id: u32, op: Operation) -> Result<OpOutcome> {
+async fn run_op(state: &AppState, repo_id: u32, op: Operation) -> Result<OpOutcome> {
     let r = get(state, repo_id)?;
-    Ok(engine(&r)?.run(&op)?)
+    blocking(move || Ok(engine(&r)?.run(&op)?)).await
 }
 
 #[tauri::command]
 async fn op_stage(repo_id: u32, paths: Vec<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Stage { paths })
+    run_op(&state, repo_id, Operation::Stage { paths }).await
 }
 
 #[tauri::command]
 async fn op_unstage(repo_id: u32, paths: Vec<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Unstage { paths })
+    run_op(&state, repo_id, Operation::Unstage { paths }).await
 }
 
 #[tauri::command]
@@ -451,37 +507,37 @@ async fn op_stage_hunk(
     unstage: bool,
     state: State<'_, AppState>,
 ) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::StageHunk { path, hunk, unstage })
+    run_op(&state, repo_id, Operation::StageHunk { path, hunk, unstage }).await
 }
 
 #[tauri::command]
 async fn op_discard(repo_id: u32, paths: Vec<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Discard { paths })
+    run_op(&state, repo_id, Operation::Discard { paths }).await
 }
 
 #[tauri::command]
 async fn op_commit(repo_id: u32, message: String, amend: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Commit { message, amend })
+    run_op(&state, repo_id, Operation::Commit { message, amend }).await
 }
 
 #[tauri::command]
 async fn op_branch_create(repo_id: u32, name: String, at: Option<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::BranchCreate { name, at })
+    run_op(&state, repo_id, Operation::BranchCreate { name, at }).await
 }
 
 #[tauri::command]
 async fn op_branch_rename(repo_id: u32, old: String, new: String, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::BranchRename { old, new })
+    run_op(&state, repo_id, Operation::BranchRename { old, new }).await
 }
 
 #[tauri::command]
 async fn op_branch_delete(repo_id: u32, name: String, force: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::BranchDelete { name, force })
+    run_op(&state, repo_id, Operation::BranchDelete { name, force }).await
 }
 
 #[tauri::command]
 async fn op_checkout(repo_id: u32, target: String, is_branch: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Checkout { target, is_branch })
+    run_op(&state, repo_id, Operation::Checkout { target, is_branch }).await
 }
 
 /// Fetch, pull or push. Runs off the async runtime (it can wait on the network and on the user
@@ -529,47 +585,47 @@ async fn op_history(repo_id: u32, action: String, sha: String, mode: Option<Stri
         "tag-delete" => Operation::TagDelete { name: name.unwrap_or_default() },
         _ => return Err(UiError::new("GIT_FAILED", "unknown history action")),
     };
-    run_op(&state, repo_id, op)
+    run_op(&state, repo_id, op).await
 }
 
 #[tauri::command]
 async fn rebase_todo(repo_id: u32, onto: String, state: State<'_, AppState>) -> Result<Vec<TodoItem>> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.rebase_todo(&onto)?)
+    blocking(move || Ok(engine(&r)?.rebase_todo(&onto)?)).await
 }
 
 #[tauri::command]
 async fn op_rebase(repo_id: u32, onto: String, todo: Option<Vec<TodoItem>>, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Rebase { onto, todo })
+    run_op(&state, repo_id, Operation::Rebase { onto, todo }).await
 }
 
 #[tauri::command]
 async fn op_rebase_continue(repo_id: u32, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::RebaseContinue)
+    run_op(&state, repo_id, Operation::RebaseContinue).await
 }
 
 #[tauri::command]
 async fn op_undo(repo_id: u32, id: String, state: State<'_, AppState>) -> Result<OpOutcome> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.undo(&id)?)
+    blocking(move || Ok(engine(&r)?.undo(&id)?)).await
 }
 
 #[tauri::command]
 async fn op_redo(repo_id: u32, state: State<'_, AppState>) -> Result<OpOutcome> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.redo_last()?)
+    blocking(move || Ok(engine(&r)?.redo_last()?)).await
 }
 
 #[tauri::command]
 async fn journal_list(repo_id: u32, state: State<'_, AppState>) -> Result<Vec<JournalEntry>> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.journal())
+    blocking(move || Ok(engine(&r)?.journal())).await
 }
 
 #[tauri::command]
 async fn journal_prune(repo_id: u32, keep: usize, state: State<'_, AppState>) -> Result<usize> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.prune_journal(keep)?)
+    blocking(move || Ok(engine(&r)?.prune_journal(keep)?)).await
 }
 
 fn main() {
@@ -636,4 +692,30 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running AtlasGit");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ignored_trees_at_any_depth_are_not_watched() {
+        let root = std::env::temp_dir().join(format!("atlas-watch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("packages/a/node_modules/x")).unwrap();
+        std::fs::create_dir_all(root.join("packages/a/src")).unwrap();
+        std::fs::create_dir_all(root.join("docs")).unwrap();
+        std::fs::write(root.join(".gitignore"), "node_modules/\n").unwrap();
+        let init = std::process::Command::new("git").arg("-C").arg(&root).args(["init", "-q"]).status().unwrap();
+        assert!(init.success());
+        let ignored = ignored_dirs(&root);
+        assert!(ignored.contains("packages/a/node_modules/"), "{ignored:?}");
+        let mut dirs = Vec::new();
+        collect_watch_dirs(&root, &root, &ignored, &mut dirs);
+        let keys: Vec<String> = dirs.iter().map(|d| dir_key(&root, d)).collect();
+        assert!(keys.contains(&"packages/a/src/".to_owned()), "{keys:?}");
+        assert!(keys.contains(&"docs/".to_owned()), "{keys:?}");
+        assert!(!keys.iter().any(|k| k.contains("node_modules")), "{keys:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

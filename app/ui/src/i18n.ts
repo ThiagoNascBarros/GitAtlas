@@ -115,6 +115,8 @@ export const en = {
   "err.details": "Details",
   "err.GIT_IDENTITY_MISSING": "Git does not know your name and email, so it cannot create the commit.",
   "err.GIT_IDENTITY_MISSING.fix": "Run: git config --global user.name \"Your Name\" and git config --global user.email you@example.com",
+  "err.GIT_TIMEOUT": "Git took too long and was stopped. A hook, a credential prompt or the network may be waiting.",
+  "err.GIT_TIMEOUT.fix": "Check the hook, the network or the credential prompt, then try again.",
   "err.NOTHING_TO_COMMIT": "There is nothing staged to commit.",
   "err.EMPTY_MESSAGE": "Write a commit summary first.",
   "err.REPO_BUSY": "Another operation is still running on this repository.",
