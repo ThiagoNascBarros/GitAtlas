@@ -470,6 +470,18 @@ async fn op_branch_create(repo_id: u32, name: String, at: Option<String>, state:
 }
 
 #[tauri::command]
+async fn op_branch_create_from(repo_id: u32, name: String, base: Option<String>, checkout: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::BranchCreateFrom { name, base, checkout })
+}
+
+/// Name and base of a branch the "New branch" dialog is about to create (pure; no repository needed).
+#[tauri::command]
+fn branch_plan(kind: String, template: String, ticket: String, title: String, main: String, develop: String) -> Result<ak_core::ops::flow::BranchPlan> {
+    let kind = ak_core::ops::flow::BranchKind::parse(&kind).ok_or_else(|| UiError::from(OpError::new("INVALID_ARGUMENT", "Unknown branch type.", None)))?;
+    Ok(ak_core::ops::flow::plan(kind, &template, &ticket, &title, &main, &develop))
+}
+
+#[tauri::command]
 async fn op_branch_rename(repo_id: u32, old: String, new: String, state: State<'_, AppState>) -> Result<OpOutcome> {
     run_op(&state, repo_id, Operation::BranchRename { old, new })
 }
@@ -598,6 +610,8 @@ fn main() {
             op_discard,
             op_commit,
             op_branch_create,
+            op_branch_create_from,
+            branch_plan,
             op_branch_rename,
             op_branch_delete,
             op_checkout,
