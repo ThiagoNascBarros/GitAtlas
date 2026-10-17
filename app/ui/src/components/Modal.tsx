@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 // Base dialog for every modal in the app (MOD-02). Usage:
-//   <Modal title="..." size="sm" onClose={close} footer={<>buttons</>} initialFocus={() => el}>body</Modal>
+//   <Modal title="..." size="sm|md|lg|full" onClose={close} footer={<>buttons</>} initialFocus={() => el}>body</Modal>
 // - Sizes: sm 400 px (confirmations, one field), md 560 px (default), lg 820 px, full (almost the whole window).
 // - Header with a title and a close (X) button; the body scrolls; the footer stays visible.
 // - Rendered in a Portal on <body>: panels with backdrop-filter would clip a `position: fixed` dialog.
@@ -32,7 +32,13 @@ export interface ModalProps {
 
 const reducedMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
+/** The portal wrapper. The content is a child component on purpose: its onMount (focus on open) runs
+ *  after the Portal has attached the dialog to the document. */
 export function Modal(props: ModalProps) {
+  return <Portal><ModalContent {...props} /></Portal>;
+}
+
+function ModalContent(props: ModalProps) {
   const titleId = createUniqueId();
   const [closing, setClosing] = createSignal(false);
   let dialog: HTMLDialogElement | undefined;
@@ -49,21 +55,19 @@ export function Modal(props: ModalProps) {
   };
   useOverlay(close, () => props.initialFocus?.() ?? firstControl(), () => dialog);
   return (
-    <Portal>
-      <div class="modal-back" classList={{ closing: closing() }} onContextMenu={(e) => e.preventDefault()}>
-        <dialog ref={dialog} open tabIndex={-1} class={`modal modal-base modal-${props.size ?? "md"}`} aria-modal="true" aria-labelledby={titleId}>
-          <header class="modal-head">
-            <h2 id={titleId}>{props.title}</h2>
-            <button type="button" class="modal-x" aria-label={t("modal.close")} title={t("modal.close")} onClick={close}>
-              <X size={16} aria-hidden="true" />
-            </button>
-          </header>
-          <div class="modal-body">{props.children}</div>
-          <Show when={props.footer}>
-            <footer class="modal-actions modal-foot">{props.footer}</footer>
-          </Show>
-        </dialog>
-      </div>
-    </Portal>
+    <div class="modal-back" classList={{ closing: closing() }} onContextMenu={(e) => e.preventDefault()}>
+      <dialog ref={dialog} open tabIndex={-1} class={`modal modal-base modal-${props.size ?? "md"}`} aria-modal="true" aria-labelledby={titleId}>
+        <header class="modal-head">
+          <h2 id={titleId}>{props.title}</h2>
+          <button type="button" class="modal-x" aria-label={t("modal.close")} title={t("modal.close")} onClick={close}>
+            <X size={16} aria-hidden="true" />
+          </button>
+        </header>
+        <div class="modal-body">{props.children}</div>
+        <Show when={props.footer}>
+          <footer class="modal-actions modal-foot">{props.footer}</footer>
+        </Show>
+      </dialog>
+    </div>
   );
 }
