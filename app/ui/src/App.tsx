@@ -2,7 +2,7 @@
 // App frame (roadmap T1.7): tabs, toolbar, refs panel, graph/diff, details, status bar.
 import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { CredentialsRequest, api, KeptSharedStash, OpOutcome, OpenedRepo, SharedStashInfo, StashInfo, StatusReport, UiError } from "./api";
+import { CredentialsRequest, api, KeptSharedStash, OpOutcome, OpenedRepo, RecentRepo, SharedStashInfo, StashInfo, StatusReport, UiError } from "./api";
 import { listen } from "@tauri-apps/api/event";
 import { forgetGraphScroll, GraphView } from "./features/graph/GraphView";
 import { DiffView } from "./features/diff/DiffView";
@@ -24,6 +24,7 @@ import { markOpenStart, togglePerf } from "./features/graph/perf";
 import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Laptop, List, Redo2, Search, Settings, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Share2 } from "lucide-solid";
 import { Dynamic } from "solid-js/web";
 import { Splitter, storedSize } from "./features/split/Splitter";
+import { RecentsList } from "./features/recents/RecentsList";
 import { SharedStashPanel } from "./features/shared-stash/SharedStashPanel";
 import { SharedActions, SharedMenuState, SharedStashMenu } from "./features/shared-stash/SharedStashMenu";
 import { LocalStashMenu, LocalStashMenuState } from "./features/stash/LocalStashMenu";
@@ -85,6 +86,15 @@ export function App() {
   };
   const [showJournal, setShowJournal] = createSignal(false);
   const [showSettings, setShowSettings] = createSignal(false);
+  // Recent repositories (start screen) and the session restore (tabs and front tab, saved on change).
+  const [recents, setRecents] = createSignal<RecentRepo[]>([]);
+  const [restored, setRestored] = createSignal(false);
+  createEffect(() => {
+    const paths = tabs().map((x) => x.repo.root);
+    const at = active();
+    // Nothing is saved before the session has been read, or it would overwrite it.
+    if (restored()) void api.sessionSaveTabs(paths, at).catch(() => undefined);
+  });
   const [watchFailed, setWatchFailed] = createSignal<number[]>([]);
   const [askName, setAskName] = createSignal<"branch" | "stash" | null>(null);
   const [showDetail, setShowDetail] = createSignal(false);
@@ -249,7 +259,8 @@ export function App() {
     }
   }
 
-  async function openPath(path: string) {
+  /** Opens a repository in a new tab. `quiet` (session restore) reports failure by returning false, not by an error. */
+  async function openPath(path: string, quiet = false): Promise<boolean> {
     try {
       markOpenStart();
       const repo = await api.open(path);
@@ -259,9 +270,49 @@ export function App() {
       await loadStatus(repo.repoId);
       const st = tabs().find((x) => x.repo.repoId === repo.repoId)?.status;
       if (st?.entries.length) patchRepo(repo.repoId, () => ({ wip: true }));
+      void refreshRecents();
+      return true;
+    } catch (e) {
+      if (!quiet) fail(e);
+      return false;
+    }
+  }
+
+  async function refreshRecents() {
+    try {
+      setRecents((await api.sessionGet()).recents);
+    } catch { /* the list keeps what it had */ }
+  }
+
+  async function removeRecent(path: string) {
+    try {
+      await api.recentsRemove(path);
     } catch (e) {
       fail(e);
     }
+    void refreshRecents();
+  }
+
+  /**
+   * Reopens the tabs of the last session (folders that are gone are skipped) and puts the same tab in
+   * front. A path given on the command line is shown last: its tab is focused, or it is opened.
+   */
+  async function restoreSession() {
+    try {
+      const s = await api.sessionGet();
+      setRecents(s.recents);
+      for (const path of s.tabs) await openPath(path, true);
+      if (tabs().length) setActive(Math.min(s.active, tabs().length - 1));
+    } catch { /* no session yet, or no config directory */ }
+    try {
+      const p = await api.initialPath();
+      if (p) {
+        const i = tabs().findIndex((x) => x.repo.root === p);
+        if (i >= 0) setActive(i);
+        else await openPath(p);
+      }
+    } catch { /* no path given (plain browser) */ }
+    setRestored(true);
   }
 
   async function pick() {
@@ -312,8 +363,7 @@ export function App() {
         if (cur && Date.now() - (lastStatusAt.get(cur.repo.repoId) ?? 0) > FOCUS_SKIP_MS) void loadStatus(cur.repo.repoId);
       });
     } catch { /* no event bridge (plain browser) */ }
-    const p = await api.initialPath();
-    if (p) openPath(p);
+    await restoreSession();
   });
 
   const wipLabel = () => {
@@ -393,6 +443,7 @@ export function App() {
               </div>
             </Show>
             <button class="primary" onClick={pick}>{t("open.button")}</button>
+            <RecentsList recents={recents()} onOpen={(path) => void openPath(path)} onRemove={(path) => void removeRecent(path)} />
           </main>
         }
       >

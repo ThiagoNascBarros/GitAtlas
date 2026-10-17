@@ -59,6 +59,11 @@ export interface Prefs { theme?: ThemeSetting; zoom?: number; language?: Languag
 export interface EffectivePrefs { theme: ThemeSetting; zoom: number; language: LanguageSetting; animations: AnimationsSetting }
 export interface PrefsView { global: Prefs; repo: Prefs | null; effective: EffectivePrefs }
 
+/** A repository in the recent list (most recent first). `exists` is false when its folder is gone. */
+export interface RecentRepo { path: string; name: string; lastOpened: number; exists: boolean }
+/** What was open last time: tabs whose folder still exists, the tab in front, and the recent list. */
+export interface SessionView { tabs: string[]; active: number; recents: RecentRepo[] }
+
 export const api = {
   initialPath: () => invoke<string | null>("get_initial_path"),
   diagnostics: () => invoke<DiagnosticsStatus>("diagnostics_status"),
@@ -129,6 +134,10 @@ export const api = {
   /** A `null` value in `patch` removes that key from `scope`. */
   prefsSet: (repoId: number | null, scope: "global" | "repo", patch: Record<string, unknown>) =>
     invoke<PrefsView>("prefs_set", { repoId, scope, patch }),
+  sessionGet: () => invoke<SessionView>("session_get"),
+  /** Called after every change of the open tabs; `tabs` are repository roots in order. */
+  sessionSaveTabs: (tabs: string[], active: number) => invoke<void>("session_save_tabs", { tabs, active }),
+  recentsRemove: (path: string) => invoke<void>("recents_remove", { path }),
 };
 
 export const SEG_PASS = 0, SEG_IN = 1, SEG_OUT = 2;

@@ -7,6 +7,7 @@
 mod askpass;
 mod diagnostics;
 mod prefs;
+mod session;
 mod settings;
 mod shared_stash;
 mod watch_slots;
@@ -348,10 +349,78 @@ async fn repo_open(path: String, app: AppHandle, state: State<'_, AppState>) -> 
         *id
     };
     let root = repo.reader.root().to_path_buf();
-    let watcher = blocking(move || Ok(start_watcher(app, repo_id, &root))).await?;
+    let watch_app = app.clone();
+    let watcher = blocking(move || Ok(start_watcher(watch_app, repo_id, &root))).await?;
     diagnostics::lock(&state.watchers).ensure(repo_id, move || watcher);
     diagnostics::lock(&state.repos).insert(repo_id, Arc::new(repo));
-    Ok(OpenedRepo { repo_id, ..opened })
+    let opened = OpenedRepo { repo_id, ..opened };
+    // Recents are a convenience: a failure to save them never fails the open.
+    let _ = update_session(&app, |s| session::touch_recent(&mut s.recents, &opened.root, &opened.name, now_secs()));
+    Ok(opened)
+}
+
+/// Serializes read-modify-write of `session.json`.
+static SESSION_WRITE: Mutex<()> = Mutex::new(());
+
+fn session_path(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join("session.json"))
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+/// Loads `session.json`, applies `change` and writes it back.
+fn update_session(app: &AppHandle, change: impl FnOnce(&mut session::Session)) -> std::io::Result<()> {
+    let _g = SESSION_WRITE.lock().unwrap_or_else(|p| p.into_inner());
+    let path = session_path(app).ok_or_else(|| std::io::Error::other("no config directory"))?;
+    let mut s = session::read(&path);
+    change(&mut s);
+    session::write(&path, &s)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecentView {
+    #[serde(flatten)]
+    recent: session::Recent,
+    /// Whether the folder is still there (a missing one is listed, but cannot be opened).
+    exists: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionView {
+    /// Tabs whose folder still exists, in order.
+    tabs: Vec<String>,
+    /// Index of the tab to show first, within `tabs`.
+    active: usize,
+    recents: Vec<RecentView>,
+}
+
+/// What the UI needs at startup and after changes: the tabs to reopen and the recent repositories.
+#[tauri::command]
+fn session_get(app: AppHandle) -> SessionView {
+    let s = session_path(&app).map(|p| session::read(&p)).unwrap_or_default();
+    let exists = |p: &str| Path::new(p).is_dir();
+    let (tabs, active) = session::restorable(&s, exists);
+    let recents = s.recents.into_iter().map(|recent| RecentView { exists: exists(recent.path.as_str()), recent }).collect();
+    SessionView { tabs, active, recents }
+}
+
+/// The open tabs (repository roots, in order) and the active index, after each change.
+#[tauri::command]
+fn session_save_tabs(tabs: Vec<String>, active: usize, app: AppHandle) -> Result<()> {
+    update_session(&app, |s| {
+        s.tabs = tabs;
+        s.active = active;
+    })
+    .map_err(|e| UiError::new("IO_ERROR", e))
+}
+
+#[tauri::command]
+fn recents_remove(path: String, app: AppHandle) -> Result<()> {
+    update_session(&app, |s| session::remove_recent(&mut s.recents, &path)).map_err(|e| UiError::new("IO_ERROR", e))
 }
 
 /// Re-reads history and refs after the repository changed (commit, undo, external edits).
@@ -710,7 +779,10 @@ fn main() {
             shared_stash::shared_stash_settings_get,
             shared_stash::shared_stash_settings_set,
             prefs::prefs_get,
-            prefs::prefs_set
+            prefs::prefs_set,
+            session_get,
+            session_save_tabs,
+            recents_remove
         ])
         .build(tauri::generate_context!())
         .expect("error while building AtlasGit")
