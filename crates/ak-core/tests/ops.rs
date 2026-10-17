@@ -602,6 +602,56 @@ fn conflict_versions_and_resolve_with_edited_content() {
     assert_eq!(code(e.run(&Operation::ResolveWith { path: "../x".into(), content: String::new() })), "INVALID_PATH");
 }
 
+#[test]
+fn resolve_with_is_journaled_and_undo_redo_restore_the_conflict() {
+    let (d, e) = conflict_repo();
+    e.run(&Operation::Merge { source: "feature/conflict".into() }).unwrap();
+    let id = e.run(&Operation::ResolveWith { path: "a.txt".into(), content: "both\n".into() }).unwrap().id.unwrap();
+    let last = e.journal().pop().unwrap();
+    assert_eq!((last.id.as_str(), last.kind.as_str(), last.paths.as_slice()), (id.as_str(), "resolve", &["a.txt".to_string()][..]));
+    // Undo: the markers are back and the index has the three stages again.
+    e.undo(&id).unwrap();
+    assert!(std::fs::read_to_string(d.join("a.txt")).unwrap().contains("<<<<<<<"));
+    assert_eq!(git(&d, &["diff", "--name-only", "--diff-filter=U"]), "a.txt");
+    assert_eq!(git(&d, &["ls-files", "-u", "--", "a.txt"]).lines().count(), 3);
+    // Redo: the chosen content is staged again.
+    e.redo_last().unwrap();
+    assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "both\n");
+    assert_eq!(git(&d, &["diff", "--name-only", "--diff-filter=U"]), "");
+    assert_eq!(git(&d, &["show", ":a.txt"]), "both");
+}
+
+#[test]
+fn undo_of_resolve_refuses_to_overwrite_later_edits() {
+    let (d, e) = conflict_repo();
+    e.run(&Operation::Merge { source: "feature/conflict".into() }).unwrap();
+    let id = e.run(&Operation::ResolveWith { path: "a.txt".into(), content: "both\n".into() }).unwrap().id.unwrap();
+    write(&d, "a.txt", "edited again\n");
+    assert_eq!(e.undo(&id).unwrap_err().code, "WORKTREE_CHANGED");
+    assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "edited again\n");
+}
+
+#[test]
+fn undo_of_resolve_is_refused_once_the_merge_is_aborted() {
+    let (_d, e) = conflict_repo();
+    e.run(&Operation::Merge { source: "feature/conflict".into() }).unwrap();
+    let id = e.run(&Operation::ResolveWith { path: "a.txt".into(), content: "both\n".into() }).unwrap().id.unwrap();
+    e.run(&Operation::MergeAbort).unwrap();
+    assert_eq!(e.undo(&id).unwrap_err().code, "NOT_IN_MERGE");
+}
+
+#[test]
+fn conflict_versions_include_a_diff3_rendering_with_the_base_section() {
+    let (_d, e) = conflict_repo();
+    e.run(&Operation::Merge { source: "feature/conflict".into() }).unwrap();
+    let v = e.conflict_versions("a.txt").unwrap();
+    let d3 = v.merged_diff3.expect("diff3 rendering");
+    assert!(d3.contains("<<<<<<<") && d3.contains("|||||||") && d3.contains("======="));
+    assert!(d3.contains("main") && d3.contains("feature"));
+    // The working-tree file keeps the default (two-section) style.
+    assert!(!v.merged.contains("|||||||"));
+}
+
 fn side_commit(d: &Path, file: &str, text: &str) -> String {
     git(d, &["checkout", "-q", "-b", "side"]);
     write(d, file, text);
