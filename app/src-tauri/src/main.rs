@@ -7,6 +7,7 @@
 mod askpass;
 mod settings;
 mod shared_stash;
+mod watch_slots;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -35,12 +36,13 @@ struct Repo {
     shas: Vec<String>,
     topo: Topology,
     layout: Layout,
-    _watcher: Option<SharedWatcher>,
 }
 
 #[derive(Default)]
 struct AppState {
     repos: Mutex<HashMap<u32, Arc<Repo>>>,
+    /// One file watcher per open repository, kept across refreshes (PERF-01).
+    watchers: Mutex<watch_slots::WatcherSlots<SharedWatcher>>,
     askpass: Arc<askpass::Pending>,
     /// Repositories whose "Shared stash" tab is open (reported by the UI).
     shared_tab_open: Mutex<HashSet<u32>>,
@@ -277,7 +279,7 @@ fn load(path: &Path) -> Result<(Repo, OpenedRepo)> {
     let shas: Vec<String> = commits.iter().map(|c| c.sha.clone()).collect();
     drop(commits);
     trim_memory();
-    Ok((Repo { reader, engine, shas, topo, layout, _watcher: None }, opened))
+    Ok((Repo { reader, engine, shas, topo, layout }, opened))
 }
 
 #[tauri::command]
@@ -287,23 +289,25 @@ fn get_initial_path(state: State<'_, AppState>) -> Option<String> {
 
 #[tauri::command]
 async fn repo_open(path: String, app: AppHandle, state: State<'_, AppState>) -> Result<OpenedRepo> {
-    let (mut repo, opened) = load(&PathBuf::from(&path))?;
+    let (repo, opened) = load(&PathBuf::from(&path))?;
     let repo_id = {
         let mut id = state.next_id.lock().unwrap();
         *id += 1;
         *id
     };
-    repo._watcher = start_watcher(app, repo_id, repo.reader.root());
+    let root = repo.reader.root().to_path_buf();
+    state.watchers.lock().unwrap().ensure(repo_id, || start_watcher(app, repo_id, &root));
     state.repos.lock().unwrap().insert(repo_id, Arc::new(repo));
     Ok(OpenedRepo { repo_id, ..opened })
 }
 
 /// Re-reads history and refs after the repository changed (commit, undo, external edits).
+/// The file watcher is kept: the root does not change, so it is not started again (PERF-01).
 #[tauri::command]
 async fn repo_refresh(repo_id: u32, app: AppHandle, state: State<'_, AppState>) -> Result<OpenedRepo> {
     let root = get(&state, repo_id)?.reader.root().to_path_buf();
-    let (mut repo, opened) = load(&root)?;
-    repo._watcher = start_watcher(app, repo_id, &root);
+    let (repo, opened) = load(&root)?;
+    state.watchers.lock().unwrap().ensure(repo_id, || start_watcher(app, repo_id, &root));
     state.repos.lock().unwrap().insert(repo_id, Arc::new(repo));
     Ok(OpenedRepo { repo_id, ..opened })
 }
@@ -311,6 +315,7 @@ async fn repo_refresh(repo_id: u32, app: AppHandle, state: State<'_, AppState>) 
 #[tauri::command]
 fn repo_close(repo_id: u32, state: State<'_, AppState>) {
     state.repos.lock().unwrap().remove(&repo_id);
+    state.watchers.lock().unwrap().remove(repo_id);
     state.shared_tab_open.lock().unwrap().remove(&repo_id);
 }
 
