@@ -217,7 +217,7 @@ svg { flex: none; }
 /* Shell: two rows of chrome around one continuous workspace. */
 .app { grid-template-rows: var(--bar-h) minmax(0, 1fr); }
 .toolbar { gap: var(--s2); padding: 0 var(--s2) 0 var(--s3); background: var(--glass);
-  -webkit-backdrop-filter: saturate(160%) blur(20px); backdrop-filter: saturate(160%) blur(20px); }
+  -webkit-backdrop-filter: saturate(160%) blur(12px); backdrop-filter: saturate(160%) blur(12px); }
 .toolbar .group { display: flex; gap: 2px; padding-left: var(--s2); border-left: 1px solid var(--ak-color-border-default); }
 .toolbar .group:first-of-type { border-left: 0; }
 
@@ -288,7 +288,7 @@ input:not([type="checkbox"]):not([type="radio"]), .commit-form textarea { border
 .empty h1 { font-size: 22px; font-weight: 600; }
 
 /* Floating layers: the only other place glass appears. */
-.modal, menu.ctx, .toast { background: var(--glass); -webkit-backdrop-filter: saturate(160%) blur(24px); backdrop-filter: saturate(160%) blur(24px);
+.modal, menu.ctx, .toast { background: var(--glass); -webkit-backdrop-filter: saturate(160%) blur(12px); backdrop-filter: saturate(160%) blur(12px);
   border: 1px solid var(--glass-edge); box-shadow: var(--lift); }
 .modal { border-radius: var(--r-l); padding: var(--s6); }
 .modal-back { background: rgb(0 0 0 / .3); }
@@ -374,19 +374,24 @@ menu.ctx button:focus svg { color: currentColor; }
   --lg-tint-strong: color-mix(in srgb, var(--ak-color-bg-overlay) 80%, transparent);
   --lg-edge: color-mix(in srgb, var(--ak-color-text-primary) 12%, transparent);
   --lg-spec: color-mix(in srgb, white 18%, transparent);
-  --lg-blur: saturate(180%) blur(28px);
+  /* Blur only on small capsules and floating overlays; never on the large permanent panes (PERF-02). */
+  --lg-blur: saturate(160%) blur(12px);
   --lg-shadow: 0 1px 1px rgb(0 0 0 / .08), 0 10px 30px rgb(0 0 0 / .22);
 }
 [data-theme="light"] { --lg-spec: color-mix(in srgb, white 85%, transparent); --lg-shadow: 0 1px 1px rgb(0 0 0 / .04), 0 10px 30px rgb(0 0 0 / .10); }
 
 /* The glass material, one definition. */
-.toolbar .group, .toolbar .tabs, .toolbar .crumb .branch, .left, .right, .modal, menu.ctx, .toast {
+.toolbar .group, .toolbar .tabs, .toolbar .crumb .branch, .modal, menu.ctx, .toast {
   background: var(--lg-tint);
   -webkit-backdrop-filter: var(--lg-blur); backdrop-filter: var(--lg-blur);
   border: 1px solid var(--lg-edge);
   box-shadow: inset 0 1px 0 var(--lg-spec), inset 0 -1px 0 color-mix(in srgb, black 8%, transparent), var(--lg-shadow);
 }
 .modal, menu.ctx { background: var(--lg-tint-strong); }
+/* Sidebar and inspector: large and always on screen, so they are opaque-ish with no backdrop blur (PERF-02). */
+.left, .right { background: color-mix(in srgb, var(--ak-color-bg-surface) 92%, transparent);
+  border: 1px solid var(--lg-edge);
+  box-shadow: inset 0 1px 0 var(--lg-spec), inset 0 -1px 0 color-mix(in srgb, black 8%, transparent), var(--lg-shadow); }
 
 /* Toolbar: transparent bar; controls float in glass capsules (grouped by function). */
 .app { grid-template-rows: 56px minmax(0, 1fr); }
