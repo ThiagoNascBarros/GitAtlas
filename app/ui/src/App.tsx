@@ -41,6 +41,9 @@ interface Toast { text: string; repoId: number; undoId: string | null }
 /** Codes whose core message is the only diagnostic (the raw error text), shown under "Details". */
 const RAW_MESSAGE_CODES = new Set(["GIT_NOT_FOUND", "NOT_A_REPO", "READ_FAILED", "IO_ERROR"]);
 const errorDetail = (e: UiError) => e.detail ?? (RAW_MESSAGE_CODES.has(e.code) ? e.message : undefined);
+/** Last status load per repo, to skip a window-focus reload right after one (PERF-06). */
+const lastStatusAt = new Map<number, number>();
+const FOCUS_SKIP_MS = 2000;
 
 export function App() {
   // Runs before any text renders (the theme counterpart, initTheme, runs in main.tsx).
@@ -159,6 +162,7 @@ export function App() {
   }
 
   async function loadStatus(repoId: number) {
+    lastStatusAt.set(repoId, Date.now());
     try {
       const status = await api.status(repoId);
       const cur = tabs().find((x) => x.repo.repoId === repoId);
@@ -289,7 +293,11 @@ export function App() {
       await listen<number>("credentials-cancel", (e) => setCreds(creds().filter((c) => c.id !== e.payload)));
       await listen<number>("repo-changed", (e) => loadStatus(e.payload));
       await listen<number>("watch-failed", (e) => setWatchFailed([...watchFailed().filter((id) => id !== e.payload), e.payload]));
-      window.addEventListener("focus", () => tab() && loadStatus(tab().repo.repoId));
+      // Focus after a watcher event (or a previous focus) reloads nothing new: skip it (PERF-06).
+      window.addEventListener("focus", () => {
+        const cur = tab();
+        if (cur && Date.now() - (lastStatusAt.get(cur.repo.repoId) ?? 0) > FOCUS_SKIP_MS) void loadStatus(cur.repo.repoId);
+      });
     } catch { /* no event bridge (plain browser) */ }
     const p = await api.initialPath();
     if (p) openPath(p);
