@@ -11,15 +11,28 @@ use ak_core::read::{CliReader, RepoReader};
 use ak_gitcli::{Git, Mode};
 
 fn git(dir: &Path, args: &[&str]) -> String {
-    let out = Command::new("git").arg("-C").arg(dir).args(args).output().unwrap();
-    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(dir)
+        .args(args)
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "git {args:?}: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     String::from_utf8_lossy(&out.stdout).trim().to_owned()
 }
 
 /// Repository with one commit (`a.txt`) and an untracked folder `newdir/` holding two files.
 fn repo_with_new_folder() -> PathBuf {
     static N: AtomicU32 = AtomicU32::new(0);
-    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("status-dirs-{}-{}", std::process::id(), N.fetch_add(1, Ordering::Relaxed)));
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!(
+        "status-dirs-{}-{}",
+        std::process::id(),
+        N.fetch_add(1, Ordering::Relaxed)
+    ));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(dir.join("newdir/sub")).unwrap();
     git(&dir, &["init", "-q"]);
@@ -41,7 +54,13 @@ fn reader(dir: &Path) -> CliReader {
 #[test]
 fn status_lists_a_new_folder_as_one_entry() {
     let d = repo_with_new_folder();
-    let entries: Vec<(String, bool)> = reader(&d).status().unwrap().entries.into_iter().map(|e| (e.path, e.untracked)).collect();
+    let entries: Vec<(String, bool)> = reader(&d)
+        .status()
+        .unwrap()
+        .entries
+        .into_iter()
+        .map(|e| (e.path, e.untracked))
+        .collect();
     assert_eq!(entries, vec![("newdir/".to_owned(), true)]);
 }
 
@@ -57,11 +76,21 @@ fn diff_of_a_new_folder_shows_every_file_as_added() {
 fn discard_of_a_new_folder_removes_its_files_and_undo_restores_them() {
     let d = repo_with_new_folder();
     let e = Engine::open(Git::discover(Mode::ReadWrite).unwrap(), &d).unwrap();
-    let out = e.run(&Operation::Discard { paths: vec!["newdir/".into()] }).unwrap();
+    let out = e
+        .run(&Operation::Discard {
+            paths: vec!["newdir/".into()],
+        })
+        .unwrap();
     assert!(!d.join("newdir/x.txt").exists());
     assert!(!d.join("newdir/sub/y.txt").exists());
     assert_eq!(git(&d, &["status", "--porcelain"]), "");
     e.undo(out.id.as_deref().unwrap()).unwrap();
-    assert_eq!(std::fs::read_to_string(d.join("newdir/sub/y.txt")).unwrap(), "y\n");
-    assert_eq!(std::fs::read_to_string(d.join("newdir/x.txt")).unwrap(), "x\n");
+    assert_eq!(
+        std::fs::read_to_string(d.join("newdir/sub/y.txt")).unwrap(),
+        "y\n"
+    );
+    assert_eq!(
+        std::fs::read_to_string(d.join("newdir/x.txt")).unwrap(),
+        "x\n"
+    );
 }
