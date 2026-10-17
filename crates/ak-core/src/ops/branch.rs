@@ -17,6 +17,10 @@ pub(super) fn is_passive_kind(kind: &str) -> bool {
     kind.starts_with("shared_stash_") && kind != "shared_stash_branch"
 }
 
+fn ref_of(branch: &str) -> String {
+    format!("refs/heads/{branch}")
+}
+
 fn refs_moved() -> OpError {
     OpError::new(
         "REF_MOVED",
@@ -66,15 +70,57 @@ impl Engine {
         if self.tip(name).is_some() {
             return Err(OpError::new("BRANCH_EXISTS", "A branch with that name already exists.", None));
         }
-        let at = at.unwrap_or("HEAD");
-        let rev = format!("{at}^{{commit}}");
-        let sha = self
-            .git
-            .run(&self.root, ["rev-parse", "-q", "--verify", rev.as_str()])
-            .map(|o| String::from_utf8_lossy(&o).trim().to_owned())
-            .map_err(|_| OpError::new("INVALID_REF", "That commit does not exist.", None))?;
+        let sha = self.commit_sha(at.unwrap_or("HEAD"))?;
         self.git.run(&self.root, ["branch", name, sha.as_str()])?;
         self.record("branch_create", format!("Create branch {name}"), vec![name.into(), sha.clone()], self.head(), vec![format!("git branch {name} {sha}")])
+    }
+
+    /// New branch at `base` (default HEAD). With `checkout`, it is switched to as well, and
+    /// both steps are one journal entry: Undo returns to the previous branch and deletes it.
+    pub(super) fn branch_create_from(&self, name: &str, base: Option<&str>, checkout: bool) -> Result<OpOutcome, OpError> {
+        if !checkout {
+            return self.branch_create(name, base);
+        }
+        self.valid_branch(name)?;
+        let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
+        if self.tip(name).is_some() {
+            return Err(OpError::new("BRANCH_EXISTS", "A branch with that name already exists.", None));
+        }
+        let before = self.head().ok_or_else(|| OpError::new("INVALID_REF", "Make a first commit before switching to a new branch.", None))?;
+        let sha = self.commit_sha(base.unwrap_or("HEAD"))?;
+        // Where to go back to: the current branch, or the detached commit we are on.
+        let (from, from_is_branch) = match self.branch() {
+            Some(b) => (b, true),
+            None => (before.clone(), false),
+        };
+        self.git.run(&self.root, ["branch", name, sha.as_str()])?;
+        if let Err(e) = self.git.run(&self.root, ["checkout", "-q", name, "--"]) {
+            // Nothing else changed yet: remove the new ref so the repository is as it was.
+            let _ = self.git.run(&self.root, ["update-ref", "-d", ref_of(name).as_str()]);
+            return Err(e.into());
+        }
+        let args = vec![name.into(), sha.clone(), from.clone(), from_is_branch.to_string()];
+        let cmd = vec![format!("git branch {name} {sha}"), format!("git checkout {name}")];
+        self.record("branch_create", format!("Create branch {name} and check it out"), args, Some(before), cmd)
+    }
+
+    /// True when HEAD is where `target` says it is (a branch, or a detached commit).
+    pub(super) fn is_at(&self, target: &str, is_branch: bool) -> bool {
+        if is_branch {
+            self.branch().as_deref() == Some(target)
+        } else {
+            self.branch().is_none() && self.head().as_deref() == Some(target)
+        }
+    }
+
+    /// Moves HEAD to a branch, or detaches it at a commit.
+    pub(super) fn switch_to(&self, target: &str, is_branch: bool) -> Result<(), OpError> {
+        if is_branch {
+            self.git.run(&self.root, ["checkout", "-q", target, "--"])?;
+        } else {
+            self.git.run(&self.root, ["checkout", "-q", "--detach", target])?;
+        }
+        Ok(())
     }
 
     pub(super) fn branch_rename(&self, old: &str, new: &str) -> Result<OpOutcome, OpError> {
@@ -132,8 +178,22 @@ impl Engine {
     pub(super) fn apply_ref_entry(&self, e: &JournalEntry, forward: bool) -> Result<(), OpError> {
         let a = &e.args;
         let r = &self.root;
-        let ref_of = |b: &str| format!("refs/heads/{b}");
         match (e.kind.as_str(), forward) {
+            // "Create and check out" entries: [name, sha, from, from_is_branch].
+            ("branch_create", false) if a.len() == 4 => {
+                if self.branch().as_deref() != Some(a[0].as_str()) || self.tip(&a[0]).as_deref() != Some(a[1].as_str()) {
+                    return Err(refs_moved());
+                }
+                self.switch_to(&a[2], a[3] == "true")?;
+                self.git.run(r, ["update-ref", "-d", ref_of(&a[0]).as_str()])?;
+            }
+            ("branch_create", true) if a.len() == 4 => {
+                if self.tip(&a[0]).is_some() || !self.is_at(&a[2], a[3] == "true") {
+                    return Err(refs_moved());
+                }
+                self.git.run(r, ["branch", a[0].as_str(), a[1].as_str()])?;
+                self.switch_to(&a[0], true)?;
+            }
             ("branch_create", true) | ("branch_delete", false) => {
                 if self.tip(&a[0]).is_some() {
                     return Err(refs_moved());
