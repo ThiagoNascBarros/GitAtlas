@@ -28,7 +28,7 @@ pub enum Mode {
 }
 
 const READ_ONLY_SUBCOMMANDS: &[&str] = &[
-    "rev-parse", "rev-list", "for-each-ref", "cat-file", "show", "diff", "status", "log", "ls-tree", "version",
+    "rev-parse", "rev-list", "for-each-ref", "cat-file", "show", "diff", "status", "log", "ls-tree", "ls-files", "version",
 ];
 
 /// Environment variables never forwarded to git (credentials of other tools,
