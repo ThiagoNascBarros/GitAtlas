@@ -181,7 +181,8 @@ export async function installDevMock(first: string, next = "hubbi") {
       case "rebase_todo": return [{ sha: "aaaaaaa1", action: "pick", message: "First change" }, { sha: "bbbbbbb2", action: "pick", message: "Second change" }, { sha: "ccccccc3", action: "pick", message: "Third change" }];
       case "op_rebase": case "op_rebase_continue": return { id: "r1", head: null };
       case "op_merge": case "op_resolve_with": case "op_merge_abort": case "op_resolve":
-      case "op_branch_create": case "op_branch_rename": case "op_branch_delete": case "op_checkout":
+      case "branch_plan": return { name: "feature/ACT-1010-Nova-branch", base: "develop" };
+      case "op_branch_create": case "op_branch_create_from": case "op_branch_rename": case "op_branch_delete": case "op_checkout":
         return { id: null, head: null };
       default: throw { code: "UNKNOWN_COMMAND", message: cmd };
     }
