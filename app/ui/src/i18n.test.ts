@@ -4,17 +4,6 @@ import { activeLocale, en, errorFix, errorText, initLocale, localeChoice, resolv
 import { ptBR } from "./locales/pt-BR";
 import { formatBytes, relativeTime } from "./features/shared-stash/logic";
 
-/** An in-memory localStorage; `fail` makes every call throw (private mode, blocked storage). */
-function fakeStorage(initial: Record<string, string> = {}, fail = false) {
-  const data = new Map(Object.entries(initial));
-  const guard = () => { if (fail) throw new Error("storage unavailable"); };
-  return {
-    data,
-    getItem: (k: string) => (guard(), data.get(k) ?? null),
-    setItem: (k: string, v: string) => { guard(); data.set(k, v); },
-  };
-}
-
 afterEach(() => {
   vi.unstubAllGlobals();
   setLocaleChoice("en");
@@ -84,44 +73,34 @@ describe("t, errorText and errorFix", () => {
   });
 });
 
-describe("locale persistence", () => {
-  it("restores a valid stored choice and sets <html lang>", () => {
+// The choice is saved in settings.json by the settings store, so the language module never touches storage.
+describe("locale choice", () => {
+  it("applies the chosen language and sets <html lang>", () => {
     const html = { lang: "en" };
-    vi.stubGlobal("localStorage", fakeStorage({ "ak.lang": "pt-BR" }));
     vi.stubGlobal("document", { documentElement: html });
-    initLocale();
+    setLocaleChoice("pt-BR");
     expect(localeChoice()).toBe("pt-BR");
     expect(activeLocale()).toBe("pt-BR");
     expect(html.lang).toBe("pt-BR");
   });
-  it("treats a missing or invalid value as system", () => {
+  it("system follows the system languages", () => {
     vi.stubGlobal("navigator", { languages: ["pt-BR", "en"], language: "pt-BR" });
-    vi.stubGlobal("localStorage", fakeStorage({ "ak.lang": "klingon" }));
-    initLocale();
+    setLocaleChoice("system");
     expect(localeChoice()).toBe("system");
     expect(activeLocale()).toBe("pt-BR");
-    vi.stubGlobal("localStorage", fakeStorage());
-    initLocale();
-    expect(localeChoice()).toBe("system");
+  });
+  it("initLocale re-applies the current choice and never reads or writes storage", () => {
+    vi.stubGlobal("localStorage", {
+      getItem: () => { throw new Error("storage must not be read"); },
+      setItem: () => { throw new Error("storage must not be written"); },
+    });
+    setLocaleChoice("pt-BR");
+    expect(() => initLocale()).not.toThrow();
+    expect(activeLocale()).toBe("pt-BR");
   });
   it("uses navigator.language when navigator.languages is empty", () => {
     vi.stubGlobal("navigator", { languages: [], language: "pt-PT" });
-    vi.stubGlobal("localStorage", fakeStorage());
-    initLocale();
-    expect(activeLocale()).toBe("pt-BR");
-  });
-  it("saves the choice", () => {
-    const storage = fakeStorage();
-    vi.stubGlobal("localStorage", storage);
-    setLocaleChoice("pt-BR");
-    expect(storage.data.get("ak.lang")).toBe("pt-BR");
-  });
-  it("survives a throwing storage", () => {
-    vi.stubGlobal("navigator", { languages: ["en-US"], language: "en-US" });
-    vi.stubGlobal("localStorage", fakeStorage({}, true));
-    expect(() => initLocale()).not.toThrow();
-    expect(localeChoice()).toBe("system");
-    expect(() => setLocaleChoice("pt-BR")).not.toThrow();
+    setLocaleChoice("system");
     expect(activeLocale()).toBe("pt-BR");
   });
 });

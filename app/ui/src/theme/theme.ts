@@ -42,11 +42,12 @@ export function setTheme(c: ThemeChoice) {
   apply(resolve(c));
 }
 
+/** Follows system changes and applies the current choice (set by the settings store before the first render). */
 export function initTheme() {
   matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
     if (choice() === "system") apply(resolve("system"));
   });
-  setTheme("system");
+  setTheme(choice());
 }
 
 export const laneColor = (slot: number) => active().tokens[`color.lane.${slot % 10}`];

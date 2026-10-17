@@ -6,8 +6,9 @@ import { CredentialsRequest, api, KeptSharedStash, OpOutcome, OpenedRepo, Shared
 import { listen } from "@tauri-apps/api/event";
 import { forgetGraphScroll, GraphView } from "./features/graph/GraphView";
 import { DiffView } from "./features/diff/DiffView";
-import { setTheme, themeChoice, ThemeChoice } from "./theme/theme";
-import { activeLocale, errorFix, errorText, initLocale, LocaleChoice, localeChoice, setLocaleChoice, t } from "./i18n";
+import { activeLocale, errorFix, errorText, initLocale, t } from "./i18n";
+import { SettingsPanel } from "./features/settings/SettingsPanel";
+import { changeZoom, loadPrefs } from "./settings/prefs";
 import { StashPanel } from "./features/stash/StashPanel";
 import { CommitMenu, CommitMenuState } from "./features/graph/CommitMenu";
 import { RebaseEditor } from "./features/rebase/RebaseEditor";
@@ -20,7 +21,7 @@ import { WipFile, WipPanel } from "./features/wip/WipPanel";
 import { changeCount, groupStatus } from "./features/wip/status";
 import { toTreeRows, visibleRows } from "./features/files/tree";
 import { markOpenStart, togglePerf } from "./features/graph/perf";
-import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Languages, Laptop, List, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Share2 } from "lucide-solid";
+import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Laptop, List, Redo2, Search, Settings, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Share2 } from "lucide-solid";
 import { Dynamic } from "solid-js/web";
 import { Splitter, storedSize } from "./features/split/Splitter";
 import { SharedStashPanel } from "./features/shared-stash/SharedStashPanel";
@@ -83,12 +84,15 @@ export function App() {
     void api.credentialsAnswer(id, value);
   };
   const [showJournal, setShowJournal] = createSignal(false);
+  const [showSettings, setShowSettings] = createSignal(false);
   const [watchFailed, setWatchFailed] = createSignal<number[]>([]);
   const [askName, setAskName] = createSignal<"branch" | "stash" | null>(null);
   const [showDetail, setShowDetail] = createSignal(false);
   let toastTimer: number | undefined;
   const tab = () => tabs()[active()];
-  const patch = (p: Partial<Tab>) => setTabs(tabs().map((x, i) => (i === active() ? { ...x, ...p } : x)));
+  // Each repository may override the global preferences: load the ones of the tab in front.
+  createEffect(on(() => tab()?.repo.repoId ?? null, (id) => void loadPrefs(id), { defer: true }));
+  const patch =(p: Partial<Tab>) => setTabs(tabs().map((x, i) => (i === active() ? { ...x, ...p } : x)));
   const patchRepo = (repoId: number, f: (x: Tab) => Partial<Tab>) =>
     setTabs(tabs().map((x) => (x.repo.repoId === repoId ? { ...x, ...f(x) } : x)));
 
@@ -285,6 +289,12 @@ export function App() {
       } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "p") {
         e.preventDefault();
         togglePerf();
+      } else if (e.ctrlKey && !typing && ["=", "+", "-", "0"].includes(e.key)) {
+        // Zoom: Ctrl+= / Ctrl+- in 10 % steps, Ctrl+0 back to 100 %.
+        e.preventDefault();
+        const id = tab()?.repo.repoId ?? null;
+        const change = e.key === "0" ? "reset" : { dir: e.key === "-" ? -1 : 1 } as const;
+        void changeZoom(id, change).catch((err: unknown) => fail(err));
       }
     });
   });
@@ -359,23 +369,9 @@ export function App() {
         </div>
         <div class="group">
           <button class="tool" disabled={!tab()} title={t("toolbar.journalTitle")} onClick={() => setShowJournal(true)}><History size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.journal")}</span></button>
-          <label class="theme-pick" title={t("toolbar.theme")}>
-            <SunMoon size={16} aria-hidden="true" /><span class="sr-only">{t("toolbar.theme")}</span>
-            <select value={themeChoice()} onChange={(e) => setTheme(e.currentTarget.value as ThemeChoice)}>
-              <option value="system">{t("theme.system")}</option>
-              <option value="atlas-dark">{t("theme.dark")}</option>
-              <option value="atlas-light">{t("theme.light")}</option>
-            </select>
-          </label>
-          <label class="theme-pick lang-pick" title={t("toolbar.language")}>
-            <Languages size={16} aria-hidden="true" /><span class="sr-only">{t("toolbar.language")}</span>
-            <span class="lang-code" aria-hidden="true">{activeLocale() === "pt-BR" ? "PT" : "EN"}</span>
-            <select value={localeChoice()} onChange={(e) => setLocaleChoice(e.currentTarget.value as LocaleChoice)}>
-              <option value="system">{t("lang.system")}</option>
-              <option value="en" lang="en">{t("lang.en")}</option>
-              <option value="pt-BR" lang="pt-BR">{t("lang.ptBR")}</option>
-            </select>
-          </label>
+          <button class="tool" title={t("toolbar.settingsTitle")} aria-haspopup="dialog" onClick={() => setShowSettings(true)}>
+            <Settings size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.settings")}</span>
+          </button>
         </div>
       </header>
 
@@ -665,6 +661,9 @@ export function App() {
           };
           return <NameDialog label={kind === "stash" ? t("stash.messagePrompt") : t("refmenu.namePrompt")} optional={kind === "stash"} onSubmit={done} onCancel={() => setAskName(null)} />;
         }}
+      </Show>
+      <Show when={showSettings()}>
+        <SettingsPanel repoId={tab()?.repo.repoId ?? null} repoName={tab()?.repo.name ?? null} onClose={() => setShowSettings(false)} />
       </Show>
       <Show when={showJournal() && tab()}>
         <JournalPanel repoId={tab()!.repo.repoId} onClose={() => setShowJournal(false)} onError={(e) => fail(e)} />
