@@ -64,8 +64,15 @@ pub fn plan(
         BranchKind::Hotfix => main,
         BranchKind::Free | BranchKind::Fix => "HEAD",
     };
+    // An empty composed part means there is no name yet: return "" rather than a bare prefix.
+    let tail = compose(template, ticket, title);
+    let name = if tail.is_empty() {
+        String::new()
+    } else {
+        format!("{}{tail}", kind.prefix())
+    };
     BranchPlan {
-        name: format!("{}{}", kind.prefix(), compose(template, ticket, title)),
+        name,
         base: base.to_owned(),
     }
 }
@@ -206,6 +213,25 @@ mod tests {
             BranchPlan {
                 name: "fix/ACT-2-bug".into(),
                 base: "HEAD".into()
+            }
+        );
+    }
+
+    #[test]
+    fn empty_name_stays_empty_even_with_a_prefix() {
+        let p = plan(
+            BranchKind::Feature,
+            "{ticket} {title}",
+            "",
+            "  ",
+            "main",
+            "develop",
+        );
+        assert_eq!(
+            p,
+            BranchPlan {
+                name: String::new(),
+                base: "develop".into()
             }
         );
     }
