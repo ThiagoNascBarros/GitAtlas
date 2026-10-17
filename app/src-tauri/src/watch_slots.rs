@@ -47,10 +47,13 @@ impl<W> WatcherSlots<W> {
         self.slots.remove(&id)
     }
 
+    /// Number of registered watchers (tests only: the app never needs it).
+    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.slots.len()
     }
 
+    #[cfg(test)]
     pub fn is_empty(&self) -> bool {
         self.slots.is_empty()
     }
