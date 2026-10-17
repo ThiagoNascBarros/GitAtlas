@@ -30,6 +30,7 @@ import { ShareDialog } from "./features/shared-stash/ShareDialog";
 import { basesIndex, formatBytes } from "./features/shared-stash/logic";
 import { forget, glyphOn, modelOf, reloadList } from "./features/shared-stash/model";
 import { isMenuKey, keepFocus } from "./features/overlay";
+import { ConfirmDialog } from "./components";
 
 interface Tab {
   repo: OpenedRepo; selected: number | null; sha: string | null; diffPath: string | null;
@@ -69,7 +70,8 @@ export function App() {
   const [commitMenu, setCommitMenu] = createSignal<CommitMenuState | null>(null);
   const [creds, setCreds] = createSignal<CredentialsRequest[]>([]);
   const [netBusy, setNetBusy] = createSignal<string | null>(null);
-  const [forceConfirm, setForceConfirm] = createSignal(false);
+  // Force push waiting for ConfirmDialog (it overwrites remote commits).
+  const [forcePending, setForcePending] = createSignal(false);
   async function net(action: "fetch" | "pull" | "push", force = false) {
     setNetBusy(action);
     const toast = { fetch: t("toast.fetched"), pull: t("toast.pulled"), push: force ? t("toast.forcePushed") : t("toast.pushed") }[action];
@@ -613,13 +615,19 @@ export function App() {
           </div>
           <Show when={errorDetail(error()!)}><button class="mini" onClick={() => setShowDetail(!showDetail())}>{t("err.details")}</button></Show>
           <Show when={error()!.code === "PUSH_REJECTED"}>
-            {/* Overwrites remote commits: needs a second click. */}
-            <button class="mini danger" onClick={() => { if (!forceConfirm()) return setForceConfirm(true); setForceConfirm(false); setError(null); void net("push", true); }}>
-              {forceConfirm() ? t("push.forceConfirm") : t("push.force")}
-            </button>
+            <button class="mini danger" onClick={() => setForcePending(true)}>{t("push.force")}</button>
           </Show>
           <button class="mini" onClick={() => setError(null)}>{t("err.dismiss")}</button>
         </div>
+      </Show>
+      <Show when={forcePending()}>
+        <ConfirmDialog
+          title={t("confirm.forcePush.title")}
+          message={t("confirm.forcePush.message")}
+          confirmLabel={t("push.force")}
+          onConfirm={() => { setForcePending(false); setError(null); void net("push", true); }}
+          onCancel={() => setForcePending(false)}
+        />
       </Show>
       <Show when={tab() && rebaseOnto()} keyed>
         {(onto) => <RebaseEditor repoId={tab()!.repo.repoId} onto={onto} label={/^[0-9a-f]{40}$/.test(onto) ? onto.slice(0, 7) : onto}
@@ -663,7 +671,8 @@ export function App() {
       </Show>
       <CrashBanner />
       <Show when={toast()}>
-        <output class="toast">
+        {/* UI-07: hovering keeps the toast (Undo stays reachable); it hides 4 s after the pointer leaves. */}
+        <output class="toast" onMouseEnter={() => clearTimeout(toastTimer)} onMouseLeave={() => { toastTimer = window.setTimeout(() => setToast(null), 4000); }}>
           <span>{toast()!.text}</span>
           <Show when={toast()!.undoId}>
             <button onClick={() => { const x = toast()!; setToast(null); void undo(x.repoId, x.undoId); }}>{t("toast.undo")}</button>

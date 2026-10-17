@@ -568,3 +568,37 @@ menu.ctx button:focus svg { color: currentColor; }
   .toolbar .lang-pick select { width: var(--ctl-h); padding: 0; background-image: none; }
   .lang-pick .lang-code { display: none; }
 }
+
+/* ---- Motion (UI-01): tokens from design-tokens §6. The reduced-motion rule near the top of this
+   file turns every animation and transition off; the Modal skips its close delay as well. ---- */
+:root { --ak-motion-fast: 90ms; --ak-motion-normal: 160ms; --ak-motion-ease: cubic-bezier(.2, 0, 0, 1); }
+@keyframes ak-fade { from { opacity: 0; } }
+@keyframes ak-rise { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes ak-pop { from { opacity: 0; transform: scale(.98); } }
+.modal-back { animation: ak-fade var(--ak-motion-normal) var(--ak-motion-ease); }
+.modal-back.closing { animation: none; opacity: 0; transition: opacity var(--ak-motion-fast) var(--ak-motion-ease); }
+.modal { animation: ak-pop var(--ak-motion-normal) var(--ak-motion-ease); }
+menu.ctx { animation: ak-rise var(--ak-motion-fast) var(--ak-motion-ease); }
+/* Toast: opacity only, its centring uses a transform. */
+.toast { animation: ak-fade var(--ak-motion-normal) var(--ak-motion-ease); }
+
+/* ---- Base modal (components/Modal.tsx): sizes, fixed header and footer, scrolling body ---- */
+.modal.modal-base { display: flex; flex-direction: column; padding: 0; overflow: hidden; max-height: 80vh; }
+.modal.modal-sm { width: min(400px, 92vw); }
+.modal.modal-md { width: min(560px, 92vw); }
+.modal.modal-lg { width: min(820px, 95vw); }
+.modal.modal-full { width: 96vw; height: 92vh; max-height: 92vh; }
+.modal-head { display: flex; align-items: center; gap: 8px; padding: 12px 12px 0 16px; flex: none; }
+.modal-head h2 { flex: 1; min-width: 0; margin: 0; font-size: 15px; }
+.modal-x { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: var(--r-s); color: var(--ak-color-text-secondary); }
+.modal-x:hover { background: color-mix(in srgb, currentColor 12%, transparent); color: var(--ak-color-text-primary); }
+.modal-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 12px 16px; }
+.modal-base .modal-foot { flex: none; margin: 0; padding: 12px 16px; border-top: 1px solid var(--ak-color-border-default); }
+.modal-base .modal-body > p:first-child { margin-top: 0; }
+
+/* ---- Menus: separators and destructive items (MOD-05) ---- */
+menu.ctx .menu-sep { height: 1px; margin: 4px 6px; padding: 0; background: var(--ak-color-border-default); }
+menu.ctx button.danger { color: var(--ak-color-status-deleted); }
+menu.ctx button.danger svg { color: currentColor; }
+.primary.danger { background: var(--ak-color-status-deleted); border-color: transparent; }
+.primary.danger:hover:not(:disabled) { background: var(--ak-color-status-deleted); filter: brightness(1.08); }

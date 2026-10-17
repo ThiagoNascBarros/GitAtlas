@@ -3,6 +3,7 @@ import { createResource, createSignal, For, Show } from "solid-js";
 import { api, StashInfo } from "../../api";
 import { t } from "../../i18n";
 import { isMenuKey } from "../overlay";
+import { ConfirmDialog } from "../../components";
 
 type Run = (op: () => Promise<unknown>, opts?: { graph?: boolean; toast?: string }) => Promise<boolean>;
 
@@ -11,13 +12,8 @@ export function StashPanel(props: { repoId: number; rev: number; run: Run; onMen
   const [list] = createResource(() => [props.repoId, props.rev] as const, ([id]) => api.stashList(id));
   const act = (action: "apply" | "pop" | "drop", index: number, toast: string) =>
     void props.run(() => api.stash(props.repoId, action, index), { graph: true, toast });
-  // Dropping asks for a second click (Undo can still bring it back).
-  const [confirmDrop, setConfirmDrop] = createSignal<string | null>(null);
-  const drop = (sha: string, index: number) => {
-    if (confirmDrop() !== sha) return setConfirmDrop(sha);
-    setConfirmDrop(null);
-    act("drop", index, t("toast.stashDropped"));
-  };
+  // Dropping goes through ConfirmDialog first (Undo can still bring it back).
+  const [dropping, setDropping] = createSignal<StashInfo | null>(null);
   /** Keyboard-opened menu (A-2): under the row, like the shared stash rows. */
   const menuAt = (s: StashInfo, row: Element) => {
     const b = row.getBoundingClientRect();
@@ -44,14 +40,23 @@ export function StashPanel(props: { repoId: number; rev: number; run: Run; onMen
                   }}>{s.message}</span>
                 <button class="mini" aria-describedby={`stash-msg-${s.sha}`} onClick={() => act("apply", s.index, t("toast.stashApplied"))}>{t("stash.apply")}</button>
                 <button class="mini" aria-describedby={`stash-msg-${s.sha}`} onClick={() => act("pop", s.index, t("toast.stashPopped"))}>{t("stash.pop")}</button>
-                <button class="mini" aria-describedby={`stash-msg-${s.sha}`} classList={{ danger: confirmDrop() === s.sha }} onClick={() => drop(s.sha, s.index)} onBlur={() => setConfirmDrop(null)}>
-                  {confirmDrop() === s.sha ? t("stash.dropConfirm") : t("stash.drop")}
-                </button>
+                <button class="mini" aria-describedby={`stash-msg-${s.sha}`} onClick={() => setDropping(s)}>{t("stash.drop")}</button>
               </li>
             )}
           </For>
         </ul>
       </details>
+      <Show when={dropping()}>
+        {(s) => (
+          <ConfirmDialog
+            title={t("confirm.dropStash.title")}
+            message={t("confirm.dropStash.message")}
+            confirmLabel={t("stash.drop")}
+            onConfirm={() => { const x = s(); setDropping(null); act("drop", x.index, t("toast.stashDropped")); }}
+            onCancel={() => setDropping(null)}
+          />
+        )}
+      </Show>
     </Show>
   );
 }
