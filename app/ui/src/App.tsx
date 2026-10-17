@@ -14,6 +14,8 @@ import { RebaseEditor } from "./features/rebase/RebaseEditor";
 import { RefMenu, RefMenuState } from "./features/refs/RefMenu";
 import { JournalPanel } from "./features/journal/JournalPanel";
 import { NameDialog } from "./features/refs/NameDialog";
+import { BranchDialog } from "./features/refs/BranchDialog";
+import { flowBranches } from "./features/refs/branchDialog.logic";
 import { filterRefs } from "./features/refs/filter";
 import { WipFile, WipPanel } from "./features/wip/WipPanel";
 import { changeCount, groupStatus } from "./features/wip/status";
@@ -640,12 +642,23 @@ export function App() {
       <Show when={tab() && askName()} keyed>
         {(kind) => {
           const repoId = tab()!.repo.repoId;
+          if (kind === "branch") {
+            const branches = tab()!.repo.refs.filter((r) => r.kind === "head").map((r) => r.name);
+            const flow = flowBranches(branches);
+            return (
+              <BranchDialog branches={branches} flowEnabled={flow.flowEnabled} main={flow.main} develop={flow.develop}
+                onSubmit={(b) => {
+                  setAskName(null);
+                  void run(() => api.branchCreateFrom(repoId, b.name, b.base, b.checkout), { graph: true, toast: t("toast.branchCreated", { s: b.name }) });
+                }}
+                onCancel={() => setAskName(null)} />
+            );
+          }
           const done = (v: string) => {
             setAskName(null);
-            if (kind === "stash") void run(() => api.stash(repoId, "push", 0, v || null), { graph: true, toast: t("toast.stashed") });
-            else void run(() => api.branchCreate(repoId, v, null), { graph: true, toast: t("toast.branchCreated", { s: v }) });
+            void run(() => api.stash(repoId, "push", 0, v || null), { graph: true, toast: t("toast.stashed") });
           };
-          return <NameDialog label={kind === "stash" ? t("stash.messagePrompt") : t("refmenu.namePrompt")} optional={kind === "stash"} onSubmit={done} onCancel={() => setAskName(null)} />;
+          return <NameDialog label={t("stash.messagePrompt")} optional onSubmit={done} onCancel={() => setAskName(null)} />;
         }}
       </Show>
       <Show when={showJournal() && tab()}>
