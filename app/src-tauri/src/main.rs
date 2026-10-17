@@ -628,32 +628,6 @@ async fn journal_prune(repo_id: u32, keep: usize, state: State<'_, AppState>) ->
     blocking(move || Ok(engine(&r)?.prune_journal(keep)?)).await
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn ignored_trees_at_any_depth_are_not_watched() {
-        let root = std::env::temp_dir().join(format!("atlas-watch-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        std::fs::create_dir_all(root.join("packages/a/node_modules/x")).unwrap();
-        std::fs::create_dir_all(root.join("packages/a/src")).unwrap();
-        std::fs::create_dir_all(root.join("docs")).unwrap();
-        std::fs::write(root.join(".gitignore"), "node_modules/\n").unwrap();
-        let init = std::process::Command::new("git").arg("-C").arg(&root).args(["init", "-q"]).status().unwrap();
-        assert!(init.success());
-        let ignored = ignored_dirs(&root);
-        assert!(ignored.contains("packages/a/node_modules/"), "{ignored:?}");
-        let mut dirs = Vec::new();
-        collect_watch_dirs(&root, &root, &ignored, &mut dirs);
-        let keys: Vec<String> = dirs.iter().map(|d| dir_key(&root, d)).collect();
-        assert!(keys.contains(&"packages/a/src/".to_owned()), "{keys:?}");
-        assert!(keys.contains(&"docs/".to_owned()), "{keys:?}");
-        assert!(!keys.iter().any(|k| k.contains("node_modules")), "{keys:?}");
-        let _ = std::fs::remove_dir_all(&root);
-    }
-}
-
 fn main() {
     // Started by Git/ssh as the askpass program: forward the prompt to the running app and exit.
     if let Ok(sock) = std::env::var(askpass::SOCK_ENV) {
@@ -718,4 +692,30 @@ fn main() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running AtlasGit");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ignored_trees_at_any_depth_are_not_watched() {
+        let root = std::env::temp_dir().join(format!("atlas-watch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("packages/a/node_modules/x")).unwrap();
+        std::fs::create_dir_all(root.join("packages/a/src")).unwrap();
+        std::fs::create_dir_all(root.join("docs")).unwrap();
+        std::fs::write(root.join(".gitignore"), "node_modules/\n").unwrap();
+        let init = std::process::Command::new("git").arg("-C").arg(&root).args(["init", "-q"]).status().unwrap();
+        assert!(init.success());
+        let ignored = ignored_dirs(&root);
+        assert!(ignored.contains("packages/a/node_modules/"), "{ignored:?}");
+        let mut dirs = Vec::new();
+        collect_watch_dirs(&root, &root, &ignored, &mut dirs);
+        let keys: Vec<String> = dirs.iter().map(|d| dir_key(&root, d)).collect();
+        assert!(keys.contains(&"packages/a/src/".to_owned()), "{keys:?}");
+        assert!(keys.contains(&"docs/".to_owned()), "{keys:?}");
+        assert!(!keys.iter().any(|k| k.contains("node_modules")), "{keys:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }
