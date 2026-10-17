@@ -75,7 +75,12 @@ impl OpError {
                 err
             }
             GitError::NotAllowed { .. } => Self::new("READ_ONLY", "This repository is open in read-only mode.", None),
-            other => Self::new("GIT_FAILED", &other.to_string(), None),
+            GitError::TimedOut { subcommand, .. } => Self::new(
+                "GIT_TIMEOUT",
+                &format!("git {subcommand} took too long and was stopped."),
+                Some("A hook, a credential prompt or the network may be waiting. Check it and try again."),
+            ),
+            other =>Self::new("GIT_FAILED", &other.to_string(), None),
         }
     }
 }
