@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 import { createEffect, createResource, createSignal, For, on, onMount, Show } from "solid-js";
+import { Dynamic } from "solid-js/web";
 import { api, MergePreview, RefInfo } from "../../api";
 import { t } from "../../i18n";
 import { menuKeys, useOverlay } from "../overlay";
+import { MENU_ICONS, MenuAction } from "../icons";
 import { NameDialog } from "./NameDialog";
-import { Check, GitBranchPlus, GitMerge, Pencil, Trash2, Upload } from "lucide-solid";
 
 /** `merge` opens straight on the merge dialog (used by drag-and-drop of a ref onto the current branch). */
 export interface RefMenuState { x: number; y: number; ref: RefInfo; merge?: boolean }
@@ -48,6 +49,8 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
     if (ask() === "new") go(() => api.branchCreate(props.repoId, n, r().name), t("toast.branchCreated", { s: n }));
     else go(() => api.branchRename(props.repoId, r().name, n), t("toast.branchRenamed", { s: n }));
   };
+  // Icon comes from the single table in features/icons.ts (one icon per action).
+  const icon = (action: MenuAction) => <Dynamic component={MENU_ICONS[action]} size={14} aria-hidden="true" />;
 
   return (
     <Show when={ask() !== "new" && ask() !== "rename"} fallback={
@@ -65,26 +68,26 @@ export function RefMenu(props: { repoId: number; menu: RefMenuState; run: Run; o
             // Hover moves focus, so mouse and keyboard share one highlighted item (as in native menus).
             onPointerOver={(e) => (e.target as HTMLElement).closest<HTMLButtonElement>("button:not(:disabled)")?.focus()}>
             <Show when={local() && !r().isHead}>
-              <li role="none"><button role="menuitem" onClick={() => go(() => api.checkout(props.repoId, r().name, true), t("toast.checkedOut", { s: r().name }))}><Check size={14} aria-hidden="true" />{t("refmenu.checkout")}</button></li>
+              <li role="none"><button role="menuitem" onClick={() => go(() => api.checkout(props.repoId, r().name, true), t("toast.checkedOut", { s: r().name }))}>{icon("ref.checkout")}{t("refmenu.checkout")}</button></li>
             </Show>
             <Show when={r().kind === "tag" || r().kind === "remote"}>
-              <li role="none"><button role="menuitem" onClick={() => go(() => api.checkout(props.repoId, r().name, false), t("toast.checkedOutDetached", { s: r().name }))}><Check size={14} aria-hidden="true" />{t("refmenu.checkoutDetached")}</button></li>
+              <li role="none"><button role="menuitem" onClick={() => go(() => api.checkout(props.repoId, r().name, false), t("toast.checkedOutDetached", { s: r().name }))}>{icon("ref.checkoutDetached")}{t("refmenu.checkoutDetached")}</button></li>
             </Show>
             <Show when={!r().isHead && r().kind !== "tag"}>
-              <li role="none"><button role="menuitem" onClick={() => setAsk("merge")}><GitMerge size={14} aria-hidden="true" />{t("refmenu.merge")}</button></li>
-              <li role="none"><button role="menuitem" onClick={() => go(() => api.rebase(props.repoId, r().name), t("toast.rebased"))}><GitMerge size={14} aria-hidden="true" />{t("refmenu.rebase")}</button></li>
-              <li role="none"><button role="menuitem" onClick={() => { props.onClose(); props.onRebase(r().name); }}><GitMerge size={14} aria-hidden="true" />{t("refmenu.rebaseInteractive")}</button></li>
+              <li role="none"><button role="menuitem" onClick={() => setAsk("merge")}>{icon("ref.merge")}{t("refmenu.merge")}</button></li>
+              <li role="none"><button role="menuitem" onClick={() => go(() => api.rebase(props.repoId, r().name), t("toast.rebased"))}>{icon("ref.rebase")}{t("refmenu.rebase")}</button></li>
+              <li role="none"><button role="menuitem" onClick={() => { props.onClose(); props.onRebase(r().name); }}>{icon("ref.rebaseInteractive")}{t("refmenu.rebaseInteractive")}</button></li>
             </Show>
             <Show when={r().kind === "tag"}>
-              <li role="none"><button role="menuitem" onClick={() => go(() => api.net(props.repoId, "push-tag", false, r().name), t("toast.tagPushed", { s: r().name }))}><Upload size={14} aria-hidden="true" />{t("refmenu.pushTag")}</button></li>
-              <li role="none"><button role="menuitem" onClick={() => go(() => api.history(props.repoId, "tag-delete", "", { name: r().name }), t("toast.tagDeleted", { s: r().name }))}><Trash2 size={14} aria-hidden="true" />{t("refmenu.deleteTag")}</button></li>
+              <li role="none"><button role="menuitem" onClick={() => go(() => api.net(props.repoId, "push-tag", false, r().name), t("toast.tagPushed", { s: r().name }))}>{icon("ref.pushTag")}{t("refmenu.pushTag")}</button></li>
+              <li role="none"><button role="menuitem" onClick={() => go(() => api.history(props.repoId, "tag-delete", "", { name: r().name }), t("toast.tagDeleted", { s: r().name }))}>{icon("ref.deleteTag")}{t("refmenu.deleteTag")}</button></li>
             </Show>
-            <li role="none"><button role="menuitem" onClick={() => setAsk("new")}><GitBranchPlus size={14} aria-hidden="true" />{t("refmenu.newBranch")}</button></li>
+            <li role="none"><button role="menuitem" onClick={() => setAsk("new")}>{icon("ref.newBranch")}{t("refmenu.newBranch")}</button></li>
             <Show when={local()}>
-              <li role="none"><button role="menuitem" onClick={() => setAsk("rename")}><Pencil size={14} aria-hidden="true" />{t("refmenu.rename")}</button></li>
+              <li role="none"><button role="menuitem" onClick={() => setAsk("rename")}>{icon("ref.rename")}{t("refmenu.rename")}</button></li>
               <Show when={!r().isHead}>
-                <li role="none"><button role="menuitem" onClick={() => go(() => api.branchDelete(props.repoId, r().name, false), t("toast.branchDeleted", { s: r().name }))}><Trash2 size={14} aria-hidden="true" />{t("refmenu.delete")}</button></li>
-                <li role="none"><button role="menuitem" onClick={() => go(() => api.branchDelete(props.repoId, r().name, true), t("toast.branchDeleted", { s: r().name }))}><Trash2 size={14} aria-hidden="true" />{t("refmenu.forceDelete")}</button></li>
+                <li role="none"><button role="menuitem" onClick={() => go(() => api.branchDelete(props.repoId, r().name, false), t("toast.branchDeleted", { s: r().name }))}>{icon("ref.delete")}{t("refmenu.delete")}</button></li>
+                <li role="none"><button role="menuitem" onClick={() => go(() => api.branchDelete(props.repoId, r().name, true), t("toast.branchDeleted", { s: r().name }))}>{icon("ref.forceDelete")}{t("refmenu.forceDelete")}</button></li>
               </Show>
             </Show>
           </menu>

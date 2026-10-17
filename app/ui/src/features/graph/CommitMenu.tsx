@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: Apache-2.0
 // Right-click menu on a graph row: history operations on that commit (Phase 4).
 import { createSignal, onMount, Show } from "solid-js";
-import { Check, Copy, ListOrdered, GitBranchPlus, Redo2, RotateCcw, Tag, Undo2 } from "lucide-solid";
+import { Dynamic } from "solid-js/web";
 import { api } from "../../api";
 import { t } from "../../i18n";
 import { menuKeys, useOverlay } from "../overlay";
+import { MENU_ICONS, MenuAction } from "../icons";
 import { NameDialog } from "../refs/NameDialog";
 
 export interface CommitMenuState { x: number; y: number; sha: string }
@@ -27,8 +28,9 @@ export function CommitMenu(props: { repoId: number; menu: CommitMenuState; run: 
     void props.run(op, { graph: true, toast });
   };
   const reset = (mode: string) => go(() => api.history(props.repoId, "reset", sha(), { mode }), t("toast.reset", { s: short() }));
-  const item = (icon: () => unknown, label: string, onClick: () => void) => (
-    <li role="none"><button role="menuitem" onClick={onClick} onMouseEnter={(e) => e.currentTarget.focus()}>{icon() as never}{label}</button></li>
+  // Icon comes from the single table in features/icons.ts (one icon per action).
+  const item = (action: MenuAction, label: string, onClick: () => void) => (
+    <li role="none"><button role="menuitem" onClick={onClick} onMouseEnter={(e) => e.currentTarget.focus()}><Dynamic component={MENU_ICONS[action]} size={14} aria-hidden="true" />{label}</button></li>
   );
 
   return (
@@ -44,16 +46,16 @@ export function CommitMenu(props: { repoId: number; menu: CommitMenuState; run: 
       <div class="menu-back">
         <button type="button" class="backdrop" tabindex="-1" aria-label={t("refmenu.cancel")} onClick={props.onClose} onContextMenu={(e) => { e.preventDefault(); props.onClose(); }} />
         <menu ref={menuEl} class="ctx" role="menu" aria-label={short()} style={{ left: `${pos().x}px`, top: `${pos().y}px` }} onKeyDown={menuKeys}>
-          {item(() => <Redo2 size={14} aria-hidden="true" />, t("commitmenu.cherryPick"), () => go(() => api.history(props.repoId, "cherry-pick", sha()), t("toast.cherryPicked", { s: short() })))}
-          {item(() => <Undo2 size={14} aria-hidden="true" />, t("commitmenu.revert"), () => go(() => api.history(props.repoId, "revert", sha()), t("toast.reverted", { s: short() })))}
-          {item(() => <RotateCcw size={14} aria-hidden="true" />, t("commitmenu.resetSoft"), () => reset("soft"))}
-          {item(() => <RotateCcw size={14} aria-hidden="true" />, t("commitmenu.resetMixed"), () => reset("mixed"))}
-          {item(() => <RotateCcw size={14} aria-hidden="true" />, t("commitmenu.resetHard"), () => reset("hard"))}
-          {item(() => <GitBranchPlus size={14} aria-hidden="true" />, t("commitmenu.newBranch"), () => setAsk("branch"))}
-          {item(() => <Tag size={14} aria-hidden="true" />, t("commitmenu.tag"), () => setAsk("tag"))}
-          {item(() => <ListOrdered size={14} aria-hidden="true" />, t("commitmenu.rebaseInteractive"), () => { props.onClose(); props.onRebase(sha()); })}
-          {item(() => <Check size={14} aria-hidden="true" />, t("commitmenu.checkout"), () => go(() => api.checkout(props.repoId, sha(), false), t("toast.checkedOutDetached", { s: short() })))}
-          {item(() => <Copy size={14} aria-hidden="true" />, t("commitmenu.copySha"), () => { props.onClose(); void navigator.clipboard?.writeText(sha()).then(() => props.onToast(t("toast.copied", { s: short() }))); })}
+          {item("commit.cherryPick", t("commitmenu.cherryPick"), () => go(() => api.history(props.repoId, "cherry-pick", sha()), t("toast.cherryPicked", { s: short() })))}
+          {item("commit.revert", t("commitmenu.revert"), () => go(() => api.history(props.repoId, "revert", sha()), t("toast.reverted", { s: short() })))}
+          {item("commit.resetSoft", t("commitmenu.resetSoft"), () => reset("soft"))}
+          {item("commit.resetMixed", t("commitmenu.resetMixed"), () => reset("mixed"))}
+          {item("commit.resetHard", t("commitmenu.resetHard"), () => reset("hard"))}
+          {item("commit.newBranch", t("commitmenu.newBranch"), () => setAsk("branch"))}
+          {item("commit.tag", t("commitmenu.tag"), () => setAsk("tag"))}
+          {item("commit.rebaseInteractive", t("commitmenu.rebaseInteractive"), () => { props.onClose(); props.onRebase(sha()); })}
+          {item("commit.checkout", t("commitmenu.checkout"), () => go(() => api.checkout(props.repoId, sha(), false), t("toast.checkedOutDetached", { s: short() })))}
+          {item("commit.copySha", t("commitmenu.copySha"), () => { props.onClose(); void navigator.clipboard?.writeText(sha()).then(() => props.onToast(t("toast.copied", { s: short() }))); })}
         </menu>
       </div>
     </Show>
