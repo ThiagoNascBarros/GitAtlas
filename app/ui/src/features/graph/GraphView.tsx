@@ -2,7 +2,7 @@
 // Canvas commit graph (roadmap T1.8): virtualized rows, lanes, refs,
 // selection, keyboard navigation and a hidden DOM mirror of the visible rows for assistive
 // technology (spec accessibility A-1: ARIA grid rows, aria-activedescendant).
-import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { api, FLAG_MERGE, GraphRow, OpenedRepo, RefInfo, RowMeta, SEG_IN, SEG_OUT, SEG_PASS, SharedStashInfo } from "../../api";
 import { activeTheme, laneColor, token } from "../../theme/theme";
 import { activeLocale, t } from "../../i18n";
@@ -12,10 +12,13 @@ const LANE_W = 16;
 const CHUNK = 200;
 /** Lanes shown before the graph column stops growing (the rest is clipped). */
 const MAX_VISIBLE_LANES = 12;
+/** Row chunks kept in memory per view (PERF-03): 20 x 200 rows, enough for the viewport and overscan. */
+const MAX_CACHED_CHUNKS = 20;
 import { perfEnabled, perfStats, recordDraw } from "./perf";
 import { columns, ColumnWidths, loadWidths, saveWidths, clampWidth, resolveWidths } from "./columns";
 import { menuAnchor, rowId, rowText, visibleRange, wipText } from "./a11y";
 import { isMenuKey } from "../overlay";
+import { ChunkCache } from "./chunkCache";
 
 /** Rows mirrored in the DOM above and below the viewport (spec accessibility §4.2: ≤ 20). */
 const OVERSCAN = 10;
@@ -27,6 +30,11 @@ const PENCIL = typeof Path2D === "undefined" ? null : new Path2D("M13 21h8 M21.1
 
 // Survives remounts (graph reload after commit/undo/redo) so the view keeps its place.
 const savedScroll = new Map<number, number>();
+
+/** Called when a tab closes: its scroll position is no longer needed (PERF-03). */
+export function forgetGraphScroll(repoId: number): void {
+  savedScroll.delete(repoId);
+}
 
 function refLabel(ref: RefInfo): string {
   if (ref.kind === "tag") return `◆ ${ref.name}`;
@@ -48,11 +56,18 @@ export function GraphView(props: {
 }) {
   let scroller!: HTMLDivElement;
   let canvas!: HTMLCanvasElement;
-  // Cache keys include the repo id: the component is reused across tabs.
-  const chunks = new Map<string, Chunk>();
+  // Cache keys include the repo id. The component is reused across tabs, so the cache is bounded
+  // (LRU) and emptied when the shown repo changes; the instance itself is discarded on unmount.
+  const chunks = new ChunkCache<Chunk>(MAX_CACHED_CHUNKS);
   const pending = new Set<string>();
+  let mounted = true;
   const [loadError, setLoadError] = createSignal<string | null>(null);
   const key = (chunk: number) => `${props.repo.repoId}:${chunk}`;
+  createEffect(on(() => props.repo.repoId, () => chunks.clear(), { defer: true }));
+  onCleanup(() => {
+    mounted = false;
+    chunks.clear();
+  });
   const [tick, setTick] = createSignal(0);
   const [size, setSize] = createSignal({ w: 800, h: 600 });
   const [scrollTop, setScrollTop] = createSignal(0);
@@ -90,7 +105,8 @@ export function GraphView(props: {
     const repoId = props.repo.repoId;
     Promise.all([api.window(repoId, start, CHUNK), api.rows(repoId, start, CHUNK)])
       .then(([w, meta]) => {
-        chunks.set(k, { rows: w.rows, meta });
+        // A chunk that arrives after the view moved to another repo (or unmounted) is dropped.
+        if (mounted && props.repo.repoId === repoId) chunks.set(k, { rows: w.rows, meta });
         setLoadError(null);
       })
       .catch((e) => {

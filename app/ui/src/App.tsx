@@ -4,7 +4,7 @@ import { createEffect, createMemo, createResource, createSignal, For, on, onClea
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { CredentialsRequest, api, KeptSharedStash, OpOutcome, OpenedRepo, SharedStashInfo, StashInfo, StatusReport, UiError } from "./api";
 import { listen } from "@tauri-apps/api/event";
-import { GraphView } from "./features/graph/GraphView";
+import { forgetGraphScroll, GraphView } from "./features/graph/GraphView";
 import { DiffView } from "./features/diff/DiffView";
 import { setTheme, themeChoice, ThemeChoice } from "./theme/theme";
 import { activeLocale, errorFix, errorText, initLocale, LocaleChoice, localeChoice, setLocaleChoice, t } from "./i18n";
@@ -260,6 +260,7 @@ export function App() {
 
   function closeTab(i: number) {
     forget(tabs()[i].repo.repoId);
+    forgetGraphScroll(tabs()[i].repo.repoId);
     api.close(tabs()[i].repo.repoId);
     setTabs(tabs().filter((_, k) => k !== i));
     setActive(Math.max(0, Math.min(active(), tabs().length - 1)));
