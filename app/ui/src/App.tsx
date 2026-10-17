@@ -13,6 +13,7 @@ import { CommitMenu, CommitMenuState } from "./features/graph/CommitMenu";
 import { RebaseEditor } from "./features/rebase/RebaseEditor";
 import { RefMenu, RefMenuState } from "./features/refs/RefMenu";
 import { JournalPanel } from "./features/journal/JournalPanel";
+import { CrashBanner } from "./features/diagnostics/CrashBanner";
 import { NameDialog } from "./features/refs/NameDialog";
 import { filterRefs } from "./features/refs/filter";
 import { WipFile, WipPanel } from "./features/wip/WipPanel";
@@ -651,6 +652,7 @@ export function App() {
       <Show when={showJournal() && tab()}>
         <JournalPanel repoId={tab()!.repo.repoId} onClose={() => setShowJournal(false)} onError={(e) => fail(e)} />
       </Show>
+      <CrashBanner />
       <Show when={toast()}>
         <output class="toast">
           <span>{toast()!.text}</span>

@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod askpass;
+mod diagnostics;
 mod settings;
 mod shared_stash;
 
@@ -25,7 +26,7 @@ use ak_gitcli::{Git, Mode};
 use notify::{RecursiveMode, Watcher};
 use serde::Serialize;
 use tauri::ipc::Response;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// What stays in memory per repository: topology and layout only. Commit text
 /// (summary, author) is fetched from Git for the rows on screen.
@@ -170,7 +171,7 @@ fn setup_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<SharedWatc
         .map(|o| String::from_utf8_lossy(&o.stdout).split('\0').map(|d| d.trim_end_matches('/').to_string()).collect())
         .unwrap_or_default();
     {
-        let mut g = w.lock().unwrap();
+        let mut g = diagnostics::lock(&w);
         g.watch(root, RecursiveMode::NonRecursive).ok()?;
         for e in std::fs::read_dir(root).ok()?.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
@@ -187,7 +188,7 @@ fn setup_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<SharedWatc
                 let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
                 if name != ".git" && !is_ignored_dir(&root, &name) {
                     if let Some(w) = weak.upgrade() {
-                        let _ = w.lock().unwrap().watch(&p, RecursiveMode::Recursive);
+                        let _ = diagnostics::lock(&w).watch(&p, RecursiveMode::Recursive);
                     }
                 }
             }
@@ -287,14 +288,14 @@ fn get_initial_path(state: State<'_, AppState>) -> Option<String> {
 
 #[tauri::command]
 async fn repo_open(path: String, app: AppHandle, state: State<'_, AppState>) -> Result<OpenedRepo> {
-    let (mut repo, opened) = load(&PathBuf::from(&path))?;
+    let (mut repo, opened) = load(&PathBuf::from(&path)).inspect_err(|e| tracing::warn!(code = e.code, "falha ao abrir repositório"))?;
     let repo_id = {
-        let mut id = state.next_id.lock().unwrap();
+        let mut id = diagnostics::lock(&state.next_id);
         *id += 1;
         *id
     };
     repo._watcher = start_watcher(app, repo_id, repo.reader.root());
-    state.repos.lock().unwrap().insert(repo_id, Arc::new(repo));
+    diagnostics::lock(&state.repos).insert(repo_id, Arc::new(repo));
     Ok(OpenedRepo { repo_id, ..opened })
 }
 
@@ -304,18 +305,18 @@ async fn repo_refresh(repo_id: u32, app: AppHandle, state: State<'_, AppState>) 
     let root = get(&state, repo_id)?.reader.root().to_path_buf();
     let (mut repo, opened) = load(&root)?;
     repo._watcher = start_watcher(app, repo_id, &root);
-    state.repos.lock().unwrap().insert(repo_id, Arc::new(repo));
+    diagnostics::lock(&state.repos).insert(repo_id, Arc::new(repo));
     Ok(OpenedRepo { repo_id, ..opened })
 }
 
 #[tauri::command]
 fn repo_close(repo_id: u32, state: State<'_, AppState>) {
-    state.repos.lock().unwrap().remove(&repo_id);
-    state.shared_tab_open.lock().unwrap().remove(&repo_id);
+    diagnostics::lock(&state.repos).remove(&repo_id);
+    diagnostics::lock(&state.shared_tab_open).remove(&repo_id);
 }
 
 fn get(state: &AppState, repo_id: u32) -> Result<Arc<Repo>> {
-    state.repos.lock().unwrap().get(&repo_id).cloned().ok_or_else(|| UiError::new("UNKNOWN_REPO", repo_id))
+    diagnostics::lock(&state.repos).get(&repo_id).cloned().ok_or_else(|| UiError::new("UNKNOWN_REPO", repo_id))
 }
 
 fn engine(r: &Repo) -> Result<&Engine> {
@@ -578,11 +579,17 @@ fn main() {
         std::process::exit(askpass::client(&sock));
     }
     let initial_path = std::env::args_os().nth(1).map(PathBuf::from);
+    let diag = diagnostics::init();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(AppState { initial_path, ..Default::default() })
+        .manage(diag)
         .invoke_handler(tauri::generate_handler![
             get_initial_path,
+            diagnostics_status,
+            diagnostics_dismiss_crash,
+            diagnostics_open_log_dir,
             repo_open,
             repo_refresh,
             repo_close,
@@ -634,6 +641,28 @@ fn main() {
             shared_stash::shared_stash_settings_get,
             shared_stash::shared_stash_settings_set
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running AtlasGit");
+        .build(tauri::generate_context!())
+        .expect("error while building AtlasGit")
+        .run(|app, event| {
+            if let tauri::RunEvent::Exit = event {
+                app.state::<diagnostics::Diagnostics>().finish();
+            }
+        });
+}
+
+#[tauri::command]
+fn diagnostics_status(diag: State<'_, diagnostics::Diagnostics>) -> diagnostics::DiagnosticsStatus {
+    diag.status()
+}
+
+#[tauri::command]
+fn diagnostics_dismiss_crash(diag: State<'_, diagnostics::Diagnostics>) {
+    diag.dismiss_crash();
+}
+
+#[tauri::command]
+fn diagnostics_open_log_dir(app: AppHandle, diag: State<'_, diagnostics::Diagnostics>) -> Result<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let dir = diag.status().log_dir;
+    app.opener().open_path(dir, None::<&str>).map_err(|e| UiError::new("OPEN_FAILED", e))
 }

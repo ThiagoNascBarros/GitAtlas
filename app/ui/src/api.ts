@@ -43,12 +43,19 @@ export interface SharedStashListing {
   stashes: SharedStashInfo[]; kept: KeptSharedStash[]; remotes: RemoteStatus[]; defaultRemote: string | null; fetchMode: FetchMode;
 }
 export interface FetchModeSettings { effective: FetchMode; repo: FetchMode | null; global: FetchMode | null }
+/** What the shell recorded about earlier sessions (PERF-12). */
+export interface DiagnosticsStatus {
+  logDir: string; uncleanPreviousExit: boolean; previousCrash: { details: string } | null;
+}
 export interface JournalEntry {
   id: string; time: number; kind: string; summary: string; undone: boolean; commands: string[]; paths: string[]; untracked: string[];
 }
 
 export const api = {
   initialPath: () => invoke<string | null>("get_initial_path"),
+  diagnostics: () => invoke<DiagnosticsStatus>("diagnostics_status"),
+  dismissCrash: () => invoke<void>("diagnostics_dismiss_crash"),
+  openLogDir: () => invoke<void>("diagnostics_open_log_dir"),
   open: (path: string) => invoke<OpenedRepo>("repo_open", { path }),
   refresh: (repoId: number) => invoke<OpenedRepo>("repo_refresh", { repoId }),
   status: (repoId: number) => invoke<StatusReport>("status_get", { repoId }),
