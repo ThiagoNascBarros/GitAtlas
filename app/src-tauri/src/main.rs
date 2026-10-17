@@ -73,6 +73,11 @@ impl From<OpError> for UiError {
 
 type Result<T> = std::result::Result<T, UiError>;
 
+/// Runs blocking git work off the async runtime (PERF-05): a slow read must not hold a runtime thread.
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
+    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| UiError::new("READ_FAILED", e))?
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RefInfo {
@@ -287,13 +292,14 @@ fn get_initial_path(state: State<'_, AppState>) -> Option<String> {
 
 #[tauri::command]
 async fn repo_open(path: String, app: AppHandle, state: State<'_, AppState>) -> Result<OpenedRepo> {
-    let (mut repo, opened) = load(&PathBuf::from(&path))?;
+    let (mut repo, opened) = blocking(move || load(&PathBuf::from(&path))).await?;
     let repo_id = {
         let mut id = state.next_id.lock().unwrap();
         *id += 1;
         *id
     };
-    repo._watcher = start_watcher(app, repo_id, repo.reader.root());
+    let root = repo.reader.root().to_path_buf();
+    repo._watcher = blocking(move || Ok(start_watcher(app, repo_id, &root))).await?;
     state.repos.lock().unwrap().insert(repo_id, Arc::new(repo));
     Ok(OpenedRepo { repo_id, ..opened })
 }
@@ -302,8 +308,9 @@ async fn repo_open(path: String, app: AppHandle, state: State<'_, AppState>) -> 
 #[tauri::command]
 async fn repo_refresh(repo_id: u32, app: AppHandle, state: State<'_, AppState>) -> Result<OpenedRepo> {
     let root = get(&state, repo_id)?.reader.root().to_path_buf();
-    let (mut repo, opened) = load(&root)?;
-    repo._watcher = start_watcher(app, repo_id, &root);
+    let watch_root = root.clone();
+    let (mut repo, opened) = blocking(move || load(&root)).await?;
+    repo._watcher = blocking(move || Ok(start_watcher(app, repo_id, &watch_root))).await?;
     state.repos.lock().unwrap().insert(repo_id, Arc::new(repo));
     Ok(OpenedRepo { repo_id, ..opened })
 }
@@ -334,18 +341,24 @@ async fn graph_rows(repo_id: u32, start: u32, count: u32, state: State<'_, AppSt
     let r = get(&state, repo_id)?;
     let s = (start as usize).min(r.shas.len());
     let e = (s + count.min(2000) as usize).min(r.shas.len());
-    let wanted: Vec<&str> = r.shas[s..e].iter().map(String::as_str).collect();
-    r.reader.rows_text(&wanted).map_err(|e| UiError::new("READ_FAILED", e))
+    let wanted: Vec<String> = r.shas[s..e].to_vec();
+    blocking(move || {
+        let wanted: Vec<&str> = wanted.iter().map(String::as_str).collect();
+        r.reader.rows_text(&wanted).map_err(|e| UiError::new("READ_FAILED", e))
+    })
+    .await
 }
 
 #[tauri::command]
 async fn commit_details(repo_id: u32, sha: String, state: State<'_, AppState>) -> Result<CommitDetails> {
-    get(&state, repo_id)?.reader.commit_details(&sha).map_err(|e| UiError::new("READ_FAILED", e))
+    let r = get(&state, repo_id)?;
+    blocking(move || r.reader.commit_details(&sha).map_err(|e| UiError::new("READ_FAILED", e))).await
 }
 
 #[tauri::command]
 async fn diff_file(repo_id: u32, sha: String, path: String, state: State<'_, AppState>) -> Result<String> {
-    get(&state, repo_id)?.reader.file_diff(&sha, &path).map_err(|e| UiError::new("READ_FAILED", e))
+    let r = get(&state, repo_id)?;
+    blocking(move || r.reader.file_diff(&sha, &path).map_err(|e| UiError::new("READ_FAILED", e))).await
 }
 
 #[tauri::command]
@@ -356,18 +369,19 @@ async fn diff_worktree(
     untracked: bool,
     state: State<'_, AppState>,
 ) -> Result<String> {
-    get(&state, repo_id)?
-        .reader
-        .worktree_diff(&path, staged, untracked)
-        .map_err(|e| UiError::new("READ_FAILED", e))
+    let r = get(&state, repo_id)?;
+    blocking(move || r.reader.worktree_diff(&path, staged, untracked).map_err(|e| UiError::new("READ_FAILED", e))).await
 }
 
 #[tauri::command]
 async fn status_get(repo_id: u32, state: State<'_, AppState>) -> Result<StatusWithMerge> {
     let r = get(&state, repo_id)?;
-    let status = r.reader.status().map_err(|e| UiError::new("READ_FAILED", e))?;
-    let in_progress = engine(&r)?.in_progress();
-    Ok(StatusWithMerge { status, merging: in_progress.is_some(), in_progress })
+    blocking(move || {
+        let status = r.reader.status().map_err(|e| UiError::new("READ_FAILED", e))?;
+        let in_progress = engine(&r)?.in_progress();
+        Ok(StatusWithMerge { status, merging: in_progress.is_some(), in_progress })
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -382,39 +396,39 @@ struct StatusWithMerge {
 #[tauri::command]
 async fn merge_preview(repo_id: u32, source: String, state: State<'_, AppState>) -> Result<MergePreview> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.merge_preview(&source)?)
+    blocking(move || Ok(engine(&r)?.merge_preview(&source)?)).await
 }
 
 #[tauri::command]
 async fn stash_list(repo_id: u32, state: State<'_, AppState>) -> Result<Vec<StashInfo>> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.stashes()?)
+    blocking(move || Ok(engine(&r)?.stashes()?)).await
 }
 
 #[tauri::command]
 async fn op_merge(repo_id: u32, source: String, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Merge { source })
+    run_op(&state, repo_id, Operation::Merge { source }).await
 }
 
 #[tauri::command]
 async fn op_merge_abort(repo_id: u32, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::MergeAbort)
+    run_op(&state, repo_id, Operation::MergeAbort).await
 }
 
 #[tauri::command]
 async fn conflict_versions(repo_id: u32, path: String, state: State<'_, AppState>) -> Result<ConflictVersions> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.conflict_versions(&path)?)
+    blocking(move || Ok(engine(&r)?.conflict_versions(&path)?)).await
 }
 
 #[tauri::command]
 async fn op_resolve_with(repo_id: u32, path: String, content: String, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::ResolveWith { path, content })
+    run_op(&state, repo_id, Operation::ResolveWith { path, content }).await
 }
 
 #[tauri::command]
 async fn op_resolve(repo_id: u32, path: String, theirs: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::ResolveConflict { path, theirs })
+    run_op(&state, repo_id, Operation::ResolveConflict { path, theirs }).await
 }
 
 #[tauri::command]
@@ -425,22 +439,22 @@ async fn op_stash(repo_id: u32, action: String, index: usize, message: Option<St
         "pop" => Operation::StashPop { index },
         _ => Operation::StashDrop { index },
     };
-    run_op(&state, repo_id, op)
+    run_op(&state, repo_id, op).await
 }
 
-fn run_op(state: &AppState, repo_id: u32, op: Operation) -> Result<OpOutcome> {
+async fn run_op(state: &AppState, repo_id: u32, op: Operation) -> Result<OpOutcome> {
     let r = get(state, repo_id)?;
-    Ok(engine(&r)?.run(&op)?)
+    blocking(move || Ok(engine(&r)?.run(&op)?)).await
 }
 
 #[tauri::command]
 async fn op_stage(repo_id: u32, paths: Vec<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Stage { paths })
+    run_op(&state, repo_id, Operation::Stage { paths }).await
 }
 
 #[tauri::command]
 async fn op_unstage(repo_id: u32, paths: Vec<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Unstage { paths })
+    run_op(&state, repo_id, Operation::Unstage { paths }).await
 }
 
 #[tauri::command]
@@ -451,37 +465,37 @@ async fn op_stage_hunk(
     unstage: bool,
     state: State<'_, AppState>,
 ) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::StageHunk { path, hunk, unstage })
+    run_op(&state, repo_id, Operation::StageHunk { path, hunk, unstage }).await
 }
 
 #[tauri::command]
 async fn op_discard(repo_id: u32, paths: Vec<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Discard { paths })
+    run_op(&state, repo_id, Operation::Discard { paths }).await
 }
 
 #[tauri::command]
 async fn op_commit(repo_id: u32, message: String, amend: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Commit { message, amend })
+    run_op(&state, repo_id, Operation::Commit { message, amend }).await
 }
 
 #[tauri::command]
 async fn op_branch_create(repo_id: u32, name: String, at: Option<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::BranchCreate { name, at })
+    run_op(&state, repo_id, Operation::BranchCreate { name, at }).await
 }
 
 #[tauri::command]
 async fn op_branch_rename(repo_id: u32, old: String, new: String, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::BranchRename { old, new })
+    run_op(&state, repo_id, Operation::BranchRename { old, new }).await
 }
 
 #[tauri::command]
 async fn op_branch_delete(repo_id: u32, name: String, force: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::BranchDelete { name, force })
+    run_op(&state, repo_id, Operation::BranchDelete { name, force }).await
 }
 
 #[tauri::command]
 async fn op_checkout(repo_id: u32, target: String, is_branch: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Checkout { target, is_branch })
+    run_op(&state, repo_id, Operation::Checkout { target, is_branch }).await
 }
 
 /// Fetch, pull or push. Runs off the async runtime (it can wait on the network and on the user
@@ -529,47 +543,47 @@ async fn op_history(repo_id: u32, action: String, sha: String, mode: Option<Stri
         "tag-delete" => Operation::TagDelete { name: name.unwrap_or_default() },
         _ => return Err(UiError::new("GIT_FAILED", "unknown history action")),
     };
-    run_op(&state, repo_id, op)
+    run_op(&state, repo_id, op).await
 }
 
 #[tauri::command]
 async fn rebase_todo(repo_id: u32, onto: String, state: State<'_, AppState>) -> Result<Vec<TodoItem>> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.rebase_todo(&onto)?)
+    blocking(move || Ok(engine(&r)?.rebase_todo(&onto)?)).await
 }
 
 #[tauri::command]
 async fn op_rebase(repo_id: u32, onto: String, todo: Option<Vec<TodoItem>>, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Rebase { onto, todo })
+    run_op(&state, repo_id, Operation::Rebase { onto, todo }).await
 }
 
 #[tauri::command]
 async fn op_rebase_continue(repo_id: u32, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::RebaseContinue)
+    run_op(&state, repo_id, Operation::RebaseContinue).await
 }
 
 #[tauri::command]
 async fn op_undo(repo_id: u32, id: String, state: State<'_, AppState>) -> Result<OpOutcome> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.undo(&id)?)
+    blocking(move || Ok(engine(&r)?.undo(&id)?)).await
 }
 
 #[tauri::command]
 async fn op_redo(repo_id: u32, state: State<'_, AppState>) -> Result<OpOutcome> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.redo_last()?)
+    blocking(move || Ok(engine(&r)?.redo_last()?)).await
 }
 
 #[tauri::command]
 async fn journal_list(repo_id: u32, state: State<'_, AppState>) -> Result<Vec<JournalEntry>> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.journal())
+    blocking(move || Ok(engine(&r)?.journal())).await
 }
 
 #[tauri::command]
 async fn journal_prune(repo_id: u32, keep: usize, state: State<'_, AppState>) -> Result<usize> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.prune_journal(keep)?)
+    blocking(move || Ok(engine(&r)?.prune_journal(keep)?)).await
 }
 
 fn main() {
