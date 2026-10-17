@@ -412,6 +412,34 @@ async fn op_resolve_with(repo_id: u32, path: String, content: String, state: Sta
     run_op(&state, repo_id, Operation::ResolveWith { path, content })
 }
 
+/// Opens a file of the repository in an external tool, without waiting for it to close.
+/// `ATLASGIT_EDITOR` (if set) is run with the file as its argument; otherwise the desktop
+/// default application is used (`xdg-open`). Terminal editors need `ATLASGIT_EDITOR` to be a
+/// wrapper that opens a terminal, since the app has no terminal of its own.
+#[tauri::command]
+async fn open_external(repo_id: u32, path: String, state: State<'_, AppState>) -> Result<()> {
+    let r = get(&state, repo_id)?;
+    let root = engine(&r)?.root().to_path_buf();
+    let rel = Path::new(&path);
+    if path.is_empty() || !rel.components().all(|c| matches!(c, std::path::Component::Normal(_))) {
+        return Err(UiError::new("INVALID_PATH", "That path is not inside the repository."));
+    }
+    let program = match std::env::var("ATLASGIT_EDITOR") {
+        Ok(cmd) if !cmd.trim().is_empty() => cmd,
+        _ => "xdg-open".to_owned(),
+    };
+    let mut child = std::process::Command::new(&program)
+        .arg(root.join(rel))
+        .current_dir(&root)
+        .spawn()
+        .map_err(|e| UiError::new("EXTERNAL_TOOL_FAILED", format!("Could not start {program}: {e}")))?;
+    // Reap the child in the background so it does not linger as a zombie.
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
+}
+
 #[tauri::command]
 async fn op_resolve(repo_id: u32, path: String, theirs: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
     run_op(&state, repo_id, Operation::ResolveConflict { path, theirs })
@@ -607,6 +635,7 @@ fn main() {
             op_merge_abort,
             op_resolve,
             conflict_versions,
+            open_external,
             op_resolve_with,
             op_stash,
             op_history,
