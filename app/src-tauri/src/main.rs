@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod askpass;
+mod prefs;
 mod settings;
 mod shared_stash;
 
@@ -632,7 +633,9 @@ fn main() {
             shared_stash::shared_stash_tab_open,
             shared_stash::shared_stash_cancel,
             shared_stash::shared_stash_settings_get,
-            shared_stash::shared_stash_settings_set
+            shared_stash::shared_stash_settings_set,
+            prefs::prefs_get,
+            prefs::prefs_set
         ])
         .run(tauri::generate_context!())
         .expect("error while running AtlasGit");
