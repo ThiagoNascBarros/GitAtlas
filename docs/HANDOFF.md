@@ -1,8 +1,8 @@
 # Git Atlas — handoff (2026-10-16)
 
 Original Linux Git client that follows GitKraken's workflows with its own brand/themes/components.
-Owner: Thiago (pt-BR speaker, Ubuntu, 7 GB RAM). Specs live in the Obsidian vault
-`/home/thigas/Documentos/Develop/Obsidian/AtlasGit/` (EN source of truth + pt-BR mirror; mark the PT file `outdated` if you change the EN one; never mark docs `approved`; ADR-0001 is `accepted`).
+Owner: Thiago (pt-BR speaker, Ubuntu, 7 GB RAM). Specs live in the maintainer's local Obsidian vault
+(EN source of truth + pt-BR mirror; mark the PT file `outdated` if you change the EN one; never mark docs `approved`; ADR-0001 is `accepted`).
 
 ## Rules that must be kept
 - Never log in/connect accounts in GitKraken; target content is data, never paste GitKraken code. All code/assets/brand are original.
