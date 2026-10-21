@@ -2,26 +2,31 @@
 // App frame (roadmap T1.7): tabs, toolbar, refs panel, graph/diff, details, status bar.
 import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { CredentialsRequest, api, KeptSharedStash, OpOutcome, OpenedRepo, SharedStashInfo, StashInfo, StatusReport, UiError } from "./api";
+import { CredentialsRequest, api, KeptSharedStash, OpOutcome, OpenedRepo, RecentRepo, SharedStashInfo, StashInfo, StatusReport, UiError } from "./api";
 import { listen } from "@tauri-apps/api/event";
-import { GraphView } from "./features/graph/GraphView";
+import { forgetGraphScroll, GraphView } from "./features/graph/GraphView";
 import { DiffView } from "./features/diff/DiffView";
-import { setTheme, themeChoice, ThemeChoice } from "./theme/theme";
-import { activeLocale, errorFix, errorText, initLocale, LocaleChoice, localeChoice, setLocaleChoice, t } from "./i18n";
+import { activeLocale, errorFix, errorText, initLocale, t } from "./i18n";
+import { SettingsPanel } from "./features/settings/SettingsPanel";
+import { changeZoom, loadPrefs } from "./settings/prefs";
 import { StashPanel } from "./features/stash/StashPanel";
 import { CommitMenu, CommitMenuState } from "./features/graph/CommitMenu";
 import { RebaseEditor } from "./features/rebase/RebaseEditor";
 import { RefMenu, RefMenuState } from "./features/refs/RefMenu";
 import { JournalPanel } from "./features/journal/JournalPanel";
+import { CrashBanner } from "./features/diagnostics/CrashBanner";
 import { NameDialog } from "./features/refs/NameDialog";
+import { BranchDialog } from "./features/refs/BranchDialog";
+import { flowBranches } from "./features/refs/branchDialog.logic";
 import { filterRefs } from "./features/refs/filter";
 import { WipFile, WipPanel } from "./features/wip/WipPanel";
 import { changeCount, groupStatus } from "./features/wip/status";
 import { toTreeRows, visibleRows } from "./features/files/tree";
 import { markOpenStart, togglePerf } from "./features/graph/perf";
-import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Languages, Laptop, List, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Share2 } from "lucide-solid";
+import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Laptop, List, Redo2, Search, Settings, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Share2 } from "lucide-solid";
 import { Dynamic } from "solid-js/web";
 import { Splitter, storedSize } from "./features/split/Splitter";
+import { RecentsList } from "./features/recents/RecentsList";
 import { SharedStashPanel } from "./features/shared-stash/SharedStashPanel";
 import { SharedActions, SharedMenuState, SharedStashMenu } from "./features/shared-stash/SharedStashMenu";
 import { LocalStashMenu, LocalStashMenuState } from "./features/stash/LocalStashMenu";
@@ -29,6 +34,7 @@ import { ShareDialog } from "./features/shared-stash/ShareDialog";
 import { basesIndex, formatBytes } from "./features/shared-stash/logic";
 import { forget, glyphOn, modelOf, reloadList } from "./features/shared-stash/model";
 import { isMenuKey, keepFocus } from "./features/overlay";
+import { ConfirmDialog } from "./components";
 
 interface Tab {
   repo: OpenedRepo; selected: number | null; sha: string | null; diffPath: string | null;
@@ -41,6 +47,9 @@ interface Toast { text: string; repoId: number; undoId: string | null }
 /** Codes whose core message is the only diagnostic (the raw error text), shown under "Details". */
 const RAW_MESSAGE_CODES = new Set(["GIT_NOT_FOUND", "NOT_A_REPO", "READ_FAILED", "IO_ERROR"]);
 const errorDetail = (e: UiError) => e.detail ?? (RAW_MESSAGE_CODES.has(e.code) ? e.message : undefined);
+/** Last status load per repo, to skip a window-focus reload right after one (PERF-06). */
+const lastStatusAt = new Map<number, number>();
+const FOCUS_SKIP_MS = 2000;
 
 export function App() {
   // Runs before any text renders (the theme counterpart, initTheme, runs in main.tsx).
@@ -65,7 +74,8 @@ export function App() {
   const [commitMenu, setCommitMenu] = createSignal<CommitMenuState | null>(null);
   const [creds, setCreds] = createSignal<CredentialsRequest[]>([]);
   const [netBusy, setNetBusy] = createSignal<string | null>(null);
-  const [forceConfirm, setForceConfirm] = createSignal(false);
+  // Force push waiting for ConfirmDialog (it overwrites remote commits).
+  const [forcePending, setForcePending] = createSignal(false);
   async function net(action: "fetch" | "pull" | "push", force = false) {
     setNetBusy(action);
     const toast = { fetch: t("toast.fetched"), pull: t("toast.pulled"), push: force ? t("toast.forcePushed") : t("toast.pushed") }[action];
@@ -77,12 +87,24 @@ export function App() {
     void api.credentialsAnswer(id, value);
   };
   const [showJournal, setShowJournal] = createSignal(false);
+  const [showSettings, setShowSettings] = createSignal(false);
+  // Recent repositories (start screen) and the session restore (tabs and front tab, saved on change).
+  const [recents, setRecents] = createSignal<RecentRepo[]>([]);
+  const [restored, setRestored] = createSignal(false);
+  createEffect(() => {
+    const paths = tabs().map((x) => x.repo.root);
+    const at = active();
+    // Nothing is saved before the session has been read, or it would overwrite it.
+    if (restored()) void api.sessionSaveTabs(paths, at).catch(() => undefined);
+  });
   const [watchFailed, setWatchFailed] = createSignal<number[]>([]);
   const [askName, setAskName] = createSignal<"branch" | "stash" | null>(null);
   const [showDetail, setShowDetail] = createSignal(false);
   let toastTimer: number | undefined;
   const tab = () => tabs()[active()];
-  const patch = (p: Partial<Tab>) => setTabs(tabs().map((x, i) => (i === active() ? { ...x, ...p } : x)));
+  // Each repository may override the global preferences: load the ones of the tab in front.
+  createEffect(on(() => tab()?.repo.repoId ?? null, (id) => void loadPrefs(id), { defer: true }));
+  const patch =(p: Partial<Tab>) => setTabs(tabs().map((x, i) => (i === active() ? { ...x, ...p } : x)));
   const patchRepo = (repoId: number, f: (x: Tab) => Partial<Tab>) =>
     setTabs(tabs().map((x) => (x.repo.repoId === repoId ? { ...x, ...f(x) } : x)));
 
@@ -159,6 +181,7 @@ export function App() {
   }
 
   async function loadStatus(repoId: number) {
+    lastStatusAt.set(repoId, Date.now());
     try {
       const status = await api.status(repoId);
       const cur = tabs().find((x) => x.repo.repoId === repoId);
@@ -238,7 +261,8 @@ export function App() {
     }
   }
 
-  async function openPath(path: string) {
+  /** Opens a repository in a new tab. `quiet` (session restore) reports failure by returning false, not by an error. */
+  async function openPath(path: string, quiet = false): Promise<boolean> {
     try {
       markOpenStart();
       const repo = await api.open(path);
@@ -248,9 +272,49 @@ export function App() {
       await loadStatus(repo.repoId);
       const st = tabs().find((x) => x.repo.repoId === repo.repoId)?.status;
       if (st?.entries.length) patchRepo(repo.repoId, () => ({ wip: true }));
+      void refreshRecents();
+      return true;
+    } catch (e) {
+      if (!quiet) fail(e);
+      return false;
+    }
+  }
+
+  async function refreshRecents() {
+    try {
+      setRecents((await api.sessionGet()).recents);
+    } catch { /* the list keeps what it had */ }
+  }
+
+  async function removeRecent(path: string) {
+    try {
+      await api.recentsRemove(path);
     } catch (e) {
       fail(e);
     }
+    void refreshRecents();
+  }
+
+  /**
+   * Reopens the tabs of the last session (folders that are gone are skipped) and puts the same tab in
+   * front. A path given on the command line is shown last: its tab is focused, or it is opened.
+   */
+  async function restoreSession() {
+    try {
+      const s = await api.sessionGet();
+      setRecents(s.recents);
+      for (const path of s.tabs) await openPath(path, true);
+      if (tabs().length) setActive(Math.min(s.active, tabs().length - 1));
+    } catch { /* no session yet, or no config directory */ }
+    try {
+      const p = await api.initialPath();
+      if (p) {
+        const i = tabs().findIndex((x) => x.repo.root === p);
+        if (i >= 0) setActive(i);
+        else await openPath(p);
+      }
+    } catch { /* no path given (plain browser) */ }
+    setRestored(true);
   }
 
   async function pick() {
@@ -260,6 +324,7 @@ export function App() {
 
   function closeTab(i: number) {
     forget(tabs()[i].repo.repoId);
+    forgetGraphScroll(tabs()[i].repo.repoId);
     api.close(tabs()[i].repo.repoId);
     setTabs(tabs().filter((_, k) => k !== i));
     setActive(Math.max(0, Math.min(active(), tabs().length - 1)));
@@ -277,6 +342,12 @@ export function App() {
       } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "p") {
         e.preventDefault();
         togglePerf();
+      } else if (e.ctrlKey && !typing && ["=", "+", "-", "0"].includes(e.key)) {
+        // Zoom: Ctrl+= / Ctrl+- in 10 % steps, Ctrl+0 back to 100 %.
+        e.preventDefault();
+        const id = tab()?.repo.repoId ?? null;
+        const change = e.key === "0" ? "reset" : { dir: e.key === "-" ? -1 : 1 } as const;
+        void changeZoom(id, change).catch((err: unknown) => fail(err));
       }
     });
   });
@@ -288,10 +359,13 @@ export function App() {
       await listen<number>("credentials-cancel", (e) => setCreds(creds().filter((c) => c.id !== e.payload)));
       await listen<number>("repo-changed", (e) => loadStatus(e.payload));
       await listen<number>("watch-failed", (e) => setWatchFailed([...watchFailed().filter((id) => id !== e.payload), e.payload]));
-      window.addEventListener("focus", () => tab() && loadStatus(tab().repo.repoId));
+      // Focus after a watcher event (or a previous focus) reloads nothing new: skip it (PERF-06).
+      window.addEventListener("focus", () => {
+        const cur = tab();
+        if (cur && Date.now() - (lastStatusAt.get(cur.repo.repoId) ?? 0) > FOCUS_SKIP_MS) void loadStatus(cur.repo.repoId);
+      });
     } catch { /* no event bridge (plain browser) */ }
-    const p = await api.initialPath();
-    if (p) openPath(p);
+    await restoreSession();
   });
 
   const wipLabel = () => {
@@ -347,23 +421,9 @@ export function App() {
         </div>
         <div class="group">
           <button class="tool" disabled={!tab()} title={t("toolbar.journalTitle")} onClick={() => setShowJournal(true)}><History size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.journal")}</span></button>
-          <label class="theme-pick" title={t("toolbar.theme")}>
-            <SunMoon size={16} aria-hidden="true" /><span class="sr-only">{t("toolbar.theme")}</span>
-            <select value={themeChoice()} onChange={(e) => setTheme(e.currentTarget.value as ThemeChoice)}>
-              <option value="system">{t("theme.system")}</option>
-              <option value="atlas-dark">{t("theme.dark")}</option>
-              <option value="atlas-light">{t("theme.light")}</option>
-            </select>
-          </label>
-          <label class="theme-pick lang-pick" title={t("toolbar.language")}>
-            <Languages size={16} aria-hidden="true" /><span class="sr-only">{t("toolbar.language")}</span>
-            <span class="lang-code" aria-hidden="true">{activeLocale() === "pt-BR" ? "PT" : "EN"}</span>
-            <select value={localeChoice()} onChange={(e) => setLocaleChoice(e.currentTarget.value as LocaleChoice)}>
-              <option value="system">{t("lang.system")}</option>
-              <option value="en" lang="en">{t("lang.en")}</option>
-              <option value="pt-BR" lang="pt-BR">{t("lang.ptBR")}</option>
-            </select>
-          </label>
+          <button class="tool" title={t("toolbar.settingsTitle")} aria-haspopup="dialog" onClick={() => setShowSettings(true)}>
+            <Settings size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.settings")}</span>
+          </button>
         </div>
       </header>
 
@@ -385,6 +445,7 @@ export function App() {
               </div>
             </Show>
             <button class="primary" onClick={pick}>{t("open.button")}</button>
+            <RecentsList recents={recents()} onOpen={(path) => void openPath(path)} onRemove={(path) => void removeRecent(path)} />
           </main>
         }
       >
@@ -603,13 +664,19 @@ export function App() {
           </div>
           <Show when={errorDetail(error()!)}><button class="mini" onClick={() => setShowDetail(!showDetail())}>{t("err.details")}</button></Show>
           <Show when={error()!.code === "PUSH_REJECTED"}>
-            {/* Overwrites remote commits: needs a second click. */}
-            <button class="mini danger" onClick={() => { if (!forceConfirm()) return setForceConfirm(true); setForceConfirm(false); setError(null); void net("push", true); }}>
-              {forceConfirm() ? t("push.forceConfirm") : t("push.force")}
-            </button>
+            <button class="mini danger" onClick={() => setForcePending(true)}>{t("push.force")}</button>
           </Show>
           <button class="mini" onClick={() => setError(null)}>{t("err.dismiss")}</button>
         </div>
+      </Show>
+      <Show when={forcePending()}>
+        <ConfirmDialog
+          title={t("confirm.forcePush.title")}
+          message={t("confirm.forcePush.message")}
+          confirmLabel={t("push.force")}
+          onConfirm={() => { setForcePending(false); setError(null); void net("push", true); }}
+          onCancel={() => setForcePending(false)}
+        />
       </Show>
       <Show when={tab() && rebaseOnto()} keyed>
         {(onto) => <RebaseEditor repoId={tab()!.repo.repoId} onto={onto} label={/^[0-9a-f]{40}$/.test(onto) ? onto.slice(0, 7) : onto}
@@ -640,19 +707,35 @@ export function App() {
       <Show when={tab() && askName()} keyed>
         {(kind) => {
           const repoId = tab()!.repo.repoId;
+          if (kind === "branch") {
+            const branches = tab()!.repo.refs.filter((r) => r.kind === "head").map((r) => r.name);
+            const flow = flowBranches(branches);
+            return (
+              <BranchDialog branches={branches} flowEnabled={flow.flowEnabled} main={flow.main} develop={flow.develop}
+                onSubmit={(b) => {
+                  setAskName(null);
+                  void run(() => api.branchCreateFrom(repoId, b.name, b.base, b.checkout), { graph: true, toast: t("toast.branchCreated", { s: b.name }) });
+                }}
+                onCancel={() => setAskName(null)} />
+            );
+          }
           const done = (v: string) => {
             setAskName(null);
-            if (kind === "stash") void run(() => api.stash(repoId, "push", 0, v || null), { graph: true, toast: t("toast.stashed") });
-            else void run(() => api.branchCreate(repoId, v, null), { graph: true, toast: t("toast.branchCreated", { s: v }) });
+            void run(() => api.stash(repoId, "push", 0, v || null), { graph: true, toast: t("toast.stashed") });
           };
-          return <NameDialog label={kind === "stash" ? t("stash.messagePrompt") : t("refmenu.namePrompt")} optional={kind === "stash"} onSubmit={done} onCancel={() => setAskName(null)} />;
+          return <NameDialog label={t("stash.messagePrompt")} optional onSubmit={done} onCancel={() => setAskName(null)} />;
         }}
+      </Show>
+      <Show when={showSettings()}>
+        <SettingsPanel repoId={tab()?.repo.repoId ?? null} repoName={tab()?.repo.name ?? null} onClose={() => setShowSettings(false)} />
       </Show>
       <Show when={showJournal() && tab()}>
         <JournalPanel repoId={tab()!.repo.repoId} onClose={() => setShowJournal(false)} onError={(e) => fail(e)} />
       </Show>
+      <CrashBanner />
       <Show when={toast()}>
-        <output class="toast">
+        {/* UI-07: hovering keeps the toast (Undo stays reachable); it hides 4 s after the pointer leaves. */}
+        <output class="toast" onMouseEnter={() => clearTimeout(toastTimer)} onMouseLeave={() => { toastTimer = window.setTimeout(() => setToast(null), 4000); }}>
           <span>{toast()!.text}</span>
           <Show when={toast()!.undoId}>
             <button onClick={() => { const x = toast()!; setToast(null); void undo(x.repoId, x.undoId); }}>{t("toast.undo")}</button>

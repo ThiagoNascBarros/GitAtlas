@@ -2,7 +2,7 @@
 import { createResource, createSignal, For, Show } from "solid-js";
 import { api } from "../../api";
 import { activeLocale, t } from "../../i18n";
-import { useOverlay } from "../overlay";
+import { ConfirmDialog, Modal } from "../../components";
 
 const DEFAULT_KEEP = 50;
 
@@ -10,14 +10,11 @@ const DEFAULT_KEEP = 50;
 export function JournalPanel(props: { repoId: number; onClose: () => void; onError: (e: unknown) => void }) {
   const [entries, { refetch }] = createResource(() => api.journal(props.repoId));
   let close: HTMLButtonElement | undefined;
-  let dialog: HTMLDialogElement | undefined;
-  useOverlay(() => props.onClose(), () => close, () => dialog);
-  const [confirm, setConfirm] = createSignal(false);
+  const [confirming, setConfirming] = createSignal(false);
   const [keep, setKeep] = createSignal(DEFAULT_KEEP);
+  // Pruning cannot be undone, so it goes through ConfirmDialog.
   async function prune() {
-    // Pruning cannot be undone: ask for a second click.
-    if (!confirm()) return setConfirm(true);
-    setConfirm(false);
+    setConfirming(false);
     try {
       await api.pruneJournal(props.repoId, keep());
       refetch();
@@ -26,10 +23,25 @@ export function JournalPanel(props: { repoId: number; onClose: () => void; onErr
     }
   }
   return (
-    <div class="modal-back">
-      <button type="button" class="backdrop" tabindex="-1" aria-label={t("journal.close")} onClick={props.onClose} />
-      <dialog ref={dialog} open class="modal" aria-modal="true" aria-labelledby="journal-h">
-        <h2 id="journal-h">{t("journal.title")}</h2>
+    <>
+      <Modal
+        title={t("journal.title")}
+        size="md"
+        onClose={props.onClose}
+        initialFocus={() => close}
+        footer={
+          <>
+            <label class="muted">{t("journal.keep")}{" "}
+              <input type="number" min="0" step="1" value={keep()} style={{ width: "5em" }}
+                onInput={(e) => setKeep(Math.max(0, Math.floor(Number(e.currentTarget.value) || 0)))} />
+            </label>
+            <button type="button" onClick={() => setConfirming(true)} title={t("journal.pruneTitle", { n: keep() })}>
+              {t("journal.prune", { n: keep() })}
+            </button>
+            <button ref={close} type="button" class="primary" onClick={props.onClose}>{t("journal.close")}</button>
+          </>
+        }
+      >
         <Show when={(entries() ?? []).length} fallback={<p class="muted">{t("journal.empty")}</p>}>
           <ul class="journal">
             <For each={[...(entries() ?? [])].reverse()}>
@@ -46,17 +58,16 @@ export function JournalPanel(props: { repoId: number; onClose: () => void; onErr
             </For>
           </ul>
         </Show>
-        <div class="modal-actions">
-          <label class="muted">{t("journal.keep")}{" "}
-            <input type="number" min="0" step="1" value={keep()} style={{ width: "5em" }}
-              onInput={(e) => { setConfirm(false); setKeep(Math.max(0, Math.floor(Number(e.currentTarget.value) || 0))); }} />
-          </label>
-          <button classList={{ danger: confirm() }} onClick={prune} onBlur={() => setConfirm(false)} title={t("journal.pruneTitle", { n: keep() })}>
-            {confirm() ? t("journal.pruneConfirm") : t("journal.prune", { n: keep() })}
-          </button>
-          <button ref={close} class="primary" onClick={props.onClose}>{t("journal.close")}</button>
-        </div>
-      </dialog>
-    </div>
+      </Modal>
+      <Show when={confirming()}>
+        <ConfirmDialog
+          title={t("confirm.prune.title")}
+          message={t("journal.pruneTitle", { n: keep() })}
+          confirmLabel={t("confirm.prune.action")}
+          onConfirm={() => void prune()}
+          onCancel={() => setConfirming(false)}
+        />
+      </Show>
+    </>
   );
 }

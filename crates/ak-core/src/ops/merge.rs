@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Merge (Phase 3): conflict preview, merge, abort and per-file conflict resolution.
 
+use std::path::{Path, PathBuf};
+
 use serde::Serialize;
 
 use super::journal::JournalEntry;
@@ -14,7 +16,11 @@ pub struct ConflictVersions {
     pub base: Option<String>,
     pub ours: Option<String>,
     pub theirs: Option<String>,
+    /// The working-tree file as it is now (with conflict markers until it is resolved).
     pub merged: String,
+    /// The same conflicts rendered in diff3 style, so each block also carries its base lines.
+    /// `None` when one of the three sides is missing (add/add or modify/delete conflicts).
+    pub merged_diff3: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -156,18 +162,145 @@ impl Engine {
             let spec = format!(":{n}:{path}");
             self.git.run(&self.root, ["show", spec.as_str()]).ok().map(|b| String::from_utf8_lossy(&b).into_owned())
         };
+        let (base, ours, theirs) = (stage(1), stage(2), stage(3));
         let merged = std::fs::read(self.root.join(path)).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
-        Ok(ConflictVersions { base: stage(1), ours: stage(2), theirs: stage(3), merged })
+        let merged_diff3 = match (&ours, &base, &theirs) {
+            (Some(o), Some(b), Some(t)) => self.diff3_render(o, b, t),
+            _ => None,
+        };
+        Ok(ConflictVersions { base, ours, theirs, merged, merged_diff3 })
     }
 
-    /// Writes the user's resolution and stages it.
+    /// Re-runs the three-way merge of the given sides with `git merge-file --diff3`, in a
+    /// temporary directory inside the git dir. `None` if Git cannot do it.
+    fn diff3_render(&self, ours: &str, base: &str, theirs: &str) -> Option<String> {
+        let dir = self.git_dir.join("atlaskraken").join("tmp").join(new_id());
+        let files: Option<Vec<String>> = [("ours", ours), ("base", base), ("theirs", theirs)]
+            .into_iter()
+            .map(|(name, text)| {
+                let p = dir.join(name);
+                write_file(&p, text.as_bytes()).ok().map(|_| p.to_string_lossy().into_owned())
+            })
+            .collect();
+        let rendered = files.and_then(|f| {
+            let args = ["merge-file", "-p", "--diff3", "-L", "ours", "-L", "base", "-L", "theirs"]
+                .into_iter()
+                .map(str::to_owned)
+                .chain(f)
+                .collect::<Vec<String>>();
+            // merge-file exits with the number of conflicts (0-127); anything else is an error.
+            match self.git.run_status(&self.root, args) {
+                Ok((Some(code), out, _)) if (0..128).contains(&code) => Some(out),
+                _ => None,
+            }
+        });
+        let _ = std::fs::remove_dir_all(&dir);
+        rendered
+    }
+
+    /// Writes the user's resolution and stages it. Journaled as `resolve`: Undo puts the
+    /// conflict back (file and index stages), Redo applies the resolution again.
     pub(super) fn resolve_with(&self, path: &str, content: &str) -> Result<OpOutcome, OpError> {
         super::check_rel(path)?;
         let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
-        std::fs::write(self.root.join(path), content)?;
+        let spec = literal(path);
+        let file = self.root.join(path);
+        let before = match std::fs::read(&file) {
+            Ok(bytes) => Some(bytes),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e.into()),
+        };
+        let stages = self.index_records(path)?;
+        let id = new_id();
+        let dir = self.resolve_dir(&id);
+        // Keep both sides of the change before touching anything.
+        if let Some(bytes) = &before {
+            write_file(&dir.join("before").join(path), bytes)?;
+        }
+        write_file(&dir.join("after").join(path), content.as_bytes())?;
+        let head = self.head();
+        write_atomic(&file, content.as_bytes())?;
+        self.git.run(&self.root, ["add", "--", spec.as_str()])?;
+        self.journal.append(&JournalEntry {
+            id: id.clone(),
+            time: now(),
+            kind: "resolve".into(),
+            summary: path.to_owned(),
+            branch: self.branch(),
+            head_before: head.clone(),
+            head_after: head.clone(),
+            commands: vec!["write resolved file".into(), format!("git add -- {path}")],
+            paths: vec![path.to_owned()],
+            args: stages,
+            ..Default::default()
+        })?;
+        Ok(OpOutcome { id: Some(id), head, ..Default::default() })
+    }
+
+    fn resolve_dir(&self, id: &str) -> PathBuf {
+        self.git_dir.join("atlaskraken").join("resolved").join(id)
+    }
+
+    /// `ls-files -s` records (`mode sha stage<TAB>path`) of one path: the index state Undo restores.
+    fn index_records(&self, path: &str) -> Result<Vec<String>, OpError> {
+        let spec = literal(path);
+        let out = self.git.run(&self.root, ["ls-files", "-s", "-z", "--", spec.as_str()])?;
+        Ok(String::from_utf8_lossy(&out).split('\0').filter(|s| !s.is_empty()).map(str::to_owned).collect())
+    }
+
+    /// Guards Undo/Redo of a resolution: the same merge must still be open and HEAD must not
+    /// have moved, and the file must still hold `expect` ("before" or "after" the resolution).
+    fn check_resolve(&self, e: &JournalEntry, path: &str, expect: &str) -> Result<(), OpError> {
+        let conflicted = e.args.iter().any(|r| r.split_whitespace().nth(2).is_some_and(|s| s != "0"));
+        if self.head() != e.head_after || (conflicted && self.in_progress().is_none()) {
+            return Err(OpError::new(
+                "NOT_IN_MERGE",
+                "The merge was finished or aborted, so this resolution cannot be undone or redone safely.",
+                Some("Undo the newer operations first."),
+            ));
+        }
+        let want = std::fs::read(self.resolve_dir(&e.id).join(expect).join(path)).ok();
+        let have = std::fs::read(self.root.join(path)).ok();
+        if want != have {
+            return Err(OpError::new(
+                "WORKTREE_CHANGED",
+                "This file changed after the resolution, so restoring it would overwrite newer work.",
+                Some("Save or discard the newer changes first."),
+            ));
+        }
+        Ok(())
+    }
+
+    /// Undo of a resolution: the conflicted file and its index stages come back.
+    pub(super) fn undo_resolve(&self, e: &JournalEntry) -> Result<(), OpError> {
+        let path = e.paths.first().ok_or_else(|| OpError::new("UNDO_NOT_SUPPORTED", "This operation cannot be undone.", None))?;
+        self.check_resolve(e, path, "after")?;
+        let file = self.root.join(path);
+        match std::fs::read(self.resolve_dir(&e.id).join("before").join(path)) {
+            Ok(bytes) => write_atomic(&file, &bytes)?,
+            // The file did not exist before the resolution.
+            Err(_) => {
+                let _ = std::fs::remove_file(&file);
+            }
+        }
+        self.git.run(&self.root, ["update-index", "--force-remove", "--", path.as_str()])?;
+        if !e.args.is_empty() {
+            let mut input = e.args.join("\n");
+            input.push('\n');
+            self.git.run_with_input(&self.root, ["update-index", "--index-info"], input.as_bytes())?;
+        }
+        Ok(())
+    }
+
+    /// Redo of a resolution: applies the saved resolved content again and stages it.
+    pub(super) fn redo_resolve(&self, e: &JournalEntry) -> Result<(), OpError> {
+        let path = e.paths.first().ok_or_else(|| OpError::new("UNDO_NOT_SUPPORTED", "This operation cannot be redone.", None))?;
+        self.check_resolve(e, path, "before")?;
+        let after = std::fs::read(self.resolve_dir(&e.id).join("after").join(path))?;
+        write_atomic(&self.root.join(path), &after)?;
         let spec = literal(path);
         self.git.run(&self.root, ["add", "--", spec.as_str()])?;
-        Ok(OpOutcome::default())
+        Ok(())
     }
 
     /// Conflict prediction for Git < 2.38 with the old 3-argument `git merge-tree`.
@@ -178,6 +311,28 @@ impl Engine {
         let out = self.git.run(&self.root, ["merge-tree", base.as_str(), "HEAD", source])?;
         Ok(parse_legacy_merge_tree(&String::from_utf8_lossy(&out)))
     }
+}
+
+/// Creates the parent directories of `file` and writes it.
+fn write_file(file: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    if let Some(dir) = file.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    std::fs::write(file, bytes)
+}
+
+/// Writes `bytes` to a temporary file next to `file` and renames it over `file`, so a crash
+/// leaves either the old or the new content. Keeps the permissions of the existing file.
+fn write_atomic(file: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let name = file.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let tmp = file.with_file_name(format!(".{name}.atlaskraken-tmp"));
+    write_file(&tmp, bytes)?;
+    if let Ok(meta) = std::fs::metadata(file) {
+        std::fs::set_permissions(&tmp, meta.permissions())?;
+    }
+    std::fs::rename(&tmp, file).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })
 }
 
 /// Files whose merged content contains conflict markers in old `git merge-tree` output.

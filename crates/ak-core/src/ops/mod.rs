@@ -16,6 +16,7 @@ pub use rebase::TodoItem;
 pub use shared_stash::{InvalidShared, SharedStashInfo, SharedStashMeta, ValidShared};
 pub use shared_stash_ops::{KeptSharedStash, ProbeResult, RemoteFetch, RemoteStatus, SharedStashOutcome};
 pub use stash::StashInfo;
+pub mod flow;
 pub mod journal;
 pub mod lock;
 
@@ -75,7 +76,12 @@ impl OpError {
                 err
             }
             GitError::NotAllowed { .. } => Self::new("READ_ONLY", "This repository is open in read-only mode.", None),
-            other => Self::new("GIT_FAILED", &other.to_string(), None),
+            GitError::TimedOut { subcommand, .. } => Self::new(
+                "GIT_TIMEOUT",
+                &format!("git {subcommand} took too long and was stopped."),
+                Some("A hook, a credential prompt or the network may be waiting. Check it and try again."),
+            ),
+            other =>Self::new("GIT_FAILED", &other.to_string(), None),
         }
     }
 }
@@ -106,6 +112,9 @@ pub enum Operation {
     Discard { paths: Vec<String> },
     /// New local branch at `at` (default HEAD); it is not checked out.
     BranchCreate { name: String, at: Option<String> },
+    /// New local branch at `base` (default HEAD); with `checkout` it is also switched to,
+    /// as one journal entry (see `flow` for the Git Flow names and bases).
+    BranchCreateFrom { name: String, base: Option<String>, checkout: bool },
     BranchRename { old: String, new: String },
     /// `force` deletes even if the branch is not merged (the tip stays recoverable via Undo).
     BranchDelete { name: String, force: bool },
@@ -272,6 +281,7 @@ impl Engine {
             Operation::StageHunk { path, hunk, unstage } => self.stage_hunk(path, *hunk, *unstage),
             Operation::Discard { paths } => self.discard(paths),
             Operation::BranchCreate { name, at } => self.branch_create(name, at.as_deref()),
+            Operation::BranchCreateFrom { name, base, checkout } => self.branch_create_from(name, base.as_deref(), *checkout),
             Operation::BranchRename { old, new } => self.branch_rename(old, new),
             Operation::BranchDelete { name, force } => self.branch_delete(name, *force),
             Operation::Checkout { target, is_branch } => self.checkout(target, *is_branch),
@@ -398,6 +408,11 @@ impl Engine {
             self.journal.set_undone(id, true, now_ns())?;
             return Ok(OpOutcome { id: None, head: self.head(), ..Default::default() });
         }
+        if entry.kind == "resolve" {
+            self.undo_resolve(&entry)?;
+            self.journal.set_undone(id, true, now_ns())?;
+            return Ok(OpOutcome { id: None, head: self.head(), ..Default::default() });
+        }
         if branch::is_ref_kind(&entry.kind) {
             self.apply_ref_entry(&entry, false)?;
             self.journal.set_undone(id, true, now_ns())?;
@@ -448,6 +463,8 @@ impl Engine {
         let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
         if entry.kind == "discard" {
             self.redo_discard(&entry)?;
+        } else if entry.kind == "resolve" {
+            self.redo_resolve(&entry)?;
         } else if branch::is_ref_kind(&entry.kind) {
             self.apply_ref_entry(&entry, true)?;
         } else {
@@ -542,6 +559,19 @@ impl Engine {
         for p in paths {
             check_rel(p)?;
         }
+        // A new folder is one status entry (`dir/`): discard the files in it, one by one.
+        let mut expanded = vec![];
+        for p in paths {
+            if p.ends_with('/') {
+                expanded.extend(crate::read::untracked_under(&self.git, &self.root, p)?);
+            } else {
+                expanded.push(p.clone());
+            }
+        }
+        if expanded.is_empty() {
+            return Err(OpError::new("INVALID_PATH", "No valid file was given.", None));
+        }
+        let paths = expanded.as_slice();
         let _g = lock::try_acquire(&self.root, &[Lock::Index]).map_err(|_| Self::busy())?;
         let mut tracked = std::collections::HashSet::new();
         for chunk in paths.chunks(PATH_CHUNK) {

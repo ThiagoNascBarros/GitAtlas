@@ -1,0 +1,81 @@
+/* Recent repositories on the start screen. Kept in its own file so the shared stylesheet stays as it is. */
+
+.recents {
+  width: min(560px, 100%);
+  margin-top: 16px;
+  text-align: left;
+}
+
+.recents h2 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ak-color-text-secondary);
+}
+
+.recents ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--ak-color-border-default);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.recent {
+  display: flex;
+  align-items: center;
+  border-top: 1px solid var(--ak-color-border-default);
+}
+
+.recent:first-child {
+  border-top: 0;
+}
+
+.recent-open {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recent-open:hover:not(:disabled),
+.recent-open:focus-visible {
+  background: var(--ak-color-bg-selected);
+}
+
+.recent-open:disabled {
+  cursor: default;
+}
+
+.recent-name {
+  font-weight: 600;
+}
+
+.recent-path {
+  overflow: hidden;
+  color: var(--ak-color-text-muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent.missing .recent-name {
+  color: var(--ak-color-text-muted);
+}
+
+.recent-missing {
+  color: var(--ak-color-status-deleted);
+  font-size: 12px;
+}
+
+.recent > .icon {
+  margin-right: 6px;
+}

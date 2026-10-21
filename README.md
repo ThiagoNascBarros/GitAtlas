@@ -4,7 +4,7 @@
 
 Desktop Git client for Linux — Tauri 2 + Rust core + SolidJS. Licensed under Apache-2.0.
 
-> Formerly known as **AtlasKraken** and **AtlasGit**; the name is now **Git Atlas**. Per-repository data still lives under `<git-dir>/atlaskraken/` and `refs/atlaskraken/` so journals, snapshots and backups made before the rename keep working.
+> Formerly known as **AtlasKraken** and **Git Atlas**; the name is now **Git Atlas**. Per-repository data still lives under `<git-dir>/atlaskraken/` and `refs/atlaskraken/` so journals, snapshots and backups made before the rename keep working.
 
 ## Status
 

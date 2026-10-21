@@ -2,6 +2,7 @@
 import { render } from "solid-js/web";
 import { App } from "./App";
 import { initTheme } from "./theme/theme";
+import { loadPrefs } from "./settings/prefs";
 import "./styles.css";
 
 async function start() {
@@ -10,6 +11,8 @@ async function start() {
     const { installDevMock } = await import("./devMock");
     await installDevMock(new URLSearchParams(location.search).get("fixture") ?? "demo");
   }
+  // Before the first render, so theme, zoom and language are right from the start.
+  await loadPrefs();
   initTheme();
   render(() => <App />, document.getElementById("root")!);
 }

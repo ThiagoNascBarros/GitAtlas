@@ -8,8 +8,9 @@ use std::path::PathBuf;
 use ak_core::ops::lock::{self, Lock};
 use ak_core::ops::{Engine, KeptSharedStash, OpOutcome, Operation, RemoteStatus, SharedStashInfo, SharedStashOutcome};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 
+use crate::diagnostics;
 use crate::settings::{self, FetchMode};
 use crate::{askpass, engine, get, AppState, Result, UiError};
 
@@ -17,11 +18,11 @@ use crate::{askpass, engine, get, AppState, Result, UiError};
 const CHANGED_EVENT: &str = "shared-stash-changed";
 
 fn global_settings_path(app: &AppHandle) -> Option<PathBuf> {
-    app.path().app_config_dir().ok().map(|d| d.join("settings.json"))
+    crate::prefs::global_path(app)
 }
 
 fn repo_settings_path(e: &Engine) -> PathBuf {
-    e.git_dir().join("atlasgit").join("settings.json")
+    crate::prefs::repo_path(e.git_dir())
 }
 
 fn modes(app: &AppHandle, e: &Engine) -> (Option<FetchMode>, Option<FetchMode>) {
@@ -37,7 +38,7 @@ fn effective_mode(app: &AppHandle, e: &Engine) -> FetchMode {
 
 /// Whether a Fetch/Pull of this repository should also fetch shared stashes (spec §5.1).
 pub fn wants_fetch_with_net_op(app: &AppHandle, state: &AppState, repo_id: u32, e: &Engine) -> bool {
-    let tab_open = state.shared_tab_open.lock().unwrap().contains(&repo_id);
+    let tab_open = diagnostics::lock(&state.shared_tab_open).contains(&repo_id);
     settings::fetch_with_net_op(effective_mode(app, e), tab_open)
 }
 
@@ -175,7 +176,7 @@ pub async fn shared_stash_probe_reset(repo_id: u32, remote: Option<String>, app:
 /// The tab tells the shell whether it is open (spec §5.1: in `panel` mode a Fetch/Pull while it is open also fetches shared stashes).
 #[tauri::command]
 pub fn shared_stash_tab_open(repo_id: u32, open: bool, state: State<'_, AppState>) {
-    let mut tabs = state.shared_tab_open.lock().unwrap();
+    let mut tabs = diagnostics::lock(&state.shared_tab_open);
     if open {
         tabs.insert(repo_id);
     } else {
@@ -233,6 +234,7 @@ pub async fn shared_stash_settings_set(
         detail: None,
         suggestion: Some("Wait for it to finish and try again.".into()),
     })?;
+    let _global = crate::prefs::lock_global();
     let mut value = settings::read(&path);
     settings::set_fetch_mode(&mut value, mode);
     settings::write(&path, &value).map_err(|err| UiError::new("IO_ERROR", err))?;

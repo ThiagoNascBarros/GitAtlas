@@ -3,22 +3,14 @@
 //! Run: cargo test -p ak-core --features gix-reader --test gix_parity
 #![cfg(feature = "gix-reader")]
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
 use std::time::Instant;
 
 use ak_core::read::{CliReader, RepoReader};
 use ak_core::read_gix::GixReader;
 use ak_gitcli::{Git, Mode};
 
-fn fixture(name: &str) -> PathBuf {
-    let ws = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
-    let dir = ws.join("tests/fixtures/out").join(name);
-    if !dir.exists() {
-        assert!(Command::new(ws.join("tests/fixtures/make.sh")).arg(name).status().unwrap().success());
-    }
-    dir
-}
+mod common;
+use common::fixture;
 
 fn compare(name: &str) {
     let git = Git::discover(Mode::ReadOnly).unwrap();

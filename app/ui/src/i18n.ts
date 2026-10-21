@@ -9,6 +9,9 @@ export const en = {
   "open.title": "Open a repository",
   "open.hint": "Choose a folder that contains a Git repository, or start Git Atlas with a path: atlasgit /path/to/repo",
   "open.button": "Open repository…",
+  "recents.title": "Recent repositories",
+  "recents.missing": "Folder not found",
+  "recents.remove": "Remove {s} from the list",
   "panel.filter": "Filter branches and tags",
   "toolbar.undo": "Undo",
   "toolbar.redo": "Redo",
@@ -17,6 +20,23 @@ export const en = {
   "toolbar.readOnly": "Read-only (old Git)",
   "toolbar.theme": "Theme",
   "toolbar.language": "Language",
+  "toolbar.settings": "Settings",
+  "toolbar.settingsTitle": "Settings: theme, zoom, language and animations",
+  "settings.title": "Settings",
+  "settings.note": "A repository's values override the global ones. Saved in settings.json.",
+  "settings.scope": "Apply to",
+  "settings.scope.global": "All repositories",
+  "settings.scope.repo": "This repository ({s})",
+  "settings.inherit": "Same as global",
+  "settings.theme": "Theme",
+  "settings.zoom": "Zoom",
+  "settings.zoomIn": "Zoom in",
+  "settings.zoomOut": "Zoom out",
+  "settings.zoomReset": "Reset zoom to 100 %",
+  "settings.language": "Language",
+  "settings.animations": "Reduce animations",
+  "settings.close": "Close settings",
+  "settings.saveFailed": "Could not save this setting.",
   "lang.system": "Follow system",
   "lang.en": "English",
   "lang.ptBR": "Português (Brasil)",
@@ -85,7 +105,8 @@ export const en = {
   "wip.stage": "Stage",
   "wip.unstage": "Unstage",
   "wip.discard": "Discard",
-  "wip.discardConfirm": "Discard? (click again)",
+  "confirm.discard.title": "Discard changes to {s}?",
+  "confirm.discard.message": "The unsaved changes to this file in the working tree will be lost.",
   "wip.conflicts": "Conflicted files",
   "wip.summary": "Summary",
   "wip.description": "Description",
@@ -103,7 +124,8 @@ export const en = {
   "journal.undone": "undone",
   "journal.prune": "Forget all but the last {n}",
   "journal.pruneTitle": "Deletes older entries and their backups; they can no longer be undone (last {n} are kept)",
-  "journal.pruneConfirm": "Forget them? (click again)",
+  "confirm.prune.title": "Forget old journal entries?",
+  "confirm.prune.action": "Forget",
   "journal.close": "Close",
   "toast.committed": "Committed: {s}",
   "toast.discarded": "Discarded {s}",
@@ -115,6 +137,8 @@ export const en = {
   "err.details": "Details",
   "err.GIT_IDENTITY_MISSING": "Git does not know your name and email, so it cannot create the commit.",
   "err.GIT_IDENTITY_MISSING.fix": "Run: git config --global user.name \"Your Name\" and git config --global user.email you@example.com",
+  "err.GIT_TIMEOUT": "Git took too long and was stopped. A hook, a credential prompt or the network may be waiting.",
+  "err.GIT_TIMEOUT.fix": "Check the hook, the network or the credential prompt, then try again.",
   "err.NOTHING_TO_COMMIT": "There is nothing staged to commit.",
   "err.EMPTY_MESSAGE": "Write a commit summary first.",
   "err.REPO_BUSY": "Another operation is still running on this repository.",
@@ -136,11 +160,34 @@ export const en = {
   "refmenu.rename": "Rename…",
   "refmenu.delete": "Delete",
   "refmenu.forceDelete": "Delete anyway (Undo brings it back)",
+  "confirm.forceDelete.title": "Delete this branch anyway?",
+  "confirm.forceDelete.message": "The branch has commits that are not merged. Once it is deleted, they can no longer be reached from it. Undo brings the branch back.",
+  "confirm.forceDelete.action": "Delete anyway",
+  "confirm.resetHard.title": "Reset hard to this commit?",
+  "confirm.resetHard.message": "Uncommitted changes in the current branch are discarded. A snapshot is saved first, and Undo can restore it.",
+  "confirm.resetHard.action": "Reset hard",
+  "modal.close": "Close",
   "refmenu.namePrompt": "Branch name",
   "refmenu.ok": "OK",
   "refmenu.cancel": "Cancel",
   "toast.checkedOut": "Checked out {s}",
   "toast.branchCreated": "Created branch {s}",
+  "branch.title": "New branch",
+  "branch.type": "Type",
+  "branch.kind.free": "Free",
+  "branch.kind.feature": "Feature",
+  "branch.kind.fix": "Fix",
+  "branch.kind.release": "Release",
+  "branch.kind.hotfix": "Hotfix",
+  "branch.ticket": "Ticket",
+  "branch.titleField": "Title",
+  "branch.base": "Based on",
+  "branch.headBase": "Current commit (HEAD)",
+  "branch.flowBase": "Git Flow base: {base}",
+  "branch.preview": "Branch name",
+  "branch.previewFailed": "Could not build the name.",
+  "branch.checkout": "Switch to the new branch",
+  "branch.create": "Create",
   "toast.branchRenamed": "Renamed to {s}",
   "toast.branchDeleted": "Deleted branch {s}",
   "err.MERGE_IN_PROGRESS": "A merge is already in progress. Finish it or abort it first.",
@@ -164,12 +211,26 @@ export const en = {
   "conflict.title": "Resolve {s}",
   "conflict.ours": "Ours (current branch)",
   "conflict.theirs": "Theirs (incoming)",
-  "conflict.result": "Result",
-  "conflict.missing": "(file does not exist on this side)",
+  "conflict.base": "Base (common ancestor)",
+  "conflict.baseMissing": "No base for this block",
+  "conflict.empty": "(no lines on this side)",
   "conflict.chunk": "Conflict {n}",
-  "conflict.useOurs": "Use ours",
-  "conflict.useTheirs": "Use theirs",
-  "conflict.useBoth": "Use both",
+  "conflict.resolved": "Resolved",
+  "conflict.pending": "Pending",
+  "conflict.onlyOurs": "Only ours",
+  "conflict.onlyTheirs": "Only theirs",
+  "conflict.bothOurs": "Both, ours first",
+  "conflict.bothTheirs": "Both, theirs first",
+  "conflict.none": "Neither",
+  "conflict.clear": "Undo choice",
+  "conflict.prev": "Previous",
+  "conflict.next": "Next",
+  "conflict.position": "Conflict {n} of {m}",
+  "conflict.noConflicts": "No conflict markers in this file",
+  "conflict.hint": "Check the lines to keep. The result below updates as you choose. If you edit the file in another program, use Reload after saving it there.",
+  "conflict.output": "Result (live)",
+  "conflict.openExternal": "Open in external editor",
+  "conflict.reload": "Reload from file",
   "conflict.left": "{n} conflict(s) left in the result",
   "conflict.save": "Mark resolved",
   "conflict.cancel": "Cancel",
@@ -200,6 +261,11 @@ export const en = {
   "toast.tagDeleted": "Deleted tag {s}",
   "toast.copied": "Copied {s}",
   "toast.opConflicts": "Stopped on conflicts",
+  "crash.title": "Git Atlas closed unexpectedly last time.",
+  "crash.unclean": "The previous session did not shut down normally.",
+  "crash.details": "Details",
+  "crash.openLog": "Open log folder",
+  "crash.dismiss": "Dismiss",
   "err.TAG_EXISTS": "A tag with that name already exists.",
   "toolbar.fetch": "Fetch",
   "toolbar.fetchTitle": "Download new commits and branches from all remotes",
@@ -213,7 +279,8 @@ export const en = {
   "toast.forcePushed": "Force-pushed",
   "creds.title": "Credentials",
   "push.force": "Force push (with lease)",
-  "push.forceConfirm": "Click again: replaces the remote branch",
+  "confirm.forcePush.title": "Force push?",
+  "confirm.forcePush.message": "The leased force push replaces the commits of this branch on the remote. Commits that exist only there will be lost.",
   "err.AUTH_FAILED": "The remote refused your credentials.",
   "err.PUSH_REJECTED": "The remote has commits you do not have yet.",
   "err.NETWORK_FAILED": "Could not reach the remote.",
@@ -244,7 +311,8 @@ export const en = {
   "stash.apply": "Apply",
   "stash.pop": "Pop",
   "stash.drop": "Drop",
-  "stash.dropConfirm": "Drop? (click again)",
+  "confirm.dropStash.title": "Drop this stash?",
+  "confirm.dropStash.message": "The stash is removed from the list. Undo can bring it back.",
   "stash.messagePrompt": "Stash message (optional)",
   "toolbar.newBranch": "New branch",
   "toolbar.newBranchTitle": "Create a branch at the current commit (HEAD)",
@@ -388,8 +456,6 @@ export type Locale = "en" | "pt-BR";
 export type LocaleChoice = "system" | Locale;
 
 const TABLES: Record<Locale, Readonly<Record<Key, string>>> = { en, "pt-BR": ptBR };
-const STORAGE_KEY = "ak.lang";
-const CHOICES: readonly LocaleChoice[] = ["system", "en", "pt-BR"];
 
 /** The UI language for a choice: `system` takes the first pt/en entry of the system languages. */
 export function resolveLocale(choice: LocaleChoice, langs: readonly string[]): Locale {
@@ -421,17 +487,14 @@ function apply(c: LocaleChoice) {
   if (typeof document !== "undefined") document.documentElement.lang = l;
 }
 
-/** Switches the language live and remembers it for this viewer. */
+/** Switches the language live. The choice is saved by the settings store (settings.json), not here. */
 export function setLocaleChoice(c: LocaleChoice) {
   apply(c);
-  try { localStorage.setItem(STORAGE_KEY, c); } catch { /* storage unavailable */ }
 }
 
-/** Applies the stored choice (default: follow the system language). */
+/** Applies the current choice (set by the settings store before the first render) and follows system changes. */
 export function initLocale() {
-  let stored: string | null = null;
-  try { stored = localStorage.getItem(STORAGE_KEY); } catch { /* storage unavailable */ }
-  apply(CHOICES.includes(stored as LocaleChoice) ? (stored as LocaleChoice) : "system");
+  apply(choice());
   if (typeof window !== "undefined") {
     window.addEventListener("languagechange", () => { if (choice() === "system") apply("system"); });
   }

@@ -487,6 +487,80 @@ fn checkout_branch_and_detached_with_undo() {
     assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "dirty\n");
 }
 
+fn current_branch(d: &Path) -> String {
+    git(d, &["symbolic-ref", "--short", "-q", "HEAD"])
+}
+
+#[test]
+fn branch_create_from_with_checkout_is_one_undoable_entry() {
+    let (d, e) = base_repo();
+    let out = e.run(&Operation::BranchCreateFrom { name: "feature/ACT-1-login".into(), base: None, checkout: true }).unwrap();
+    assert_eq!(current_branch(&d), "feature/ACT-1-login");
+    assert_eq!(branches(&d), "feature/ACT-1-login,main");
+    // One journal entry covers both the branch and the switch.
+    assert_eq!(e.journal().iter().filter(|x| x.kind == "branch_create").count(), 1);
+    e.undo(out.id.as_deref().unwrap()).unwrap();
+    assert_eq!(current_branch(&d), "main");
+    assert_eq!(branches(&d), "main");
+    e.redo_last().unwrap();
+    assert_eq!(current_branch(&d), "feature/ACT-1-login");
+    assert_eq!(branches(&d), "feature/ACT-1-login,main");
+}
+
+#[test]
+fn branch_create_from_uses_given_base_and_without_checkout_stays_put() {
+    let (d, e) = base_repo();
+    e.run(&Operation::BranchCreate { name: "develop".into(), at: None }).unwrap();
+    write(&d, "a.txt", "2");
+    git(&d, &["commit", "-qam", "main moves on"]);
+    let dev = git(&d, &["rev-parse", "develop"]);
+    e.run(&Operation::BranchCreateFrom { name: "release/1.0".into(), base: Some("develop".into()), checkout: true }).unwrap();
+    assert_eq!(git(&d, &["rev-parse", "release/1.0"]), dev);
+    assert_eq!(current_branch(&d), "release/1.0");
+    e.run(&Operation::Checkout { target: "main".into(), is_branch: true }).unwrap();
+    let plain = e.run(&Operation::BranchCreateFrom { name: "fix/x".into(), base: Some("develop".into()), checkout: false }).unwrap();
+    assert_eq!(current_branch(&d), "main");
+    assert_eq!(git(&d, &["rev-parse", "fix/x"]), dev);
+    assert!(plain.id.is_some());
+}
+
+#[test]
+fn branch_create_from_undo_returns_to_detached_head() {
+    let (d, e) = base_repo();
+    let sha = git(&d, &["rev-parse", "HEAD"]);
+    e.run(&Operation::Checkout { target: sha.clone(), is_branch: false }).unwrap();
+    let out = e.run(&Operation::BranchCreateFrom { name: "hotfix/crash".into(), base: None, checkout: true }).unwrap();
+    assert_eq!(current_branch(&d), "hotfix/crash");
+    e.undo(out.id.as_deref().unwrap()).unwrap();
+    // A detached HEAD makes `symbolic-ref -q` exit with 1.
+    assert!(Command::new("git").arg("-C").arg(&d).args(["symbolic-ref", "-q", "HEAD"]).output().unwrap().status.code() == Some(1));
+    assert_eq!(git(&d, &["rev-parse", "HEAD"]), sha);
+    assert_eq!(branches(&d), "main");
+}
+
+#[test]
+fn branch_create_from_rolls_back_when_checkout_is_blocked() {
+    let (d, e) = base_repo();
+    git(&d, &["checkout", "-q", "-b", "side"]);
+    write(&d, "a.txt", "2");
+    git(&d, &["commit", "-qam", "side"]);
+    git(&d, &["checkout", "-q", "main"]);
+    write(&d, "a.txt", "dirty\n");
+    assert_eq!(code(e.run(&Operation::BranchCreateFrom { name: "x".into(), base: Some("side".into()), checkout: true })), "GIT_FAILED");
+    assert_eq!(branches(&d), "main,side");
+    assert_eq!(current_branch(&d), "main");
+    assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "dirty\n");
+}
+
+#[test]
+fn branch_create_from_stable_error_codes() {
+    let (_d, e) = base_repo();
+    assert_eq!(code(e.run(&Operation::BranchCreateFrom { name: "bad name".into(), base: None, checkout: true })), "INVALID_BRANCH_NAME");
+    assert_eq!(code(e.run(&Operation::BranchCreateFrom { name: "main".into(), base: None, checkout: true })), "BRANCH_EXISTS");
+    assert_eq!(code(e.run(&Operation::BranchCreateFrom { name: "new".into(), base: Some("nope".into()), checkout: true })), "INVALID_REF");
+    assert_eq!(code(e.run(&Operation::BranchCreateFrom { name: "new".into(), base: Some("nope".into()), checkout: false })), "INVALID_REF");
+}
+
 fn conflict_repo() -> (PathBuf, Engine) {
     let (d, e) = base_repo();
     git(&d, &["checkout", "-q", "-b", "feature/conflict"]);
@@ -600,6 +674,56 @@ fn conflict_versions_and_resolve_with_edited_content() {
     assert_eq!(git(&d, &["diff", "--name-only", "--diff-filter=U"]), "");
     assert_eq!(git(&d, &["show", ":a.txt"]), "both");
     assert_eq!(code(e.run(&Operation::ResolveWith { path: "../x".into(), content: String::new() })), "INVALID_PATH");
+}
+
+#[test]
+fn resolve_with_is_journaled_and_undo_redo_restore_the_conflict() {
+    let (d, e) = conflict_repo();
+    e.run(&Operation::Merge { source: "feature/conflict".into() }).unwrap();
+    let id = e.run(&Operation::ResolveWith { path: "a.txt".into(), content: "both\n".into() }).unwrap().id.unwrap();
+    let last = e.journal().pop().unwrap();
+    assert_eq!((last.id.as_str(), last.kind.as_str(), last.paths.as_slice()), (id.as_str(), "resolve", &["a.txt".to_string()][..]));
+    // Undo: the markers are back and the index has the three stages again.
+    e.undo(&id).unwrap();
+    assert!(std::fs::read_to_string(d.join("a.txt")).unwrap().contains("<<<<<<<"));
+    assert_eq!(git(&d, &["diff", "--name-only", "--diff-filter=U"]), "a.txt");
+    assert_eq!(git(&d, &["ls-files", "-u", "--", "a.txt"]).lines().count(), 3);
+    // Redo: the chosen content is staged again.
+    e.redo_last().unwrap();
+    assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "both\n");
+    assert_eq!(git(&d, &["diff", "--name-only", "--diff-filter=U"]), "");
+    assert_eq!(git(&d, &["show", ":a.txt"]), "both");
+}
+
+#[test]
+fn undo_of_resolve_refuses_to_overwrite_later_edits() {
+    let (d, e) = conflict_repo();
+    e.run(&Operation::Merge { source: "feature/conflict".into() }).unwrap();
+    let id = e.run(&Operation::ResolveWith { path: "a.txt".into(), content: "both\n".into() }).unwrap().id.unwrap();
+    write(&d, "a.txt", "edited again\n");
+    assert_eq!(e.undo(&id).unwrap_err().code, "WORKTREE_CHANGED");
+    assert_eq!(std::fs::read_to_string(d.join("a.txt")).unwrap(), "edited again\n");
+}
+
+#[test]
+fn undo_of_resolve_is_refused_once_the_merge_is_aborted() {
+    let (_d, e) = conflict_repo();
+    e.run(&Operation::Merge { source: "feature/conflict".into() }).unwrap();
+    let id = e.run(&Operation::ResolveWith { path: "a.txt".into(), content: "both\n".into() }).unwrap().id.unwrap();
+    e.run(&Operation::MergeAbort).unwrap();
+    assert_eq!(e.undo(&id).unwrap_err().code, "NOT_IN_MERGE");
+}
+
+#[test]
+fn conflict_versions_include_a_diff3_rendering_with_the_base_section() {
+    let (_d, e) = conflict_repo();
+    e.run(&Operation::Merge { source: "feature/conflict".into() }).unwrap();
+    let v = e.conflict_versions("a.txt").unwrap();
+    let d3 = v.merged_diff3.expect("diff3 rendering");
+    assert!(d3.contains("<<<<<<<") && d3.contains("|||||||") && d3.contains("======="));
+    assert!(d3.contains("main") && d3.contains("feature"));
+    // The working-tree file keeps the default (two-section) style.
+    assert!(!v.merged.contains("|||||||"));
 }
 
 fn side_commit(d: &Path, file: &str, text: &str) -> String {

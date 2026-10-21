@@ -169,7 +169,7 @@ with Reshare and Discard (deletes the keep ref).
   read-only.
 - Writes via the CLI; `gix` only for reads. Writes to `.git` only from explicit user actions
   (mirror refs via fetch, keep refs via unshare, probe cache via publish).
-- A plain `git fetch` by non-AtlasGit users doesn't fetch the namespace.
+- A plain `git fetch` by non-Git Atlas users doesn't fetch the namespace.
 
 ## 9. Acceptance criteria (PRD criterion 14)
 

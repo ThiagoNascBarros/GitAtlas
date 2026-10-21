@@ -174,14 +174,20 @@ export async function installDevMock(first: string, next = "hubbi") {
         if (cmd.endsWith("set")) ssMode = args.mode ?? "panel";
         return { effective: ssMode, repo: ssMode, global: null };
       case "merge_preview": return { up_to_date: false, fast_forward: false, conflicts: [] };
-      case "conflict_versions": return { base: "a\n", ours: "mine\n", theirs: "yours\n", merged: "<<<<<<< HEAD\nmine\n=======\nyours\n>>>>>>> topic\n" };
+      case "conflict_versions": return {
+        base: "a\n", ours: "mine\n", theirs: "yours\n",
+        merged: "<<<<<<< HEAD\nmine\n=======\nyours\n>>>>>>> topic\n",
+        merged_diff3: "<<<<<<< HEAD\nmine\n||||||| base\na\n=======\nyours\n>>>>>>> topic\n",
+      };
+      case "open_external": return null;
       case "op_history": return { id: "h1", head: null };
       case "op_net": return { id: null, head: null };
       case "credentials_answer": return null;
       case "rebase_todo": return [{ sha: "aaaaaaa1", action: "pick", message: "First change" }, { sha: "bbbbbbb2", action: "pick", message: "Second change" }, { sha: "ccccccc3", action: "pick", message: "Third change" }];
       case "op_rebase": case "op_rebase_continue": return { id: "r1", head: null };
       case "op_merge": case "op_resolve_with": case "op_merge_abort": case "op_resolve":
-      case "op_branch_create": case "op_branch_rename": case "op_branch_delete": case "op_checkout":
+      case "branch_plan": return { name: "feature/ACT-1010-Nova-branch", base: "develop" };
+      case "op_branch_create": case "op_branch_create_from": case "op_branch_rename": case "op_branch_delete": case "op_checkout":
         return { id: null, head: null };
       default: throw { code: "UNKNOWN_COMMAND", message: cmd };
     }

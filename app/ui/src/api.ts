@@ -8,6 +8,8 @@ export interface OpenedRepo {
   repoId: number; root: string; name: string; head: string | null; branch: string | null;
   rowCount: number; laneCount: number; refs: RefInfo[]; gitVersion: string; readOnlyReason: string | null;
 }
+/** Name and base of a branch to create (core `branch_plan`). */
+export interface BranchPlan { name: string; base: string }
 export interface RowMeta { sha: string; summary: string; author: string; email: string; time: number }
 export interface FileChange { status: string; path: string; orig_path: string | null }
 export interface CommitDetails {
@@ -19,7 +21,7 @@ export interface StatusEntry {
 }
 export interface StatusReport { branch: string | null; oid: string | null; entries: StatusEntry[]; merging?: boolean; in_progress?: string | null; upstream?: string | null; ahead?: number; behind?: number }
 export interface MergePreview { up_to_date: boolean; fast_forward: boolean; conflicts: string[] | null }
-export interface ConflictVersions { base: string | null; ours: string | null; theirs: string | null; merged: string }
+export interface ConflictVersions { base: string | null; ours: string | null; theirs: string | null; merged: string; merged_diff3: string | null }
 export interface TodoItem { sha: string; action: "pick" | "reword" | "squash" | "fixup" | "drop"; message: string }
 export interface StashInfo { index: number; sha: string; message: string; time: number }
 export interface OpOutcome { id: string | null; head: string | null; conflicted?: boolean; shared_stash?: SharedStashOutcome | null }
@@ -43,12 +45,32 @@ export interface SharedStashListing {
   stashes: SharedStashInfo[]; kept: KeptSharedStash[]; remotes: RemoteStatus[]; defaultRemote: string | null; fetchMode: FetchMode;
 }
 export interface FetchModeSettings { effective: FetchMode; repo: FetchMode | null; global: FetchMode | null }
+/** What the shell recorded about earlier sessions (PERF-12). */
+export interface DiagnosticsStatus {
+  logDir: string; uncleanPreviousExit: boolean; previousCrash: { details: string } | null;
+}
 export interface JournalEntry {
   id: string; time: number; kind: string; summary: string; undone: boolean; commands: string[]; paths: string[]; untracked: string[];
 }
 
+/** UI preferences as stored (`settings.json`, global or per repository). */
+export type ThemeSetting = "system" | "atlas-dark" | "atlas-light";
+export type LanguageSetting = "system" | "en" | "pt-BR";
+export type AnimationsSetting = "on" | "reduced";
+export interface Prefs { theme?: ThemeSetting; zoom?: number; language?: LanguageSetting; animations?: AnimationsSetting }
+export interface EffectivePrefs { theme: ThemeSetting; zoom: number; language: LanguageSetting; animations: AnimationsSetting }
+export interface PrefsView { global: Prefs; repo: Prefs | null; effective: EffectivePrefs }
+
+/** A repository in the recent list (most recent first). `exists` is false when its folder is gone. */
+export interface RecentRepo { path: string; name: string; lastOpened: number; exists: boolean }
+/** What was open last time: tabs whose folder still exists, the tab in front, and the recent list. */
+export interface SessionView { tabs: string[]; active: number; recents: RecentRepo[] }
+
 export const api = {
   initialPath: () => invoke<string | null>("get_initial_path"),
+  diagnostics: () => invoke<DiagnosticsStatus>("diagnostics_status"),
+  dismissCrash: () => invoke<void>("diagnostics_dismiss_crash"),
+  openLogDir: () => invoke<void>("diagnostics_open_log_dir"),
   open: (path: string) => invoke<OpenedRepo>("repo_open", { path }),
   refresh: (repoId: number) => invoke<OpenedRepo>("repo_refresh", { repoId }),
   status: (repoId: number) => invoke<StatusReport>("status_get", { repoId }),
@@ -61,6 +83,12 @@ export const api = {
   discard: (repoId: number, paths: string[]) => invoke<OpOutcome>("op_discard", { repoId, paths }),
   commit: (repoId: number, message: string, amend: boolean) => invoke<OpOutcome>("op_commit", { repoId, message, amend }),
   branchCreate: (repoId: number, name: string, at: string | null) => invoke<OpOutcome>("op_branch_create", { repoId, name, at }),
+  /** New branch at `base` (null = HEAD); `checkout` switches to it as part of the same undoable step. */
+  branchCreateFrom: (repoId: number, name: string, base: string | null, checkout: boolean) =>
+    invoke<OpOutcome>("op_branch_create_from", { repoId, name, base, checkout }),
+  /** Final name and base of a branch to create, computed by the core (no repository needed). */
+  branchPlan: (kind: string, template: string, ticket: string, title: string, main: string, develop: string) =>
+    invoke<BranchPlan>("branch_plan", { kind, template, ticket, title, main, develop }),
   branchRename: (repoId: number, old: string, newName: string) => invoke<OpOutcome>("op_branch_rename", { repoId, old, new: newName }),
   branchDelete: (repoId: number, name: string, force: boolean) => invoke<OpOutcome>("op_branch_delete", { repoId, name, force }),
   checkout: (repoId: number, target: string, isBranch: boolean) => invoke<OpOutcome>("op_checkout", { repoId, target, isBranch }),
@@ -69,6 +97,7 @@ export const api = {
   mergeAbort: (repoId: number) => invoke<OpOutcome>("op_merge_abort", { repoId }),
   conflictVersions: (repoId: number, path: string) => invoke<ConflictVersions>("conflict_versions", { repoId, path }),
   resolveWith: (repoId: number, path: string, content: string) => invoke<OpOutcome>("op_resolve_with", { repoId, path, content }),
+  openExternal: (repoId: number, path: string) => invoke<void>("open_external", { repoId, path }),
   resolve: (repoId: number, path: string, theirs: boolean) => invoke<OpOutcome>("op_resolve", { repoId, path, theirs }),
   stashList: (repoId: number) => invoke<StashInfo[]>("stash_list", { repoId }),
   stash: (repoId: number, action: "push" | "apply" | "pop" | "drop", index = 0, message: string | null = null) =>
@@ -109,6 +138,15 @@ export const api = {
     decodeWindow(toArrayBuffer(await invoke<unknown>("graph_window", { repoId, start, count }))),
   details: (repoId: number, sha: string) => invoke<CommitDetails>("commit_details", { repoId, sha }),
   diff: (repoId: number, sha: string, path: string) => invoke<string>("diff_file", { repoId, sha, path }),
+  /** `repoId` null reads the global scope only. */
+  prefsGet: (repoId: number | null) => invoke<PrefsView>("prefs_get", { repoId }),
+  /** A `null` value in `patch` removes that key from `scope`. */
+  prefsSet: (repoId: number | null, scope: "global" | "repo", patch: Record<string, unknown>) =>
+    invoke<PrefsView>("prefs_set", { repoId, scope, patch }),
+  sessionGet: () => invoke<SessionView>("session_get"),
+  /** Called after every change of the open tabs; `tabs` are repository roots in order. */
+  sessionSaveTabs: (tabs: string[], active: number) => invoke<void>("session_save_tabs", { tabs, active }),
+  recentsRemove: (path: string) => invoke<void>("recents_remove", { path }),
 };
 
 export const SEG_PASS = 0, SEG_IN = 1, SEG_OUT = 2;
