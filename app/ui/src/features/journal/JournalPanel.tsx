@@ -6,7 +6,7 @@ import { useOverlay } from "../overlay";
 
 const DEFAULT_KEEP = 50;
 
-/** Operation journal: what AtlasGit did, with the exact Git commands, plus opt-in cleanup. */
+/** Operation journal: what Git Atlas did, with the exact Git commands, plus opt-in cleanup. */
 export function JournalPanel(props: { repoId: number; onClose: () => void; onError: (e: unknown) => void }) {
   const [entries, { refetch }] = createResource(() => api.journal(props.repoId));
   let close: HTMLButtonElement | undefined;

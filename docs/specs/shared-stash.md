@@ -16,7 +16,7 @@ revision: 3 (after spec review)
 
 A local stash (`refs/stash`) never leaves the machine. Teams want to hand someone uncommitted
 changes ("try my WIP", "here is the fix, don't merge it yet") without creating a branch on the
-shared remote. Shared Stash publishes a local stash to a remote so other AtlasGit users of the
+shared remote. Shared Stash publishes a local stash to a remote so other Git Atlas users of the
 same repo can see it and apply it.
 
 ## 2. Owner decisions (fixed)

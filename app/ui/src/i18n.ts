@@ -5,9 +5,9 @@ import { createSignal } from "solid-js";
 import { ptBR } from "./locales/pt-BR";
 
 export const en = {
-  "app.name": "AtlasGit",
+  "app.name": "Git Atlas",
   "open.title": "Open a repository",
-  "open.hint": "Choose a folder that contains a Git repository, or start AtlasGit with a path: atlasgit /path/to/repo",
+  "open.hint": "Choose a folder that contains a Git repository, or start Git Atlas with a path: atlasgit /path/to/repo",
   "open.button": "Open repository…",
   "panel.filter": "Filter branches and tags",
   "toolbar.undo": "Undo",
@@ -355,14 +355,14 @@ export const en = {
   "err.GIT_FAILED": "Git could not complete the operation.",
   // Codes the core and the shell return that had no text before Phase 5.
   "err.INVALID_PATH": "That file path is not valid or is outside the repository.",
-  "err.IO_ERROR": "AtlasGit could not write one of its own files (operation journal, backups or settings).",
+  "err.IO_ERROR": "Git Atlas could not write one of its own files (operation journal, backups or settings).",
   "err.IO_ERROR.fix": "Check that the disk is not full and that you can write to that folder, then try again.",
-  "err.GIT_NOT_FOUND": "Git could not be found or did not run, so AtlasGit cannot open repositories.",
+  "err.GIT_NOT_FOUND": "Git could not be found or did not run, so Git Atlas cannot open repositories.",
   "err.GIT_NOT_FOUND.fix": "Install Git 2.20 or newer and make sure the git command is on your PATH.",
   "err.NOT_A_REPO": "Git does not recognise that folder as a repository it can open.",
   "err.NOT_A_REPO.fix": "Choose the folder that contains the repository. If another user owns it, Git refuses it until you add it with git config --global --add safe.directory <path>.",
   "err.READ_FAILED": "Git could not read the data of this repository.",
-  "err.UNKNOWN_REPO": "That repository is no longer open in AtlasGit.",
+  "err.UNKNOWN_REPO": "That repository is no longer open in Git Atlas.",
   "err.UNKNOWN_REPO.fix": "Open it again.",
   // Hints the core always sends with these codes (same English text), so they can be translated.
   "err.EMPTY_MESSAGE.fix": "Write a short summary of the change.",

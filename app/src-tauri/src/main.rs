@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! AtlasGit Tauri shell. The UI can only reach the commands below
+//! Git Atlas Tauri shell. The UI can only reach the commands below
 //! (SDD §4.1). All Git access stays in the core.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -635,5 +635,5 @@ fn main() {
             shared_stash::shared_stash_settings_set
         ])
         .run(tauri::generate_context!())
-        .expect("error while running AtlasGit");
+        .expect("error while running Git Atlas");
 }

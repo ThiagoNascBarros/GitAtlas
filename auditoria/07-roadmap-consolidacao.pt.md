@@ -1,7 +1,7 @@
 # 07 · Roadmap consolidado da auditoria
 
 ## 1. Resumo executivo
-- O AtlasGit tem um core sólido (grafo rápido, motor de operações com Undo, 111 testes de Rust e 81 de UI passando) e o MVP "funcional" está pronto no papel. O que pesa para o dono está fora do core: **recarga total a cada operação**, **blur de vidro em painéis grandes**, **cache de grafo sem limite**, **modais genéricos**, **ausência de animações**, **editor de conflitos básico**, **sem Git Flow**, **sem sessão/recentes** e **sem tela de Settings**.
+- O Git Atlas tem um core sólido (grafo rápido, motor de operações com Undo, 111 testes de Rust e 81 de UI passando) e o MVP "funcional" está pronto no papel. O que pesa para o dono está fora do core: **recarga total a cada operação**, **blur de vidro em painéis grandes**, **cache de grafo sem limite**, **modais genéricos**, **ausência de animações**, **editor de conflitos básico**, **sem Git Flow**, **sem sessão/recentes** e **sem tela de Settings**.
 - **48 achados** nas 6 áreas: 0 críticos, 12 ALTA, 25 MÉDIA, 11 BAIXA. Matriz: 37 itens da documentação (16 implementados, 7 parciais, 14 ausentes) mais 5 pedidos do dono.
 - Três correções baratas atacam a sensação de peso: tirar o blur das laterais (PERF-02), limitar o cache do grafo (PERF-03) e adicionar logs/diagnóstico de queda (PERF-12).
 - Lacuna de evidência: **nenhum número de fps, RAM ou tempo de troca de repositório foi medido**; o ambiente de nuvem não executa o app. A seção 7 diz como coletar isso na sua máquina.

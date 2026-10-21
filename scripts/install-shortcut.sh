@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Adds an "AtlasGit" launcher to the application menu (and the desktop, if there is one).
+# Adds an "Git Atlas" launcher to the application menu (and the desktop, if there is one).
 # It opens the app without any repository (release build, rebuilt when sources changed).
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 file="$HOME/.local/share/applications/atlasgit.desktop"
 bin="$HOME/.local/bin/atlasgit-launch"
-# Drop the launcher installed before the AtlasKraken -> AtlasGit rename.
+# Drop the launcher installed before the AtlasKraken -> Git Atlas rename.
 rm -f "$HOME/.local/share/applications/atlaskraken.desktop" "$HOME/.local/bin/atlaskraken-launch"
 mkdir -p "$(dirname "$bin")"
 sed "s|^root=.*|root=\"$root\"|" "$root/scripts/launch.sh" >"$bin"
@@ -20,7 +20,7 @@ mkdir -p "$(dirname "$file")"
 cat >"$file" <<EOF
 [Desktop Entry]
 Type=Application
-Name=AtlasGit
+Name=Git Atlas
 Comment=Git client
 Exec=$bin
 Path=$root

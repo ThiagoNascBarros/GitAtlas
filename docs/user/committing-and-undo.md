@@ -10,7 +10,7 @@ right panel becomes **Commit changes**:
 - **Conflicted files**: only while a merge, rebase, cherry-pick or revert stopped on conflicts
   (see [Branches, merges, conflicts and stashes](branches-merge-stash.md#resolve-conflicts)).
 
-Click a file to see its diff. The arrow before a section name folds it; AtlasGit remembers which
+Click a file to see its diff. The arrow before a section name folds it; Git Atlas remembers which
 sections are folded.
 
 ## Stage and unstage
@@ -29,7 +29,7 @@ has no hunk buttons (it shows **New file (untracked)**): stage the whole file.
 **Discard** throws away the changes of one unstaged file. Press it twice: the first press turns
 it into **Discard? (click again)**.
 
-AtlasGit keeps a backup, so **Undo** brings the changes back, as long as you did not edit the
+Git Atlas keeps a backup, so **Undo** brings the changes back, as long as you did not edit the
 file again in the meantime. Only regular files can be discarded here; for symbolic links use a
 terminal.
 
@@ -88,7 +88,7 @@ Undo the newer operations first.
 ## The operation journal
 
 **History** in the toolbar opens the **Operation journal**: every recorded operation, newest
-first, with its time, an **undone** mark when it was undone, and the exact Git commands AtlasGit
+first, with its time, an **undone** mark when it was undone, and the exact Git commands Git Atlas
 ran.
 
 The journal and the backups behind Undo stay until you clean them up. Set **Keep last** to a

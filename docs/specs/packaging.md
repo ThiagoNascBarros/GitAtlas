@@ -38,7 +38,7 @@ artifacts for the owner to test and publish.
 
 ## 3. Repository context
 
-- `app/src-tauri/tauri.conf.json`: `productName` AtlasGit, `identifier` `dev.atlasgit.app`,
+- `app/src-tauri/tauri.conf.json`: `productName` Git Atlas, `identifier` `dev.atlasgit.app`,
   `version` 0.1.0, bundle `targets: ["deb","appimage"]`, icon `icons/icon.png` (512×512 only),
   `category: DeveloperTool`, license file `../../LICENSE`.
 - Binary name `atlasgit` (`app/src-tauri/Cargo.toml` package name). It takes an optional repo
@@ -58,7 +58,7 @@ artifacts for the owner to test and publish.
 ### 4.1 Functional
 
 - **FR-1 Desktop entry** `packaging/linux/dev.atlasgit.app.desktop`: `Type=Application`,
-  `Name=AtlasGit`, `GenericName=Git Client` (+`[pt_BR]` "Cliente Git"), `Comment=…`
+  `Name=Git Atlas`, `GenericName=Git Client` (+`[pt_BR]` "Cliente Git"), `Comment=…`
   (+`[pt_BR]`), `Exec=atlasgit %f`, `Icon=dev.atlasgit.app`, `Terminal=false`,
   `Categories=Development;RevisionControl;`, `Keywords=git;vcs;version control;…`,
   `StartupWMClass` matching what the app window really reports (verify; `install-shortcut.sh`
@@ -66,8 +66,8 @@ artifacts for the owner to test and publish.
 - **FR-2 AppStream** `packaging/linux/dev.atlasgit.app.metainfo.xml`: `component type=
   desktop-application`, `id` `dev.atlasgit.app`, `metadata_license` CC0-1.0,
   `project_license` Apache-2.0, `name`, `summary`, `description` (EN + `xml:lang="pt-BR"`),
-  `developer` name "AtlasGit contributors" (owner may change), `url type="homepage"`
-  `https://github.com/ThiagoNascBarros/AtlasGit`, `url type="bugtracker"` (…/issues),
+  `developer` name "Git Atlas contributors" (owner may change), `url type="homepage"`
+  `https://github.com/ThiagoNascBarros/GitAtlas`, `url type="bugtracker"` (…/issues),
   `launchable type="desktop-id"`, `content_rating type="oars-1.1"`, `categories`, `provides`
   `binary atlasgit`, `releases` with `0.1.0` (type development unless the owner sets a date),
   `requires`/`recommends` display length if the validator asks. Passes
@@ -237,9 +237,9 @@ flatpak 1.14.6, flatpak-builder 1.4.2, AppStream 1.0.2, desktop-file-utils 0.27.
 ### Desktop entry and window class
 
 `StartupWMClass=atlasgit` verified: under Xvfb, `xprop` on the window of the installed .deb and of
-the AppImage reports `WM_CLASS = "atlasgit", "Atlasgit"` (GTK uses the binary name; Tauri's
+the AppImage reports `WM_CLASS = "atlasgit", "Git Atlas"` (GTK uses the binary name; Tauri's
 `enableGTKAppId` is off). Not checked on a real Wayland session (owner check: the shell should show
-the AtlasGit icon, not a generic one). `Exec=atlasgit %f` as specified; a directory argument through
+the Git Atlas icon, not a generic one). `Exec=atlasgit %f` as specified; a directory argument through
 the Flatpak document portal (`@@ %f @@`) is not verified.
 
 ### Validators
@@ -311,6 +311,6 @@ supported distro = Ubuntu 22.04 / Debian 12-era glibc ≥ 2.35 with WebKitGTK 4.
 
 1. Deb package name `atlas-git` and desktop file `AtlasGit.desktop` come from `productName`: accept,
    or change `productName`/add a post-processing step (shared contract)?
-2. Release date/type in the metainfo for the real release; developer name "AtlasGit contributors".
+2. Release date/type in the metainfo for the real release; developer name "Git Atlas contributors".
 3. Git source for the Flatpak: keep the tag+commit pin or switch to the kernel.org tarball + sha256.
 4. Narrow `--filesystem=home` later (e.g. portal-based folder picking)?

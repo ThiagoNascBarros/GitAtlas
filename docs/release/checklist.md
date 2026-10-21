@@ -1,6 +1,6 @@
 ---
 status: draft
-feature: Release checklist (cut an AtlasGit release)
+feature: Release checklist (cut an Git Atlas release)
 spec: docs/specs/release-docs.md
 date: 2026-10-16
 ---
@@ -100,7 +100,7 @@ Flatpak for the bundle). Tick each line per package: .deb / AppImage / Flatpak.
 
 - [ ] Install: `sudo apt install ./AtlasGit_<version>_amd64.deb`;
       `chmod +x` and run the AppImage; `flatpak install --user AtlasGit-<version>.flatpak`.
-- [ ] Launch from the application menu: the AtlasGit icon shows in the menu and in the dock or
+- [ ] Launch from the application menu: the Git Atlas icon shows in the menu and in the dock or
       task bar (not a generic icon), on X11 and on Wayland. Window class is `atlasgit`
       (`StartupWMClass`).
 - [ ] Open a repository with **Open repository…** and with `atlasgit /path/to/repo`.
@@ -140,7 +140,7 @@ Flatpak for the bundle). Tick each line per package: .deb / AppImage / Flatpak.
 - [ ] Merge the pull request `release/<version>` → `main`.
 - [ ] Tag the merge commit on `main` and push the tag (owner only):
 
-      git tag -a v<version> -m "AtlasGit <version>"
+      git tag -a v<version> -m "Git Atlas <version>"
       git push origin v<version>
 
       The tag starts the release workflow again; its artifacts are the release files.

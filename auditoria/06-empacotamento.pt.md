@@ -16,7 +16,7 @@ Análise estática de `packaging/`, `tauri.conf.json`, `.github/workflows`, `scr
 ### [PKG-02] Nome do pacote `.deb` e do `.desktop` divergem do identificador
 - Severidade: MÉDIA
 - Item da matriz: NF-008
-- Local: `tauri.conf.json` (`productName: AtlasGit`), `docs/HANDOFF.md` (deviations de empacotamento)
+- Local: `tauri.conf.json` (`productName: Git Atlas`), `docs/HANDOFF.md` (deviations de empacotamento)
 - Evidência: o `.deb` se chama `atlas-git` e o arquivo é `AtlasGit.desktop`, enquanto o `metainfo` usa `dev.atlasgit.app`; o `launchable` só resolve no Flatpak. O identificador termina em `.app`, o que gera aviso do Tauri.
 - Sugestão de correção: renomear no bundler (`desktopTemplate` já aponta para o `.desktop`; ajustar o nome do arquivo instalado e o metainfo) e trocar o identificador por `dev.atlasgit.AtlasGit`/`io.github.thiagonascbarros.AtlasGit`.
 - Esforço: P

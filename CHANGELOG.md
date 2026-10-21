@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to AtlasGit are listed here. The format follows
+All notable changes to Git Atlas are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/). The first release (the MVP) has not been cut yet;
 everything below is in `Unreleased` until then (version `0.1.0` in the sources).
@@ -14,7 +14,7 @@ everything below is in `Unreleased` until then (version `0.1.0` in the sources).
   **English**, **Português (Brasil)**). The choice switches live and is remembered; dates and
   numbers follow the chosen language.
 - Plain-language messages and fixes for errors that used to show raw text (Git not found, folder
-  not a repository, read failures, AtlasGit's own files not writable, closed repository).
+  not a repository, read failures, Git Atlas's own files not writable, closed repository).
 - Keyboard access to every context menu: the Menu key or Shift+F10 opens the menu of the
   selected commit, branch, tag, stash or shared stash.
 - Screen reader support for the commit graph: each visible commit is read with its branches and
@@ -48,7 +48,7 @@ everything below is in `Unreleased` until then (version `0.1.0` in the sources).
 - **Fetch**, **Pull** and **Push** in the toolbar, with ahead/behind counts and force push with
   lease after a rejected push.
 - Credentials through Git's own helpers and the SSH agent; questions from Git or SSH (passwords,
-  passphrases, host keys) appear in an AtlasGit dialog.
+  passphrases, host keys) appear in an Git Atlas dialog.
 - Rebase and an interactive rebase editor (pick, reword, squash, fixup, drop, reorder).
 - Cherry-pick, revert, reset (soft, mixed, hard) and tags (create, delete, push) from the graph
   and the sidebar; all of them can be undone except pushing.
@@ -73,7 +73,7 @@ everything below is in `Unreleased` until then (version `0.1.0` in the sources).
 - Undo and Redo for commits, amends, discards and, later, every local history operation, backed
   by an operation journal and snapshots.
 - Operation journal window with the exact Git commands, and opt-in cleanup of old entries.
-- The view refreshes by itself when files or the repository change outside AtlasGit.
+- The view refreshes by itself when files or the repository change outside Git Atlas.
 
 ### Phase 1: Read-only viewer
 

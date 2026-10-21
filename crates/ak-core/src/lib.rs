@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! AtlasGit core: repository reading and commit graph (SDD §3).
+//! Git Atlas core: repository reading and commit graph (SDD §3).
 //! Has no UI dependency.
 
 pub mod cache;

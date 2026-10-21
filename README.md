@@ -1,10 +1,10 @@
-<p align="center"><img src="app/src-tauri/icons/icon.png" width="128" alt="AtlasGit icon"></p>
+<p align="center"><img src="app/src-tauri/icons/icon.png" width="128" alt="Git Atlas icon"></p>
 
-# AtlasGit
+# Git Atlas
 
 Desktop Git client for Linux — Tauri 2 + Rust core + SolidJS. Licensed under Apache-2.0.
 
-> Formerly **AtlasKraken**. Per-repository data still lives under `<git-dir>/atlaskraken/` and `refs/atlaskraken/` so journals, snapshots and backups made before the rename keep working.
+> Formerly known as **AtlasKraken** and **AtlasGit**; the name is now **Git Atlas**. Per-repository data still lives under `<git-dir>/atlaskraken/` and `refs/atlaskraken/` so journals, snapshots and backups made before the rename keep working.
 
 ## Status
 
@@ -64,7 +64,7 @@ Add `--release` for an optimized build. Requirements: Rust ≥ 1.80, Node 22+, p
 scripts/install-shortcut.sh
 ```
 
-Adds **AtlasGit** to the application menu (and the desktop, if there is one). It opens the app without a repository and rebuilds the release binary when sources changed; logs go to `~/.cache/atlasgit/launch.log`. Running it again replaces the old AtlasKraken shortcut.
+Adds **Git Atlas** to the application menu (and the desktop, if there is one). It opens the app without a repository and rebuilds the release binary when sources changed; logs go to `~/.cache/atlasgit/launch.log`. Running it again replaces the old AtlasKraken shortcut.
 
 ## Layout
 

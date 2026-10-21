@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Builds the UI and runs AtlasGit with the UI embedded (no dev server needed).
+# Builds the UI and runs Git Atlas with the UI embedded (no dev server needed).
 # Usage: scripts/run.sh [--release] [path/to/repo]
 set -euo pipefail
 cd "$(dirname "$0")/.."

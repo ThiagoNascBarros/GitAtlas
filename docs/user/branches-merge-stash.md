@@ -26,7 +26,7 @@ Git refuses a checkout that would overwrite your uncommitted changes; commit or 
 
 - **Rename…** changes the name of a local branch.
 - **Delete** removes a local branch. You cannot delete the branch you are on. If the branch has
-  commits that are not merged anywhere else, AtlasGit stops; choose
+  commits that are not merged anywhere else, Git Atlas stops; choose
   **Delete anyway (Undo brings it back)** if you are sure.
 
 ## Merge

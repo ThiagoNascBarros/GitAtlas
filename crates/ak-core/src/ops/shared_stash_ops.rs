@@ -94,7 +94,7 @@ fn gone() -> OpError {
 }
 
 fn invalid_stash() -> OpError {
-    OpError::new("INVALID_SHARED_STASH", "That shared stash is malformed, so AtlasGit will not use it.", Some("Ask its author to share it again."))
+    OpError::new("INVALID_SHARED_STASH", "That shared stash is malformed, so Git Atlas will not use it.", Some("Ask its author to share it again."))
 }
 
 fn not_author() -> OpError {

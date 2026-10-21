@@ -200,7 +200,7 @@ impl Engine {
         if git.mode() != Mode::ReadWrite {
             return Err(OpError::new(
                 "READ_ONLY",
-                "Your Git is too old to edit this repository; AtlasGit opens it read-only.",
+                "Your Git is too old to edit this repository; Git Atlas opens it read-only.",
                 Some("Install Git 2.20 or newer."),
             ));
         }

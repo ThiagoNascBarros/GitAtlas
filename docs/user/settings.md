@@ -1,13 +1,13 @@
 # Settings
 
-AtlasGit has no settings window. The few choices it offers are where you use them.
+Git Atlas has no settings window. The few choices it offers are where you use them.
 
 ## Theme
 
 The theme picker in the toolbar offers **Follow system**, **Atlas Dark** and **Atlas Light**.
 **Follow system** switches between the two when your desktop switches between light and dark.
 
-AtlasGit starts with **Follow system** every time; a theme picked by hand lasts until you close
+Git Atlas starts with **Follow system** every time; a theme picked by hand lasts until you close
 the app.
 
 ## Language
@@ -45,13 +45,13 @@ A repository's own setting wins over this default.
 The layers button in the same header (**Show shared stashes in the graph**) turns the **shared**
 marks in the graph on or off.
 
-## What AtlasGit remembers for you
+## What Git Atlas remembers for you
 
-Without asking, AtlasGit remembers for your user account: the panel sizes, the graph column
+Without asking, Git Atlas remembers for your user account: the panel sizes, the graph column
 widths, which sections of the commit panel are folded, the language, and whether shared stash
 marks are shown. Nothing of this is stored in your repositories.
 
-## Where AtlasGit keeps its data
+## Where Git Atlas keeps its data
 
 Inside each repository's Git directory (usually `.git`), written only when you run an operation:
 
@@ -62,7 +62,7 @@ Inside each repository's Git directory (usually `.git`), written only when you r
 | `refs/atlaskraken/snapshots/` | Commits kept for Undo and Redo (amend, reset, undone commits) |
 | `.git/atlasgit/` and `refs/atlasgit/` | Shared stash data and settings (see [Shared stash](shared-stash.md#where-things-are-stored)) |
 
-`atlaskraken` is AtlasGit's former name; it was kept so data made before the rename still
+`atlaskraken` is Git Atlas's former name; it was kept so data made before the rename still
 works. To clean up the journal and its backups, use the [operation journal](committing-and-undo.md#the-operation-journal).
 
 Outside the repositories: a cache of each repository's commit list in `~/.cache/atlasgit/graph/`

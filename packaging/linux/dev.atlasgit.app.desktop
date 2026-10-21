@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=AtlasGit
+Name=Git Atlas
 GenericName=Git Client
 GenericName[pt_BR]=Cliente Git
 Comment=Browse history, commit, branch, merge and sync Git repositories

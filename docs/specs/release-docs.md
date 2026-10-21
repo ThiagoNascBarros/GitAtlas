@@ -186,5 +186,5 @@ screenshots.
 
 **Open questions for the owner**
 - Everything in `mvp-phase5.md` §8/§8.1 (not resolved here), plus: persist the theme choice like
-  the language? Hide AtlasGit's own refs from the graph, and make "Forget" delete the `-redo`/`-wip`
+  the language? Hide Git Atlas's own refs from the graph, and make "Forget" delete the `-redo`/`-wip`
   refs? Both are code changes outside this module.

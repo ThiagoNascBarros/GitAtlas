@@ -1,8 +1,8 @@
-# AtlasGit user guide
+# Git Atlas user guide
 
-AtlasGit is a desktop Git client for Linux. It shows the commit graph of a repository and lets you
+Git Atlas is a desktop Git client for Linux. It shows the commit graph of a repository and lets you
 stage, commit, branch, merge, stash, fetch, push and rebase. Every change is made by running the
-Git command line, so what AtlasGit does is what Git does, and the operation journal shows the
+Git command line, so what Git Atlas does is what Git does, and the operation journal shows the
 exact commands.
 
 This guide describes version 0.1.0 (the MVP). Labels are quoted as they appear in English; in
@@ -10,7 +10,7 @@ Portuguese the same controls carry the translated text.
 
 ## Pages
 
-1. [Install AtlasGit](install.md): .deb, AppImage, Flatpak, or from source.
+1. [Install Git Atlas](install.md): .deb, AppImage, Flatpak, or from source.
 2. [Getting started](getting-started.md): open a repository and find your way around the window.
 3. [History and diffs](history-and-diff.md): browse the graph, read a commit, compare files.
 4. [Committing and undo](committing-and-undo.md): stage files and hunks, commit, amend, discard,
@@ -32,7 +32,7 @@ Portuguese the same controls carry the translated text.
   [Troubleshooting](troubleshooting.md#read-only-old-git)). The .deb installs Git for you and the
   Flatpak bundles it; the AppImage uses the Git of your system.
 
-## What AtlasGit will not do behind your back
+## What Git Atlas will not do behind your back
 
 - It never starts Git maintenance (`git gc`, `git maintenance`) itself. Git's own automatic
   housekeeping still follows your Git settings.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Desktop launcher entry: opens AtlasGit with no repository. Desktop sessions do not load the
+# Desktop launcher entry: opens Git Atlas with no repository. Desktop sessions do not load the
 # shell profile, so tool paths are added here; output goes to ~/.cache/atlasgit/launch.log.
 set -uo pipefail
 # The installer copies this file to ~/.local/bin and bakes the project path into ATLASGIT_ROOT,
@@ -19,6 +19,6 @@ else
 fi
 status=$?
 if [ $status -ne 0 ]; then
-  command -v notify-send >/dev/null && notify-send "AtlasGit failed to start" "See $log"
+  command -v notify-send >/dev/null && notify-send "Git Atlas failed to start" "See $log"
 fi
 exit $status

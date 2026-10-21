@@ -1,11 +1,11 @@
-# Install AtlasGit
+# Install Git Atlas
 
-AtlasGit 0.1.0 comes as a .deb package, an AppImage and a Flatpak bundle. There is no public
+Git Atlas 0.1.0 comes as a .deb package, an AppImage and a Flatpak bundle. There is no public
 download page yet: the packages are built from this repository with the scripts below, or taken
 from the artifacts of the "Release packages" workflow (`.github/workflows/release.yml`) on
 GitHub.
 
-All three install the same program, `atlasgit`, with the menu entry **AtlasGit** (category
+All three install the same program, `atlasgit`, with the menu entry **Git Atlas** (category
 Development).
 
 ## .deb (Ubuntu, Debian)
@@ -42,7 +42,7 @@ flatpak run dev.atlasgit.app
 
 - App id: `dev.atlasgit.app`. The bundle uses the GNOME 51 runtime from Flathub (installed on the
   first install) and brings its own Git 2.56.0 with the libsecret credential helper.
-- AtlasGit is not on Flathub yet.
+- Git Atlas is not on Flathub yet.
 - The sandbox changes a few things (system Git configuration, credential helpers, folders outside
   your home). Read [Flatpak limits](troubleshooting.md#flatpak-limits) before you rely on it.
 - Remove it with `flatpak uninstall --user dev.atlasgit.app`.
@@ -76,7 +76,7 @@ scripts/run.sh --release /path/to/repo   # optimized build
 scripts/install-shortcut.sh              # menu entry that runs your clone (release build)
 ```
 
-The shortcut opens AtlasGit without a repository and rebuilds the release binary when the sources
+The shortcut opens Git Atlas without a repository and rebuilds the release binary when the sources
 changed. Its log is `~/.cache/atlasgit/launch.log`.
 
 ## Open a repository from the command line

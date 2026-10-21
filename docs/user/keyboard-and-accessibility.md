@@ -1,6 +1,6 @@
 # Keyboard and accessibility
 
-Everything in AtlasGit can be done with the keyboard. Every menu that opens with a right-click
+Everything in Git Atlas can be done with the keyboard. Every menu that opens with a right-click
 also opens with the Menu key or Shift+F10.
 
 ![Commit menu opened with Shift+F10 on the selected commit](../screenshots/phase5/accessibility/02-commit-menu-keyboard.png)
@@ -59,10 +59,10 @@ also opens with the Menu key or Shift+F10.
 
 ## Screen readers
 
-AtlasGit was audited against WCAG 2.1 AA before this release; the audit, with every finding, is in
+Git Atlas was audited against WCAG 2.1 AA before this release; the audit, with every finding, is in
 [docs/a11y/audit.md](../a11y/audit.md).
 
-- The graph is drawn on a canvas, so AtlasGit keeps an invisible list of the rows next to it.
+- The graph is drawn on a canvas, so Git Atlas keeps an invisible list of the rows next to it.
   A screen reader reads each commit as its branches and tags, message, author, date and SHA,
   with its position and whether it is selected. The current branch is read as "(current
   branch)", tags as "tag …", stashes as "stash …".
@@ -78,7 +78,7 @@ AtlasGit was audited against WCAG 2.1 AA before this release; the audit, with ev
 - Both themes meet the WCAG AA contrast minimum for text, and the focus ring is visible on every
   surface.
 - When your desktop asks for reduced motion (GNOME: Settings › Accessibility › Reduce
-  animations), AtlasGit turns off its transitions and animations.
+  animations), Git Atlas turns off its transitions and animations.
 - Screen magnifiers that follow the focus follow the selected graph row.
 
 ## Known limits

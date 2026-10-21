@@ -1,6 +1,6 @@
 [package]
 name = "atlasgit"
-description = "AtlasGit desktop Git client"
+description = "Git Atlas desktop Git client"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

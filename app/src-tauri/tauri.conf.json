@@ -11,7 +11,7 @@
   },
   "app": {
     "windows": [
-      { "label": "main", "title": "AtlasGit", "width": 1280, "height": 800, "minWidth": 900, "minHeight": 600, "dragDropEnabled": false }
+      { "label": "main", "title": "Git Atlas", "width": 1280, "height": 800, "minWidth": 900, "minHeight": 600, "dragDropEnabled": false }
     ],
     "security": { "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:" }
   },
@@ -28,10 +28,10 @@
     ],
     "licenseFile": "../../LICENSE",
     "category": "DeveloperTool",
-    "publisher": "AtlasGit contributors",
-    "homepage": "https://github.com/ThiagoNascBarros/AtlasGit",
+    "publisher": "Git Atlas contributors",
+    "homepage": "https://github.com/ThiagoNascBarros/GitAtlas",
     "shortDescription": "Fast, friendly Git client",
-    "longDescription": "AtlasGit is a desktop Git client for Linux: commit graph, staging, commits, branches, merges, stashes, remotes and rebase. Every change is made with the Git command line (Git 2.20 or newer).",
+    "longDescription": "Git Atlas is a desktop Git client for Linux: commit graph, staging, commits, branches, merges, stashes, remotes and rebase. Every change is made with the Git command line (Git 2.20 or newer).",
     "linux": {
       "deb": {
         "depends": ["git (>= 1:2.20)"],

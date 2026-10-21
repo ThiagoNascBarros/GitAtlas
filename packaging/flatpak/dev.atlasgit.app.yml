@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Flatpak manifest for AtlasGit ("repack": it installs the release binary built by
+# Flatpak manifest for Git Atlas ("repack": it installs the release binary built by
 # scripts/package.sh instead of compiling the Rust/TypeScript sources inside flatpak-builder).
 # Build it with scripts/package-flatpak.sh, which checks the binary and the runtime first.
 # A from-source manifest for Flathub (vendored cargo/pnpm sources) is a later step.

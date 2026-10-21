@@ -27,7 +27,7 @@ TAURI_APP_PATH="$PWD/app/src-tauri" TAURI_FRONTEND_PATH="$PWD/app/ui" \
   pnpm --dir app/ui tauri build --features custom-protocol --bundles "$bundles"
 version="$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' app/src-tauri/tauri.conf.json | head -n1)"
 echo
-echo "AtlasGit $version packages:"
+echo "Git Atlas $version packages:"
 found=0
 for f in target/release/bundle/deb/*_"$version"_*.deb target/release/bundle/appimage/*_"$version"_*.AppImage; do
   [ -e "$f" ] || continue

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Builds the AtlasGit Flatpak from the release binary and exports a single-file bundle:
+# Builds the Git Atlas Flatpak from the release binary and exports a single-file bundle:
 #   target/flatpak/AtlasGit-<version>.flatpak
 # Usage: scripts/package-flatpak.sh
 # Needs flatpak + flatpak-builder and the GNOME runtime/SDK named in the manifest. When they are
