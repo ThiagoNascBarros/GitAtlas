@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
-import { LANE_W, ROW_H, edgeCurve, laneX, mixHex, rowY } from "./geometry";
+import { LANE_W, ROW_H, crisp, edgeCurve, laneX, mixHex, rowY } from "./geometry";
 
 describe("geometry", () => {
   it("uses GitKraken's 22px row height", () => {
@@ -33,5 +33,18 @@ describe("edgeCurve", () => {
   });
   it("'out' runs from the node centre to the row bottom, arriving vertically", () => {
     expect(edgeCurve("out", 10, 30, 100)).toEqual({ p0: [10, 111], c1: [10, 122], c2: [30, 111], p1: [30, 122] });
+  });
+});
+
+describe("crisp", () => {
+  it("scale 1: odd widths centre on a pixel, even widths sit on a boundary", () => {
+    expect(crisp(10, 1, 1)).toBe(10.5);
+    expect(crisp(10.3, 1, 1)).toBe(10.5);
+    expect(crisp(10.4, 2, 1)).toBe(10);
+  });
+  it("scale 2: 1 css px is 2 device px (boundary); 1.5 css px is 3 (half device px)", () => {
+    expect(crisp(10, 1, 2)).toBe(10);
+    expect(crisp(10.25, 1, 2)).toBe(10.5);
+    expect(crisp(10, 1.5, 2)).toBe(10.25);
   });
 });
