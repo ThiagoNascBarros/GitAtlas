@@ -14,7 +14,7 @@ import { perfEnabled, perfStats, recordDraw } from "./perf";
 import { columns, ColumnWidths, loadWidths, saveWidths, clampWidth, resolveWidths } from "./columns";
 import { menuAnchor, rowId, rowText, visibleRange, wipText } from "./a11y";
 import { isMenuKey } from "../overlay";
-import { LANE_W, ROW_H, laneX as laneXAt, rowY } from "./geometry";
+import { LANE_W, ROW_H, edgeCurve, laneX as laneXAt, rowY } from "./geometry";
 
 /** Rows mirrored in the DOM above and below the viewport (spec accessibility §4.2: ≤ 20). */
 const OVERSCAN = 10;
@@ -162,11 +162,13 @@ export function GraphView(props: {
           ctx.moveTo(laneX(s.from), y);
           ctx.lineTo(laneX(s.from), y + ROW_H);
         } else if (s.kind === SEG_IN) {
-          ctx.moveTo(laneX(s.from), y);
-          ctx.bezierCurveTo(laneX(s.from), cy, laneX(s.to), y, laneX(s.to), cy);
+          const k = edgeCurve("in", laneX(s.from), laneX(s.to), y);
+          ctx.moveTo(...k.p0);
+          ctx.bezierCurveTo(...k.c1, ...k.c2, ...k.p1);
         } else if (s.kind === SEG_OUT) {
-          ctx.moveTo(laneX(s.from), cy);
-          ctx.bezierCurveTo(laneX(s.from), y + ROW_H, laneX(s.to), cy, laneX(s.to), y + ROW_H);
+          const k = edgeCurve("out", laneX(s.from), laneX(s.to), y);
+          ctx.moveTo(...k.p0);
+          ctx.bezierCurveTo(...k.c1, ...k.c2, ...k.p1);
         }
         ctx.stroke();
       }
