@@ -2,6 +2,7 @@
 // Theme engine (design-tokens §7, SDD §9): validates theme files, writes
 // tokens as `--ak-*` CSS custom properties and switches live.
 import { createSignal } from "solid-js";
+import { parseThemeChoice, THEME_KEY, type ThemeChoice } from "./choice";
 import dark from "../../../../themes/atlas-dark.theme.json";
 import light from "../../../../themes/atlas-light.theme.json";
 
@@ -18,7 +19,7 @@ export function validate(theme: Theme): string[] {
 
 export const cssVar = (token: string) => `--ak-${token.replace(/\./g, "-")}`;
 
-export type ThemeChoice = "atlas-dark" | "atlas-light" | "system";
+export type { ThemeChoice };
 const [choice, setChoice] = createSignal<ThemeChoice>("system");
 const [active, setActive] = createSignal<Theme>(dark);
 export { active as activeTheme, choice as themeChoice };
@@ -39,6 +40,7 @@ function apply(theme: Theme) {
 
 export function setTheme(c: ThemeChoice) {
   setChoice(c);
+  try { localStorage.setItem(THEME_KEY, c); } catch { /* storage unavailable */ }
   apply(resolve(c));
 }
 
@@ -46,7 +48,9 @@ export function initTheme() {
   matchMedia("(prefers-color-scheme: light)").addEventListener("change", () => {
     if (choice() === "system") apply(resolve("system"));
   });
-  setTheme("system");
+  let saved: string | null = null;
+  try { saved = localStorage.getItem(THEME_KEY); } catch { /* storage unavailable */ }
+  setTheme(parseThemeChoice(saved));
 }
 
 export const laneColor = (slot: number) => active().tokens[`color.lane.${slot % 10}`];

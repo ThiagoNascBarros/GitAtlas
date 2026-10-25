@@ -26,6 +26,9 @@ export function focusables(root: Element): HTMLElement[] {
 /** Overlays with a trap, innermost last: only the innermost one handles Tab. */
 const traps: object[] = [];
 
+/** Escape closes only the innermost trapped overlay; one without a trap (not in `stack`) always handles it. */
+export const handlesEscape = (stack: readonly object[], self: object) => !stack.includes(self) || stack[stack.length - 1] === self;
+
 /**
  * `initial` gets the focus on open. With `root` (the dialog or menu element; may change while the
  * overlay is open), Tab and Shift+Tab cycle inside it, so the page behind is not reachable, and the
@@ -36,6 +39,7 @@ export function useOverlay(onClose: () => void, initial?: () => HTMLElement | un
   const self = {};
   const key = (e: KeyboardEvent) => {
     if (e.key === "Escape") {
+      if (!handlesEscape(traps, self)) return;
       e.preventDefault();
       onClose();
       return;

@@ -45,9 +45,9 @@ const errorDetail = (e: UiError) => e.detail ?? (RAW_MESSAGE_CODES.has(e.code) ?
 export function App() {
   // Runs before any text renders (the theme counterpart, initTheme, runs in main.tsx).
   initLocale();
-  const [leftW, setLeftW, saveLeftW] = storedSize("left", 232);
-  const [rightW, setRightW, saveRightW] = storedSize("right", 360);
-  const [diffH, setDiffH, saveDiffH] = storedSize("diff", 320);
+  const [leftW, setLeftW, saveLeftW] = storedSize("left", 232, 140, 420);
+  const [rightW, setRightW, saveRightW] = storedSize("right", 360, 240, 600);
+  const [diffH, setDiffH, saveDiffH] = storedSize("diff", 320, 120);
   const [tabs, setTabs] = createSignal<Tab[]>([]);
   const [active, setActive] = createSignal(0);
   const [error, setError] = createSignal<UiError | null>(null);

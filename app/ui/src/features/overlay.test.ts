@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 import { describe, expect, it } from "vitest";
-import { cycleIndex, isMenuKey, neighbourIndex } from "./overlay";
+import { cycleIndex, handlesEscape, isMenuKey, neighbourIndex } from "./overlay";
 
 describe("isMenuKey", () => {
   it("accepts the Menu key and Shift+F10", () => {
@@ -51,4 +51,11 @@ describe("neighbourIndex (focus recovery)", () => {
   it("has no target in an empty list", () => {
     expect(neighbourIndex([], "a", 0)).toBe(-1);
   });
+});
+
+describe("handlesEscape (innermost overlay only)", () => {
+  const a = {}, b = {};
+  it("is true for the innermost trapped overlay", () => expect(handlesEscape([a, b], b)).toBe(true));
+  it("is false for an outer overlay under another", () => expect(handlesEscape([a, b], a)).toBe(false));
+  it("is true for an overlay without a trap (not in the stack)", () => expect(handlesEscape([a], b)).toBe(true));
 });

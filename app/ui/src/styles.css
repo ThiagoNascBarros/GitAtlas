@@ -39,13 +39,13 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 .tool:hover:not(:disabled), .modal-actions button:not(.primary):hover { background: var(--ak-color-bg-overlay); }
 .tool:disabled, .primary:disabled { opacity: 1; background: var(--ak-color-bg-raised); color: var(--ak-color-text-muted); border-color: var(--ak-color-border-default); cursor: not-allowed; }
 .modal-actions button.danger { color: var(--ak-color-status-deleted); border-color: var(--ak-color-status-deleted); }
-input:not([type="checkbox"]):not([type="radio"]) { background: var(--ak-color-bg-raised); color: var(--ak-color-text-primary); border: 1px solid var(--ak-color-border-default); border-radius: var(--r-m); padding: 4px 8px; }
+input:not([type="checkbox"]):not([type="radio"]) { background: var(--ak-color-bg-raised); color: var(--ak-color-text-primary); border: 1px solid var(--ak-color-border-strong); border-radius: var(--r-m); padding: 4px 8px; }
 input:not([type="checkbox"]):not([type="radio"]):hover, select:hover, textarea:hover { border-color: var(--ak-color-border-strong); }
 input::placeholder, textarea::placeholder { color: var(--ak-color-text-muted); opacity: 1; }
 input[type="checkbox"] { accent-color: var(--ak-color-accent-default); }
 .badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--ak-color-accent-muted); color: var(--ak-color-text-primary); }
 .theme-pick { display: flex; gap: 6px; align-items: center; color: var(--ak-color-text-secondary); }
-select { appearance: none; background-color: var(--ak-color-bg-raised); color: var(--ak-color-text-primary); border: 1px solid var(--ak-color-border-default); border-radius: var(--r-m); height: var(--ctl-h); padding: 0 22px 0 8px;
+select { appearance: none; background-color: var(--ak-color-bg-raised); color: var(--ak-color-text-primary); border: 1px solid var(--ak-color-border-strong); border-radius: var(--r-m); height: var(--ctl-h); padding: 0 22px 0 8px;
   background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
   background-position: right 11px center, right 7px center; background-size: 4px 4px; background-repeat: no-repeat; }
 .primary { min-height: var(--ctl-h); border: 1px solid transparent; background: var(--ak-color-accent-default); color: var(--ak-color-text-onAccent); padding: 0 12px; border-radius: var(--r-m); font-weight: 600; }
@@ -201,11 +201,11 @@ menu.ctx button:focus { background: var(--ak-color-bg-selected); outline: none; 
    Content is the chart: solid, edge-to-edge panes split by hairlines, like one native window.
    Glass is reserved for the instrument: the top bar and floating layers. Graph canvas untouched. ── */
 :root {
-  --font-ui: "Ubuntu Sans", Ubuntu, Cantarell, system-ui, sans-serif;
+  --font-ui: "Open Sans", "Ubuntu Sans", Ubuntu, Cantarell, system-ui, sans-serif;
   --font-mono: "Ubuntu Sans Mono", "JetBrains Mono", "DejaVu Sans Mono", monospace;
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s6: 24px;
   --r-s: 4px; --r-m: 6px; --r-l: 12px;
-  --ctl-h: 28px; --row-h: 28px; --bar-h: 48px;
+  --ctl-h: 28px; --row-h: 22px; --bar-h: 48px;
   --glass: color-mix(in srgb, var(--ak-color-bg-surface) 82%, transparent);
   --glass-edge: color-mix(in srgb, var(--ak-color-text-primary) 10%, transparent);
   --lift: 0 12px 40px rgb(0 0 0 / .28), 0 1px 0 var(--glass-edge);
