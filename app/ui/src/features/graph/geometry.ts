@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 // Pure graph geometry; GraphView only draws with these.
 export const ROW_H = 22;
-export const LANE_W = 16;
+export const LANE_W = 22;
 /** Author avatar node: radius and lane-colour ring width, in css px. */
-export const AVATAR_R = 8;
+export const AVATAR_R = 10;
 export const AVATAR_RING = 1.5;
 
 /** Top y of row `i` for a canvas scrolled by `top`. */
@@ -49,3 +49,6 @@ export function contrast(a: string, b: string): number {
 /** Canvas font shorthand; same family as the DOM UI (--font-ui) so the graph matches the panels. */
 export const canvasFont = (px: number, weight = 400) =>
   `${weight === 400 ? "" : weight + " "}${px}px "Open Sans", "Ubuntu Sans", Cantarell, system-ui, sans-serif`;
+
+/** Baseline y that centres a glyph box (measured `ascent` above, `descent` below the baseline) on `cy`. */
+export const centerBaseline = (ascent: number, descent: number, cy: number) => cy + (ascent - descent) / 2;

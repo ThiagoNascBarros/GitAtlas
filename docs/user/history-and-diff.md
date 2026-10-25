@@ -47,6 +47,8 @@ hunks (see [Committing and undo](committing-and-undo.md#stage-part-of-a-file)).
 ## Author avatars
 
 Each commit in the graph is drawn as its author's photo inside a ring in the branch colour. GitAtlas
-looks the photo up on Gravatar using the MD5 hash of the author's e-mail, so those hashes leave your
-computer. Authors without a Gravatar show their initials. Photos are kept in the app cache folder
+looks for the photo, in order, on: the GitHub or GitLab account of a `noreply` address, the GitHub or
+Bitbucket commit API (if `origin` is on one of them and the repository is public), Gravatar and
+Libravatar. This sends the author's e-mail hash, or the repository name and a commit id, to those
+services. Authors without a photo show their initials. Photos are kept in the app cache folder
 (`avatars/`) for 30 days; delete that folder to clear them. Merge commits are drawn as a small dot.

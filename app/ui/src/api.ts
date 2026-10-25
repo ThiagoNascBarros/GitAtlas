@@ -49,7 +49,7 @@ export interface JournalEntry {
 
 export const api = {
   initialPath: () => invoke<string | null>("get_initial_path"),
-  avatar: (email: string) => invoke<unknown>("avatar_get", { email }).then(toArrayBuffer),
+  avatar: (repoId: number, email: string, sha: string) => invoke<unknown>("avatar_get", { repoId, email, sha }).then(toArrayBuffer),
   diagnostics: () => invoke<DiagnosticsStatus>("diagnostics_status"),
   dismissCrash: () => invoke<void>("diagnostics_dismiss"),
   open: (path: string) => invoke<OpenedRepo>("repo_open", { path }),

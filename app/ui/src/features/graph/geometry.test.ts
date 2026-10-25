@@ -57,12 +57,22 @@ describe("canvasFont", () => {
   });
 });
 
-import { AVATAR_R, AVATAR_RING } from "./geometry";
+import { AVATAR_R, AVATAR_RING, centerBaseline } from "./geometry";
 describe("avatar node", () => {
   it("fits inside one lane and one row so neighbours never overlap", () => {
-    expect(AVATAR_R).toBe(8);
+    expect(AVATAR_R).toBe(10);
+    expect(LANE_W).toBe(22);
     expect(AVATAR_R * 2).toBeLessThanOrEqual(LANE_W);
     expect(AVATAR_R * 2 + 2).toBeLessThanOrEqual(ROW_H);
     expect(AVATAR_RING).toBeLessThan(AVATAR_R / 2);
+  });
+});
+
+describe("centerBaseline", () => {
+  it("puts the middle of the glyph box on the row centre", () => {
+    // ascent 7, descent 0 (capital letters): baseline sits 3.5px below the centre.
+    expect(centerBaseline(7, 0, 100)).toBe(103.5);
+    // ascent 7, descent 2 (letters with tails): 2.5px below.
+    expect(centerBaseline(7, 2, 100)).toBe(102.5);
   });
 });

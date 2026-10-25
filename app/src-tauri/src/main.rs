@@ -574,19 +574,25 @@ async fn journal_prune(repo_id: u32, keep: usize, state: State<'_, AppState>) ->
     Ok(engine(&r)?.prune_journal(keep)?)
 }
 
-/// Author photo as raw image bytes; empty when the author has none or Gravatar is unreachable.
+/// Author photo as raw image bytes; empty when the author has none or no provider is reachable.
+/// `sha` is a commit by that author, used to ask the forge (GitHub, Bitbucket) for the real account.
 #[tauri::command]
-async fn avatar_get(app: AppHandle, email: String) -> Response {
+async fn avatar_get(app: AppHandle, state: State<'_, AppState>, repo_id: u32, email: String, sha: String) -> Result<Response> {
     let dir = app.path().app_cache_dir().ok().map(|d| d.join("avatars"));
+    let root = get(&state, repo_id)?.reader.root().to_path_buf();
     let bytes = tauri::async_runtime::spawn_blocking(move || {
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
-        dir.and_then(|d| avatar::lookup(&d, &email, now, avatar::http_get))
+        let remote = avatar::remote_of(&root);
+        dir.and_then(|d| avatar::lookup(&d, &email, now, |e| {
+            let sha = avatar::pushed_sha(&root, e).unwrap_or_else(|| sha.clone());
+            avatar::chain(&avatar::candidates(e, remote.as_ref(), &sha), &avatar::http_get)
+        }))
     })
     .await
     .ok()
     .flatten()
     .unwrap_or_default();
-    Response::new(bytes)
+    Ok(Response::new(bytes))
 }
 
 #[tauri::command]

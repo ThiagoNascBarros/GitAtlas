@@ -9,10 +9,15 @@ everything below is in `Unreleased` until then (version `0.1.0` in the sources).
 
 ### Author avatars in the graph
 
-Each commit node shows its author's photo from Gravatar, or initials on a colour derived from the
-e-mail when there is none. **Privacy:** the app sends the MD5 hash of each visible author's e-mail
-to `www.gravatar.com`. Photos are cached 30 days and "no photo" answers 7 days under the app cache
-folder (`avatars/`); the webview itself makes no network request. Merge commits keep the small dot.
+Each commit node shows its author's photo, or initials on a colour derived from the e-mail when no
+provider has one. Sources, tried in this order: the account behind a GitHub/GitLab `noreply`
+address; the GitHub or Bitbucket commit API (when `origin` is on github.com or bitbucket.org);
+Gravatar; Libravatar. **Privacy:** these requests leave your computer. Depending on the provider
+they carry the author's e-mail address (noreply only), the MD5 hash of the e-mail
+(Gravatar/Libravatar), or the repository owner/name and one commit id (commit APIs, unauthenticated,
+so private repositories simply yield no photo). Photos are cached 30 days and "no photo" answers 7
+days under the app cache folder (`avatars/`); the webview itself makes no network request. Merge
+commits keep the small dot.
 
 ### Renamed to GitAtlas
 

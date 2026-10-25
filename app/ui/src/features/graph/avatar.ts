@@ -29,23 +29,24 @@ type Entry = ImageBitmap | "none" | "loading";
 /** Lazy per-author photo cache. `get` never waits: it returns the bitmap if known and starts one load otherwise. */
 export class AvatarStore {
   private entries = new Map<string, Entry>();
-  private queue: string[] = [];
+  private queue: { key: string; sha: string }[] = [];
   private live = 0;
 
   constructor(
-    private fetch: (email: string) => Promise<ArrayBuffer>,
+    private fetch: (email: string, sha: string) => Promise<ArrayBuffer>,
     private decode: (bytes: ArrayBuffer) => Promise<ImageBitmap>,
     private onChange: () => void,
     private limit = 4,
   ) {}
 
-  get(email: string): ImageBitmap | undefined {
+  /** `sha` is a commit by this author; the forge APIs resolve the real account from it. */
+  get(email: string, sha = ""): ImageBitmap | undefined {
     const key = norm(email);
     if (!key) return undefined;
     const e = this.entries.get(key);
     if (e === undefined) {
       this.entries.set(key, "loading");
-      this.queue.push(key);
+      this.queue.push({ key, sha });
       this.pump();
       return undefined;
     }
@@ -54,15 +55,15 @@ export class AvatarStore {
 
   private pump() {
     while (this.live < this.limit && this.queue.length) {
-      const key = this.queue.shift()!;
+      const { key, sha } = this.queue.shift()!;
       this.live++;
-      this.load(key).finally(() => { this.live--; this.pump(); });
+      this.load(key, sha).finally(() => { this.live--; this.pump(); });
     }
   }
 
-  private async load(key: string) {
+  private async load(key: string, sha: string) {
     try {
-      const bytes = await this.fetch(key);
+      const bytes = await this.fetch(key, sha);
       if (!bytes.byteLength) return void this.entries.set(key, "none");
       this.entries.set(key, await this.decode(bytes));
       this.onChange();

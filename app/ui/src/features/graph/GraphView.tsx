@@ -16,7 +16,7 @@ import { perfEnabled, perfStats, recordDraw } from "./perf";
 import { columns, ColumnWidths, loadWidths, saveWidths, clampWidth, resolveWidths } from "./columns";
 import { menuAnchor, rowId, rowText, visibleRange, wipText } from "./a11y";
 import { isMenuKey } from "../overlay";
-import { AVATAR_R, AVATAR_RING, LANE_W, ROW_H, canvasFont, crisp, edgeCurve, laneX as laneXAt, rowY } from "./geometry";
+import { AVATAR_R, AVATAR_RING, LANE_W, ROW_H, canvasFont, centerBaseline, crisp, edgeCurve, laneX as laneXAt, rowY } from "./geometry";
 
 /** Rows mirrored in the DOM above and below the viewport (spec accessibility §4.2: ≤ 20). */
 const OVERSCAN = 10;
@@ -114,12 +114,12 @@ export function GraphView(props: {
 
   // Bumped when a photo finishes loading so the canvas repaints.
   const [avatarTick, setAvatarTick] = createSignal(0);
-  const avatars = new AvatarStore(api.avatar, (b) => createImageBitmap(new Blob([b])), () => setAvatarTick((n) => n + 1));
+  const avatars = new AvatarStore((e, sha) => api.avatar(props.repo.repoId, e, sha), (b) => createImageBitmap(new Blob([b])), () => setAvatarTick((n) => n + 1));
 
   /** Author photo (or initials) in a circle with a lane-colour ring. */
-  function drawAvatar(ctx: CanvasRenderingContext2D, x: number, y: number, name: string, email: string, lane: string) {
+  function drawAvatar(ctx: CanvasRenderingContext2D, x: number, y: number, name: string, email: string, sha: string, lane: string) {
     const inner = AVATAR_R - AVATAR_RING;
-    const photo = avatars.get(email);
+    const photo = avatars.get(email, sha);
     ctx.save();
     ctx.beginPath();
     ctx.arc(x, y, AVATAR_R, 0, Math.PI * 2);
@@ -135,9 +135,11 @@ export function GraphView(props: {
       ctx.fillStyle = bg;
       ctx.fillRect(x - inner, y - inner, inner * 2, inner * 2);
       ctx.fillStyle = initialsInk(bg);
-      ctx.font = canvasFont(7.5, 600);
+      ctx.font = canvasFont(10, 600);
       ctx.textAlign = "center";
-      ctx.fillText(initials(name), x, y + 0.5);
+      ctx.textBaseline = "alphabetic";
+      const label = initials(name), m = ctx.measureText(label);
+      ctx.fillText(label, x, centerBaseline(m.actualBoundingBoxAscent, m.actualBoundingBoxDescent, y));
     }
     ctx.restore();
   }
@@ -216,7 +218,7 @@ export function GraphView(props: {
         ctx.lineWidth = 2;
         ctx.stroke();
       } else {
-        drawAvatar(ctx, nx, cy, r.m.author, r.m.email, laneColor(r.g.color));
+        drawAvatar(ctx, nx, cy, r.m.author, r.m.email, r.m.sha, laneColor(r.g.color));
       }
       ctx.restore();
       // More lanes than fit: fade the right edge as a hint that the graph continues.

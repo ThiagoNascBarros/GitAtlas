@@ -29,7 +29,7 @@ describe("avatarColor", () => {
 });
 
 describe("AvatarStore", () => {
-  const mk = (fetch: (e: string) => Promise<ArrayBuffer>, limit = 4) => {
+  const mk = (fetch: (e: string, sha: string) => Promise<ArrayBuffer>, limit = 4) => {
     let changes = 0;
     const store = new AvatarStore(fetch, async (b) => ({ size: b.byteLength }) as unknown as ImageBitmap, () => changes++, limit);
     return { store, changes: () => changes };
@@ -38,12 +38,21 @@ describe("AvatarStore", () => {
   it("returns undefined first, then the image, and asks once per author", async () => {
     let calls = 0;
     const { store, changes } = mk(async () => { calls++; return new ArrayBuffer(3); });
-    expect(store.get("A@b.c")).toBeUndefined();
+    expect(store.get("A@b.c", "s")).toBeUndefined();
     expect(store.get("a@b.c")).toBeUndefined();
     await flush();
     expect(calls).toBe(1);
     expect(store.get("a@b.c")).toEqual({ size: 3 });
     expect(changes()).toBe(1);
+  });
+
+  it("hands the fetcher the first commit sha seen for that author", async () => {
+    const seen: string[] = [];
+    const { store } = mk(async (_e, sha) => { seen.push(sha); return new ArrayBuffer(1); });
+    store.get("a@b.c", "1111111");
+    store.get("a@b.c", "2222222");
+    await flush();
+    expect(seen).toEqual(["1111111"]);
   });
 
   it("treats an empty answer as no photo and never asks again", async () => {
