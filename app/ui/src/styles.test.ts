@@ -11,3 +11,9 @@ describe("panel typography", () => {
     expect(lastDecl("--font-ui")).toMatch(/^"?Open Sans"?,/);
   });
 });
+
+describe("panel density", () => {
+  it("--row-h is 22px (dense GitKraken rows)", () => {
+    expect(lastDecl("--row-h")).toBe("22px");
+  });
+});

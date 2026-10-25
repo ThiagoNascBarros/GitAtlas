@@ -205,7 +205,7 @@ menu.ctx button:focus { background: var(--ak-color-bg-selected); outline: none; 
   --font-mono: "Ubuntu Sans Mono", "JetBrains Mono", "DejaVu Sans Mono", monospace;
   --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s6: 24px;
   --r-s: 4px; --r-m: 6px; --r-l: 12px;
-  --ctl-h: 28px; --row-h: 28px; --bar-h: 48px;
+  --ctl-h: 28px; --row-h: 22px; --bar-h: 48px;
   --glass: color-mix(in srgb, var(--ak-color-bg-surface) 82%, transparent);
   --glass-edge: color-mix(in srgb, var(--ak-color-text-primary) 10%, transparent);
   --lift: 0 12px 40px rgb(0 0 0 / .28), 0 1px 0 var(--glass-edge);
