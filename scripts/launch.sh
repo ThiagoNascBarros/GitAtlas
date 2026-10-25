@@ -10,7 +10,12 @@ export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$(ls -d "$HOME"/.nvm/versions/nod
 log="$HOME/.cache/gitatlas/launch.log"
 mkdir -p "$(dirname "$log")"
 bin="$root/target/release/gitatlas"
-cd "$root"
+if ! cd "$root" 2>/dev/null; then
+  msg="Project folder not found: $root. Run scripts/install-shortcut.sh from the current folder."
+  echo "$msg" >"$log"
+  command -v notify-send >/dev/null && notify-send "GitAtlas failed to start" "$msg"
+  exit 1
+fi
 # Rebuild only when a source file is newer than the binary.
 if [ ! -x "$bin" ] || [ -n "$(find app/ui/src app/src-tauri/src crates -type f \( -name '*.rs' -o -name '*.ts' -o -name '*.tsx' -o -name '*.css' \) -newer "$bin" -print -quit)" ]; then
   scripts/run.sh --release >"$log" 2>&1

@@ -18,19 +18,22 @@ mkdir -p "$(dirname "$icon")"
 cp "$root/app/src-tauri/icons/icon.png" "$icon"
 gtk-update-icon-cache -f -t "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
 mkdir -p "$(dirname "$file")"
-cat >"$file" <<EOF
+# No Path= key: the launcher cd's into the project itself, so a moved or renamed folder can no longer
+# make the desktop shell fail before the launcher runs. Written to a temp file and renamed so the
+# shell sees a fresh entry rather than an in-place edit.
+tmp="$(mktemp "$file.XXXXXX")"
+cat >"$tmp" <<EOF
 [Desktop Entry]
 Type=Application
 Name=GitAtlas
 Comment=Git client
 Exec=$bin
-Path=$root
 Icon=gitatlas
 Terminal=false
 Categories=Development;RevisionControl;
 StartupWMClass=gitatlas
 EOF
-chmod +x "$file"
+chmod +x "$tmp" && mv -f "$tmp" "$file"
 desk="$(xdg-user-dir DESKTOP 2>/dev/null || true)"
 if [ -n "$desk" ] && [ -d "$desk" ]; then
   rm -f "$desk/AtlasKraken.desktop"
