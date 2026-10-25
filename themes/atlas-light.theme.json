@@ -28,15 +28,15 @@
     "color.diff.delBg": "#FCE6E5",
     "color.diff.addText": "#0F5132",
     "color.diff.delText": "#8A1C17",
-    "color.lane.0": "#9A5B00",
-    "color.lane.1": "#1F6FEB",
-    "color.lane.2": "#1A7F4B",
-    "color.lane.3": "#A3338A",
-    "color.lane.4": "#6F42C1",
-    "color.lane.5": "#C4302B",
-    "color.lane.6": "#0B7A7A",
-    "color.lane.7": "#6B6A00",
-    "color.lane.8": "#B3501A",
-    "color.lane.9": "#3D6A99"
+    "color.lane.0": "#15a0bf",
+    "color.lane.1": "#0669f7",
+    "color.lane.2": "#8e00c2",
+    "color.lane.3": "#c517b6",
+    "color.lane.4": "#d90171",
+    "color.lane.5": "#cd0101",
+    "color.lane.6": "#f25d2e",
+    "color.lane.7": "#f2ca33",
+    "color.lane.8": "#7bd938",
+    "color.lane.9": "#2ece9d"
   }
 }
