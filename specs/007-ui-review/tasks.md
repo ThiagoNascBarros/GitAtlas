@@ -3,7 +3,7 @@
 Picks come from `auditoria.local-bak/03..05` (impact high, risk low, testable without a browser). Each task is TDD: failing vitest first.
 
 - [x] T001 Triage `auditoria.local-bak/03-ui-visual.md`, `04-modais-componentes.md`, `05-layout-responsividade.md` into the picks below
-- [ ] T002 [UIV-6] Panels typography: `--font-ui` starts with Open Sans (GitKraken look) — `src/styles.test.ts`
+- [x] T002 [UIV-6] Panels typography: `--font-ui` starts with Open Sans (GitKraken look) — `src/styles.test.ts`
 - [ ] T003 [density] Panel/menu rows 22px: final `--row-h` is 22px — `src/styles.test.ts`
 - [ ] T004 [UIV-5] Input/select borders use `border.strong` (>= 3:1 vs `bg.raised` in both themes) — `src/styles.test.ts`
 - [ ] T005 [LAY-1] Saved splitter sizes are clamped to the pane limits (`readSize`) — `features/split/size.test.ts`
