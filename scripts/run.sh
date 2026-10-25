@@ -11,6 +11,8 @@ if [ "${1:-}" = "--release" ]; then
   cargo_flags=(--release)
   shift
 fi
+# Few jobs: a full-parallel release build can exhaust RAM on small machines (override with CARGO_BUILD_JOBS).
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
 pnpm --dir app/ui install --frozen-lockfile >/dev/null
 pnpm --dir app/ui build >/dev/null
 cargo build "${cargo_flags[@]}" -p gitatlas --features custom-protocol
