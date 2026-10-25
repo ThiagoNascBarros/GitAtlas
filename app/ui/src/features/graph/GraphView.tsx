@@ -14,7 +14,7 @@ import { perfEnabled, perfStats, recordDraw } from "./perf";
 import { columns, ColumnWidths, loadWidths, saveWidths, clampWidth, resolveWidths } from "./columns";
 import { menuAnchor, rowId, rowText, visibleRange, wipText } from "./a11y";
 import { isMenuKey } from "../overlay";
-import { LANE_W, ROW_H, edgeCurve, laneX as laneXAt, rowY } from "./geometry";
+import { LANE_W, ROW_H, crisp, edgeCurve, laneX as laneXAt, rowY } from "./geometry";
 
 /** Rows mirrored in the DOM above and below the viewport (spec accessibility §4.2: ≤ 20). */
 const OVERSCAN = 10;
@@ -134,7 +134,7 @@ export function GraphView(props: {
     for (let c = Math.floor(first / CHUNK); c <= Math.floor(last / CHUNK); c++) ensure(c);
 
     const gx = widths().refs - 8;
-    const laneX = (l: number) => laneXAt(gx, l);
+    const laneX = (l: number) => crisp(laneXAt(gx, l), 2, dpr);
     const refs = refsByRow();
     ctx.font = "13px Inter, Cantarell, system-ui, sans-serif";
     ctx.textBaseline = "middle";

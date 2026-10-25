@@ -25,3 +25,9 @@ export function edgeCurve(kind: "in" | "out", fromX: number, toX: number, y: num
     ? { p0: [fromX, y], c1: [fromX, cy], c2: [toX, y], p1: [toX, cy] }
     : { p0: [fromX, cy], c1: [fromX, y + ROW_H], c2: [toX, cy], p1: [toX, y + ROW_H] };
 }
+
+/** Snap a stroke centre `v` so a `lineWidth` css-px line fills whole device pixels at scale `dpr`. */
+export function crisp(v: number, lineWidth: number, dpr: number): number {
+  const d = v * dpr;
+  return (Math.round(lineWidth * dpr) % 2 ? Math.floor(d) + 0.5 : Math.round(d)) / dpr;
+}
