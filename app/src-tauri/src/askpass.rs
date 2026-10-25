@@ -45,14 +45,14 @@ pub struct Pending(Mutex<HashMap<u64, Waiter>>);
 
 impl Pending {
     pub fn answer(&self, id: u64, value: Option<String>) {
-        if let Some(w) = self.0.lock().unwrap().remove(&id) {
+        if let Some(w) = crate::diagnostics::lock(&self.0).remove(&id) {
             let _ = w.tx.send(value);
         }
     }
 
     /// Cancels every question `repo_id` is waiting on (Git then fails with an auth error); returns their ids.
     pub fn cancel_repo(&self, repo_id: u32) -> Vec<u64> {
-        let mut map = self.0.lock().unwrap();
+        let mut map = crate::diagnostics::lock(&self.0);
         let ids: Vec<u64> = map.iter().filter(|(_, w)| w.repo_id == repo_id).map(|(id, _)| *id).collect();
         for id in &ids {
             if let Some(w) = map.remove(id) {
@@ -117,7 +117,7 @@ pub fn with_bridge<T>(app: &AppHandle, pending: Arc<Pending>, repo_id: u32, f: i
     let out = f(&env);
     stop.store(true, Ordering::Relaxed);
     // Git is done: drop any question still on screen so the worker can exit.
-    if let Some(id) = current.lock().unwrap().take() {
+    if let Some(id) = crate::diagnostics::lock(&current).take() {
         pending.answer(id, None);
         let _ = app.emit("credentials-cancel", id);
     }
@@ -134,12 +134,12 @@ fn serve(app: &AppHandle, pending: &Pending, current: &Mutex<Option<u64>>, repo_
     let prompt = prompt.trim_end().to_owned();
     let id = NEXT.fetch_add(1, Ordering::Relaxed);
     let (tx, rx) = mpsc::channel();
-    pending.0.lock().unwrap().insert(id, Waiter { repo_id, tx });
-    *current.lock().unwrap() = Some(id);
+    crate::diagnostics::lock(&pending.0).insert(id, Waiter { repo_id, tx });
+    *crate::diagnostics::lock(&current) = Some(id);
     let _ = app.emit("credentials-request", Request { id, repo_id, secret: is_secret(&prompt), prompt });
     let answer = rx.recv_timeout(ANSWER_TIMEOUT).ok().flatten();
-    pending.0.lock().unwrap().remove(&id);
-    *current.lock().unwrap() = None;
+    crate::diagnostics::lock(&pending.0).remove(&id);
+    *crate::diagnostics::lock(&current) = None;
     if let Some(a) = answer {
         let mut s = s;
         let _ = writeln!(s, "{a}");

@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod askpass;
+mod diagnostics;
 mod settings;
 mod shared_stash;
 
@@ -170,7 +171,7 @@ fn setup_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<SharedWatc
         .map(|o| String::from_utf8_lossy(&o.stdout).split('\0').map(|d| d.trim_end_matches('/').to_string()).collect())
         .unwrap_or_default();
     {
-        let mut g = w.lock().unwrap();
+        let mut g = crate::diagnostics::lock(&w);
         g.watch(root, RecursiveMode::NonRecursive).ok()?;
         for e in std::fs::read_dir(root).ok()?.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
@@ -187,7 +188,7 @@ fn setup_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<SharedWatc
                 let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
                 if name != ".git" && !is_ignored_dir(&root, &name) {
                     if let Some(w) = weak.upgrade() {
-                        let _ = w.lock().unwrap().watch(&p, RecursiveMode::Recursive);
+                        let _ = crate::diagnostics::lock(&w).watch(&p, RecursiveMode::Recursive);
                     }
                 }
             }
@@ -289,12 +290,12 @@ fn get_initial_path(state: State<'_, AppState>) -> Option<String> {
 async fn repo_open(path: String, app: AppHandle, state: State<'_, AppState>) -> Result<OpenedRepo> {
     let (mut repo, opened) = load(&PathBuf::from(&path))?;
     let repo_id = {
-        let mut id = state.next_id.lock().unwrap();
+        let mut id = crate::diagnostics::lock(&state.next_id);
         *id += 1;
         *id
     };
     repo._watcher = start_watcher(app, repo_id, repo.reader.root());
-    state.repos.lock().unwrap().insert(repo_id, Arc::new(repo));
+    crate::diagnostics::lock(&state.repos).insert(repo_id, Arc::new(repo));
     Ok(OpenedRepo { repo_id, ..opened })
 }
 
@@ -304,18 +305,18 @@ async fn repo_refresh(repo_id: u32, app: AppHandle, state: State<'_, AppState>) 
     let root = get(&state, repo_id)?.reader.root().to_path_buf();
     let (mut repo, opened) = load(&root)?;
     repo._watcher = start_watcher(app, repo_id, &root);
-    state.repos.lock().unwrap().insert(repo_id, Arc::new(repo));
+    crate::diagnostics::lock(&state.repos).insert(repo_id, Arc::new(repo));
     Ok(OpenedRepo { repo_id, ..opened })
 }
 
 #[tauri::command]
 fn repo_close(repo_id: u32, state: State<'_, AppState>) {
-    state.repos.lock().unwrap().remove(&repo_id);
-    state.shared_tab_open.lock().unwrap().remove(&repo_id);
+    crate::diagnostics::lock(&state.repos).remove(&repo_id);
+    crate::diagnostics::lock(&state.shared_tab_open).remove(&repo_id);
 }
 
 fn get(state: &AppState, repo_id: u32) -> Result<Arc<Repo>> {
-    state.repos.lock().unwrap().get(&repo_id).cloned().ok_or_else(|| UiError::new("UNKNOWN_REPO", repo_id))
+    crate::diagnostics::lock(&state.repos).get(&repo_id).cloned().ok_or_else(|| UiError::new("UNKNOWN_REPO", repo_id))
 }
 
 fn engine(r: &Repo) -> Result<&Engine> {
@@ -577,6 +578,8 @@ fn main() {
     if let Ok(sock) = std::env::var(askpass::SOCK_ENV) {
         std::process::exit(askpass::client(&sock));
     }
+    // Keeps the log writer alive and installs the panic hook; finish() marks a clean exit.
+    let diag = diagnostics::init();
     let initial_path = std::env::args_os().nth(1).map(PathBuf::from);
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -634,6 +637,11 @@ fn main() {
             shared_stash::shared_stash_settings_get,
             shared_stash::shared_stash_settings_set
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running AtlasGit");
+        .build(tauri::generate_context!())
+        .expect("error while building GitAtlas")
+        .run(move |_, event| {
+            if let tauri::RunEvent::Exit = event {
+                diag.finish();
+            }
+        });
 }
