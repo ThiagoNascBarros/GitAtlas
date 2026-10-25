@@ -77,6 +77,8 @@ export async function installDevMock(first: string, next = "hubbi") {
   mockIPC(async (cmd, args: any) => {
     switch (cmd) {
       case "get_initial_path": return `/mock/${first}`;
+      case "diagnostics_status": return { logDir: "/mock/state/gitatlas", uncleanPreviousExit: false, previousCrash: null };
+      case "diagnostics_dismiss": return null;
       case "plugin:dialog|open": return `/mock/${next}`;
       case "repo_open": {
         const data = await load(String(args.path).replace("/mock/", ""));

@@ -2,12 +2,13 @@
 // App frame (roadmap T1.7): tabs, toolbar, refs panel, graph/diff, details, status bar.
 import { createEffect, createMemo, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { CredentialsRequest, api, KeptSharedStash, OpOutcome, OpenedRepo, SharedStashInfo, StashInfo, StatusReport, UiError } from "./api";
+import { CredentialsRequest, DiagnosticsStatus, api, KeptSharedStash, OpOutcome, OpenedRepo, SharedStashInfo, StashInfo, StatusReport, UiError } from "./api";
 import { listen } from "@tauri-apps/api/event";
 import { GraphView } from "./features/graph/GraphView";
 import { DiffView } from "./features/diff/DiffView";
 import { setTheme, themeChoice, ThemeChoice } from "./theme/theme";
 import { activeLocale, errorFix, errorText, initLocale, LocaleChoice, localeChoice, setLocaleChoice, t } from "./i18n";
+import { crashNotice, crashSummary } from "./features/diagnostics/logic";
 import { StashPanel } from "./features/stash/StashPanel";
 import { CommitMenu, CommitMenuState } from "./features/graph/CommitMenu";
 import { RebaseEditor } from "./features/rebase/RebaseEditor";
@@ -280,6 +281,11 @@ export function App() {
       }
     });
   });
+
+  const [diag, setDiag] = createSignal<DiagnosticsStatus | null>(null);
+  const [showCrash, setShowCrash] = createSignal(false);
+  onMount(() => { api.diagnostics().then(setDiag).catch(() => {}); });
+  const dismissCrash = () => { setDiag(null); api.dismissCrash().catch(() => {}); };
 
   onMount(async () => {
     try {
@@ -588,6 +594,21 @@ export function App() {
         </div>
       </Show>
 
+      <Show when={crashNotice(diag())}>
+        {(kind) => (
+          <div class="banner error" role="alert">
+            <div>
+              <strong>
+                {kind() === "crash" ? t("crash.recorded", { s: crashSummary(diag()!.previousCrash!.details) }) : t("crash.unclean")}
+              </strong>
+              <p>{t("crash.logs", { dir: diag()!.logDir })}</p>
+              <Show when={showCrash() && diag()!.previousCrash}><pre class="mono">{diag()!.previousCrash!.details}</pre></Show>
+            </div>
+            <Show when={diag()!.previousCrash}><button class="mini" onClick={() => setShowCrash(!showCrash())}>{t("err.details")}</button></Show>
+            <button class="mini" onClick={dismissCrash}>{t("err.dismiss")}</button>
+          </div>
+        )}
+      </Show>
       <Show when={tab() && watchFailed().includes(tab()!.repo.repoId)}>
         <output class="banner">
           <div>{t("watch.failed")}</div>

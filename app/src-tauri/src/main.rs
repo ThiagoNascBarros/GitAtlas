@@ -573,19 +573,33 @@ async fn journal_prune(repo_id: u32, keep: usize, state: State<'_, AppState>) ->
     Ok(engine(&r)?.prune_journal(keep)?)
 }
 
+#[tauri::command]
+fn diagnostics_status(d: State<'_, Arc<diagnostics::Diagnostics>>) -> diagnostics::DiagnosticsStatus {
+    d.status()
+}
+
+#[tauri::command]
+fn diagnostics_dismiss(d: State<'_, Arc<diagnostics::Diagnostics>>) {
+    d.dismiss_crash();
+}
+
 fn main() {
     // Started by Git/ssh as the askpass program: forward the prompt to the running app and exit.
     if let Ok(sock) = std::env::var(askpass::SOCK_ENV) {
         std::process::exit(askpass::client(&sock));
     }
     // Keeps the log writer alive and installs the panic hook; finish() marks a clean exit.
-    let diag = diagnostics::init();
+    let diag = Arc::new(diagnostics::init());
+    let on_exit = diag.clone();
     let initial_path = std::env::args_os().nth(1).map(PathBuf::from);
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState { initial_path, ..Default::default() })
+        .manage(diag)
         .invoke_handler(tauri::generate_handler![
             get_initial_path,
+            diagnostics_status,
+            diagnostics_dismiss,
             repo_open,
             repo_refresh,
             repo_close,
@@ -641,7 +655,7 @@ fn main() {
         .expect("error while building GitAtlas")
         .run(move |_, event| {
             if let tauri::RunEvent::Exit = event {
-                diag.finish();
+                on_exit.finish();
             }
         });
 }

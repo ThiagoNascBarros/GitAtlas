@@ -49,6 +49,8 @@ export interface JournalEntry {
 
 export const api = {
   initialPath: () => invoke<string | null>("get_initial_path"),
+  diagnostics: () => invoke<DiagnosticsStatus>("diagnostics_status"),
+  dismissCrash: () => invoke<void>("diagnostics_dismiss"),
   open: (path: string) => invoke<OpenedRepo>("repo_open", { path }),
   refresh: (repoId: number) => invoke<OpenedRepo>("repo_refresh", { repoId }),
   status: (repoId: number) => invoke<StatusReport>("status_get", { repoId }),

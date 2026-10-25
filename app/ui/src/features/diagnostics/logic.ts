@@ -7,3 +7,9 @@ export function crashNotice(s: DiagnosticsStatus | null): "crash" | "unclean" | 
   if (s.previousCrash) return "crash";
   return s.uncleanPreviousExit ? "unclean" : null;
 }
+
+/** One-line summary of a recorded panic (the full text stays under "Details"). */
+export function crashSummary(details: string): string {
+  const line = details.split("\n").map((l) => l.trim()).find(Boolean) ?? "";
+  return line.length > 160 ? line.slice(0, 159) + "…" : line;
+}
