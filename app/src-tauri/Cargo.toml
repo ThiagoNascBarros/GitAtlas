@@ -16,6 +16,8 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 notify = "6"
 tracing = "0.1"
+md5 = "0.7"
+ureq = "2"
 tracing-appender = "0.2"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde.workspace = true

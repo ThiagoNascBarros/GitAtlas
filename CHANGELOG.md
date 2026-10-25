@@ -7,6 +7,13 @@ everything below is in `Unreleased` until then (version `0.1.0` in the sources).
 
 ## [Unreleased]
 
+### Author avatars in the graph
+
+Each commit node shows its author's photo from Gravatar, or initials on a colour derived from the
+e-mail when there is none. **Privacy:** the app sends the MD5 hash of each visible author's e-mail
+to `www.gravatar.com`. Photos are cached 30 days and "no photo" answers 7 days under the app cache
+folder (`avatars/`); the webview itself makes no network request. Merge commits keep the small dot.
+
 ### Renamed to GitAtlas
 
 The app was called AtlasGit (and before that AtlasKraken). Binary, Cargo package, `.deb`

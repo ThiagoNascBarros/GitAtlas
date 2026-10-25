@@ -56,3 +56,13 @@ describe("canvasFont", () => {
     expect(canvasFont(11.5, 600)).toMatch(/^600 11.5px "Open Sans", /);
   });
 });
+
+import { AVATAR_R, AVATAR_RING } from "./geometry";
+describe("avatar node", () => {
+  it("fits inside one lane and one row so neighbours never overlap", () => {
+    expect(AVATAR_R).toBe(8);
+    expect(AVATAR_R * 2).toBeLessThanOrEqual(LANE_W);
+    expect(AVATAR_R * 2 + 2).toBeLessThanOrEqual(ROW_H);
+    expect(AVATAR_RING).toBeLessThan(AVATAR_R / 2);
+  });
+});

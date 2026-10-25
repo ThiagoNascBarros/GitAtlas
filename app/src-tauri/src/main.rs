@@ -5,6 +5,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod askpass;
+mod avatar;
 mod diagnostics;
 mod settings;
 mod shared_stash;
@@ -26,7 +27,7 @@ use ak_gitcli::{Git, Mode};
 use notify::{RecursiveMode, Watcher};
 use serde::Serialize;
 use tauri::ipc::Response;
-use tauri::{AppHandle, Emitter, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 /// What stays in memory per repository: topology and layout only. Commit text
 /// (summary, author) is fetched from Git for the rows on screen.
@@ -573,6 +574,21 @@ async fn journal_prune(repo_id: u32, keep: usize, state: State<'_, AppState>) ->
     Ok(engine(&r)?.prune_journal(keep)?)
 }
 
+/// Author photo as raw image bytes; empty when the author has none or Gravatar is unreachable.
+#[tauri::command]
+async fn avatar_get(app: AppHandle, email: String) -> Response {
+    let dir = app.path().app_cache_dir().ok().map(|d| d.join("avatars"));
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+        dir.and_then(|d| avatar::lookup(&d, &email, now, avatar::http_get))
+    })
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or_default();
+    Response::new(bytes)
+}
+
 #[tauri::command]
 fn diagnostics_status(d: State<'_, Arc<diagnostics::Diagnostics>>) -> diagnostics::DiagnosticsStatus {
     d.status()
@@ -598,6 +614,7 @@ fn main() {
         .manage(diag)
         .invoke_handler(tauri::generate_handler![
             get_initial_path,
+            avatar_get,
             diagnostics_status,
             diagnostics_dismiss,
             repo_open,

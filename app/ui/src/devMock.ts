@@ -79,6 +79,7 @@ export async function installDevMock(first: string, next = "hubbi") {
       case "get_initial_path": return `/mock/${first}`;
       case "diagnostics_status": return { logDir: "/mock/state/gitatlas", uncleanPreviousExit: false, previousCrash: null };
       case "diagnostics_dismiss": return null;
+      case "avatar_get": return new ArrayBuffer(0);
       case "plugin:dialog|open": return `/mock/${next}`;
       case "repo_open": {
         const data = await load(String(args.path).replace("/mock/", ""));

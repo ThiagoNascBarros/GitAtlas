@@ -6,6 +6,7 @@ import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show }
 import { api, FLAG_MERGE, GraphRow, OpenedRepo, RefInfo, RowMeta, SEG_IN, SEG_OUT, SEG_PASS, SharedStashInfo } from "../../api";
 import { activeTheme, laneColor, token } from "../../theme/theme";
 import { refLabelColors } from "./refLabel";
+import { AvatarStore, avatarColor, initials, initialsInk } from "./avatar";
 import { activeLocale, t } from "../../i18n";
 
 const CHUNK = 200;
@@ -15,7 +16,7 @@ import { perfEnabled, perfStats, recordDraw } from "./perf";
 import { columns, ColumnWidths, loadWidths, saveWidths, clampWidth, resolveWidths } from "./columns";
 import { menuAnchor, rowId, rowText, visibleRange, wipText } from "./a11y";
 import { isMenuKey } from "../overlay";
-import { LANE_W, ROW_H, canvasFont, crisp, edgeCurve, laneX as laneXAt, rowY } from "./geometry";
+import { AVATAR_R, AVATAR_RING, LANE_W, ROW_H, canvasFont, crisp, edgeCurve, laneX as laneXAt, rowY } from "./geometry";
 
 /** Rows mirrored in the DOM above and below the viewport (spec accessibility §4.2: ≤ 20). */
 const OVERSCAN = 10;
@@ -111,7 +112,38 @@ export function GraphView(props: {
     return c.rows[k] && { g: c.rows[k], m: c.meta[k] };
   }
 
+  // Bumped when a photo finishes loading so the canvas repaints.
+  const [avatarTick, setAvatarTick] = createSignal(0);
+  const avatars = new AvatarStore(api.avatar, (b) => createImageBitmap(new Blob([b])), () => setAvatarTick((n) => n + 1));
+
+  /** Author photo (or initials) in a circle with a lane-colour ring. */
+  function drawAvatar(ctx: CanvasRenderingContext2D, x: number, y: number, name: string, email: string, lane: string) {
+    const inner = AVATAR_R - AVATAR_RING;
+    const photo = avatars.get(email);
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(x, y, AVATAR_R, 0, Math.PI * 2);
+    ctx.fillStyle = lane;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(x, y, inner, 0, Math.PI * 2);
+    ctx.clip();
+    if (photo) {
+      ctx.drawImage(photo, x - inner, y - inner, inner * 2, inner * 2);
+    } else {
+      const bg = avatarColor(email);
+      ctx.fillStyle = bg;
+      ctx.fillRect(x - inner, y - inner, inner * 2, inner * 2);
+      ctx.fillStyle = initialsInk(bg);
+      ctx.font = canvasFont(7.5, 600);
+      ctx.textAlign = "center";
+      ctx.fillText(initials(name), x, y + 0.5);
+    }
+    ctx.restore();
+  }
+
   function draw() {
+    avatarTick();
     const drawStart = performance.now();
     let painted = 0;
     tick();
@@ -175,13 +207,17 @@ export function GraphView(props: {
       }
       // Node
       const nx = laneX(r.g.lane);
-      ctx.beginPath();
-      ctx.arc(nx, cy, r.g.flags & FLAG_MERGE ? 4 : 6, 0, Math.PI * 2);
-      ctx.fillStyle = laneColor(r.g.color);
-      ctx.fill();
-      ctx.strokeStyle = token("color.bg.canvas");
-      ctx.lineWidth = 2;
-      ctx.stroke();
+      if (r.g.flags & FLAG_MERGE) {
+        ctx.beginPath();
+        ctx.arc(nx, cy, 4, 0, Math.PI * 2);
+        ctx.fillStyle = laneColor(r.g.color);
+        ctx.fill();
+        ctx.strokeStyle = token("color.bg.canvas");
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      } else {
+        drawAvatar(ctx, nx, cy, r.m.author, r.m.email, laneColor(r.g.color));
+      }
       ctx.restore();
       // More lanes than fit: fade the right edge as a hint that the graph continues.
       if (props.repo.laneCount > MAX_VISIBLE_LANES) {
