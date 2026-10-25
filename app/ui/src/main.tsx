@@ -3,6 +3,7 @@ import { render } from "solid-js/web";
 import { App } from "./App";
 import { initTheme } from "./theme/theme";
 import "./styles.css";
+import "./layout.css";
 
 async function start() {
   const inTauri = "__TAURI_INTERNALS__" in window;

@@ -20,7 +20,7 @@ import { WipFile, WipPanel } from "./features/wip/WipPanel";
 import { changeCount, groupStatus } from "./features/wip/status";
 import { toTreeRows, visibleRows } from "./features/files/tree";
 import { markOpenStart, togglePerf } from "./features/graph/perf";
-import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Languages, Laptop, List, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Share2 } from "lucide-solid";
+import { ChevronDown, ChevronRight, FileCode2, FolderClosed, FolderOpen, FolderTree, Archive, Clock, Plus, Cloud, Files, FolderGit2, GitBranch, GitBranchPlus, GitCommitHorizontal, GitMerge, History, Languages, Laptop, List, Redo2, Search, SunMoon, Tag, Tags, Terminal, Undo2, User, X, Ellipsis, Minus, PanelLeft, PanelRight, ArrowDownToLine, ArrowUpFromLine, CloudDownload, Share2 } from "lucide-solid";
 import { Dynamic } from "solid-js/web";
 import { Splitter, storedSize } from "./features/split/Splitter";
 import { SharedStashPanel } from "./features/shared-stash/SharedStashPanel";
@@ -29,7 +29,8 @@ import { LocalStashMenu, LocalStashMenuState } from "./features/stash/LocalStash
 import { ShareDialog } from "./features/shared-stash/ShareDialog";
 import { basesIndex, formatBytes } from "./features/shared-stash/logic";
 import { forget, glyphOn, modelOf, reloadList } from "./features/shared-stash/model";
-import { isMenuKey, keepFocus } from "./features/overlay";
+import { focusables, isMenuKey, keepFocus } from "./features/overlay";
+import { stepZoom, ZOOM_KEYS } from "./features/graph/zoom";
 
 interface Tab {
   repo: OpenedRepo; selected: number | null; sha: string | null; diffPath: string | null;
@@ -49,6 +50,8 @@ export function App() {
   const [leftW, setLeftW, saveLeftW] = storedSize("left", 232, 140, 420);
   const [rightW, setRightW, saveRightW] = storedSize("right", 360, 240, 600);
   const [diffH, setDiffH, saveDiffH] = storedSize("diff", 320, 120);
+  // Global UI zoom, 80–150 %, stored like the pane sizes; layout.css applies it as css zoom on .app.
+  const [uiZoom, setUiZoom, saveUiZoom] = storedSize("zoom", 1, 0.8, 1.5);
   const [tabs, setTabs] = createSignal<Tab[]>([]);
   const [active, setActive] = createSignal(0);
   const [error, setError] = createSignal<UiError | null>(null);
@@ -266,6 +269,61 @@ export function App() {
     setActive(Math.max(0, Math.min(active(), tabs().length - 1)));
   }
 
+  const [zoomMsg, setZoomMsg] = createSignal("");
+  const zoomUi = (dir: -1 | 0 | 1) => {
+    setUiZoom(stepZoom(uiZoom(), dir, 0.8, 1.5));
+    saveUiZoom();
+    setZoomMsg(t("toolbar.zoomLevel", { n: Math.round(uiZoom() * 100) }));
+  };
+
+  // Responsive chrome, measured in css px (media queries see screen px and miss the UI zoom).
+  // squeeze: 0 labels, 1 icons only, 2/3/4 move the view, history, then action group into "More".
+  // panes: 0 docked, 1 refs panel as a drawer, 2 both side panels as drawers.
+  let appEl!: HTMLDivElement, barEl!: HTMLElement;
+  let moreBtn: HTMLButtonElement | undefined, leftBtn: HTMLButtonElement | undefined, rightBtn: HTMLButtonElement | undefined;
+  let leftEl: HTMLElement | undefined, rightEl: HTMLElement | undefined;
+  const panesFor = (w: number) => (w < 640 ? 2 : w < 900 ? 1 : 0);
+  const [panes, setPanes] = createSignal(panesFor(innerWidth / uiZoom()));
+  const [squeeze, setSqueeze] = createSignal(0);
+  const [moreOpen, setMoreOpen] = createSignal(false);
+  const [drawer, setDrawer] = createSignal<"left" | "right" | null>(null);
+  function fit() {
+    setPanes(panesFor(appEl.clientWidth));
+    if (panes() < (drawer() === "right" ? 2 : 1)) setDrawer(null);
+    for (let level = 0; level <= 4; level++) {
+      setSqueeze(level);
+      // +1: both widths are rounded css px, and a fractional zoom can leave them 1 px apart.
+      if (barEl.scrollWidth <= barEl.clientWidth + 1) break;
+    }
+    if (squeeze() < 2) setMoreOpen(false);
+  }
+  const hasTab = createMemo(() => tabs().length > 0);
+  const counts = createMemo(() => `${tab()?.status?.ahead}/${tab()?.status?.behind}`);
+  // Labels change width with the language and the counts; the drawer toggles come with the first tab.
+  createEffect(on([activeLocale, hasTab, counts], () => queueMicrotask(fit), { defer: true }));
+  onMount(() => {
+    const ro = new ResizeObserver(fit);
+    ro.observe(appEl);
+    // The bundled Open Sans arrives after the first layout and widens the labels.
+    void document.fonts?.ready.then(fit);
+    onCleanup(() => ro.disconnect());
+  });
+  /** Opens a side panel drawer with focus inside it; closing returns focus to its toggle. */
+  function showDrawer(side: "left" | "right" | null) {
+    const was = drawer();
+    setDrawer(side);
+    if (side) focusables((side === "left" ? leftEl : rightEl)!)[0]?.focus();
+    else (was === "left" ? leftBtn : rightBtn)?.focus();
+  }
+  const closeDrawerKey = (e: KeyboardEvent) => e.key === "Escape" && drawer() && !e.defaultPrevented && showDrawer(null);
+  createEffect(() => {
+    if (!moreOpen()) return;
+    // Light dismiss: a press outside the panel and its toggle closes it.
+    const away = (e: PointerEvent) => !(e.target as Element).closest("#toolbar-more, .more-toggle") && setMoreOpen(false);
+    window.addEventListener("pointerdown", away);
+    onCleanup(() => window.removeEventListener("pointerdown", away));
+  });
+
   onMount(() => {
     // Lists re-render after operations: keep keyboard focus on the item or its neighbour (A-6).
     onCleanup(keepFocus());
@@ -278,6 +336,10 @@ export function App() {
       } else if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "p") {
         e.preventDefault();
         togglePerf();
+      } else if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.defaultPrevented && ZOOM_KEYS[e.key] !== undefined) {
+        // The focused graph zooms itself (and prevents the default); everywhere else zooms the UI.
+        e.preventDefault();
+        zoomUi(ZOOM_KEYS[e.key]);
       }
     });
   });
@@ -312,9 +374,59 @@ export function App() {
     ([id, sha]) => api.details(id, sha),
   );
 
+  const historyTools = () => (
+    <div class="group">
+      <button class="tool" disabled={!tab()} title={t("toolbar.undoTitle")} onClick={() => undo(tab().repo.repoId, null)}><Undo2 size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.undo")}</span></button>
+      <button class="tool" disabled={!tab()} title={t("toolbar.redoTitle")} onClick={() => redo(tab().repo.repoId)}><Redo2 size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.redo")}</span></button>
+    </div>
+  );
+  const actionTools = () => (
+    <div class="group">
+      <button class="tool" disabled={!tab() || !!netBusy() || !!tab()?.repo.readOnlyReason} aria-busy={netBusy() === "fetch"} title={t("toolbar.fetchTitle")} onClick={() => void net("fetch")}><CloudDownload size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.fetch")}</span></button>
+      <button class="tool" disabled={!tab() || !!netBusy() || !!tab()?.repo.readOnlyReason} aria-busy={netBusy() === "pull"} title={t("toolbar.pullTitle")} onClick={() => void net("pull")}>
+        <ArrowDownToLine size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.pull")}</span><Show when={tab()?.status?.behind}><span class="count">{tab()!.status!.behind}</span></Show>
+      </button>
+      <button class="tool" disabled={!tab() || !!netBusy() || !!tab()?.repo.readOnlyReason} aria-busy={netBusy() === "push"} title={t("toolbar.pushTitle")} onClick={() => void net("push")}>
+        <ArrowUpFromLine size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.push")}</span><Show when={tab()?.status?.ahead}><span class="count">{tab()!.status!.ahead}</span></Show>
+      </button>
+      <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.newBranchTitle")} onClick={() => setAskName("branch")}><GitBranchPlus size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.newBranch")}</span></button>
+      <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.stashTitle")}
+        onClick={() => setAskName("stash")}><Archive size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.stash")}</span></button>
+    </div>
+  );
+  const viewTools = () => (
+    <div class="group">
+      <button class="tool" disabled={!tab()} title={t("toolbar.journalTitle")} onClick={() => setShowJournal(true)}><History size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.journal")}</span></button>
+      <label class="theme-pick" title={t("toolbar.theme")}>
+        <SunMoon size={16} aria-hidden="true" /><span class="sr-only">{t("toolbar.theme")}</span>
+        <select value={themeChoice()} onChange={(e) => setTheme(e.currentTarget.value as ThemeChoice)}>
+          <option value="system">{t("theme.system")}</option>
+          <option value="atlas-dark">{t("theme.dark")}</option>
+          <option value="atlas-light">{t("theme.light")}</option>
+        </select>
+      </label>
+      <label class="theme-pick lang-pick" title={t("toolbar.language")}>
+        <Languages size={16} aria-hidden="true" /><span class="sr-only">{t("toolbar.language")}</span>
+        <span class="lang-code" aria-hidden="true">{activeLocale() === "pt-BR" ? "PT" : "EN"}</span>
+        <select value={localeChoice()} onChange={(e) => setLocaleChoice(e.currentTarget.value as LocaleChoice)}>
+          <option value="system">{t("lang.system")}</option>
+          <option value="en" lang="en">{t("lang.en")}</option>
+          <option value="pt-BR" lang="pt-BR">{t("lang.ptBR")}</option>
+        </select>
+      </label>
+    </div>
+  );
+
   return (
-    <div class="app">
-      <header class="toolbar">
+    <div class="app" ref={appEl} data-drawers={["none", "left", "both"][panes()]} data-open={drawer() ?? undefined}
+      style={{ "--ui-zoom": String(uiZoom()), "--ui-unzoom": String(1 / uiZoom()) }}>
+      <header class="toolbar" ref={barEl} data-squeeze={squeeze()}>
+        <Show when={tab() && panes() > 0}>
+          <div class="group">
+            <button ref={leftBtn} class="tool" title={t("panel.refs")} aria-label={t("panel.refs")} aria-controls="panel-left" aria-expanded={drawer() === "left"}
+              onClick={() => showDrawer(drawer() === "left" ? null : "left")}><PanelLeft size={16} aria-hidden="true" /></button>
+          </div>
+        </Show>
         <div class="crumb">
           <Show when={tabs().length} fallback={<strong class="repo">{t("app.name")}</strong>}>
             {/* Not an ARIA tablist: each tab holds two buttons (switch, close), which a tab cannot. */}
@@ -335,43 +447,32 @@ export function App() {
           </Show>
           <Show when={tab()?.repo.readOnlyReason}><span class="badge">{t("toolbar.readOnly")}</span></Show>
         </div>
-        <div class="group">
-          <button class="tool" disabled={!tab()} title={t("toolbar.undoTitle")} onClick={() => undo(tab().repo.repoId, null)}><Undo2 size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.undo")}</span></button>
-          <button class="tool" disabled={!tab()} title={t("toolbar.redoTitle")} onClick={() => redo(tab().repo.repoId)}><Redo2 size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.redo")}</span></button>
-        </div>
-        <div class="group">
-          <button class="tool" disabled={!tab() || !!netBusy() || !!tab()?.repo.readOnlyReason} aria-busy={netBusy() === "fetch"} title={t("toolbar.fetchTitle")} onClick={() => void net("fetch")}><CloudDownload size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.fetch")}</span></button>
-          <button class="tool" disabled={!tab() || !!netBusy() || !!tab()?.repo.readOnlyReason} aria-busy={netBusy() === "pull"} title={t("toolbar.pullTitle")} onClick={() => void net("pull")}>
-            <ArrowDownToLine size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.pull")}</span><Show when={tab()?.status?.behind}><span class="count">{tab()!.status!.behind}</span></Show>
-          </button>
-          <button class="tool" disabled={!tab() || !!netBusy() || !!tab()?.repo.readOnlyReason} aria-busy={netBusy() === "push"} title={t("toolbar.pushTitle")} onClick={() => void net("push")}>
-            <ArrowUpFromLine size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.push")}</span><Show when={tab()?.status?.ahead}><span class="count">{tab()!.status!.ahead}</span></Show>
-          </button>
-          <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.newBranchTitle")} onClick={() => setAskName("branch")}><GitBranchPlus size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.newBranch")}</span></button>
-          <button class="tool" disabled={!tab() || !!tab()?.repo.readOnlyReason} title={t("toolbar.stashTitle")}
-            onClick={() => setAskName("stash")}><Archive size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.stash")}</span></button>
-        </div>
-        <div class="group">
-          <button class="tool" disabled={!tab()} title={t("toolbar.journalTitle")} onClick={() => setShowJournal(true)}><History size={16} aria-hidden="true" /><span class="lbl">{t("toolbar.journal")}</span></button>
-          <label class="theme-pick" title={t("toolbar.theme")}>
-            <SunMoon size={16} aria-hidden="true" /><span class="sr-only">{t("toolbar.theme")}</span>
-            <select value={themeChoice()} onChange={(e) => setTheme(e.currentTarget.value as ThemeChoice)}>
-              <option value="system">{t("theme.system")}</option>
-              <option value="atlas-dark">{t("theme.dark")}</option>
-              <option value="atlas-light">{t("theme.light")}</option>
-            </select>
-          </label>
-          <label class="theme-pick lang-pick" title={t("toolbar.language")}>
-            <Languages size={16} aria-hidden="true" /><span class="sr-only">{t("toolbar.language")}</span>
-            <span class="lang-code" aria-hidden="true">{activeLocale() === "pt-BR" ? "PT" : "EN"}</span>
-            <select value={localeChoice()} onChange={(e) => setLocaleChoice(e.currentTarget.value as LocaleChoice)}>
-              <option value="system">{t("lang.system")}</option>
-              <option value="en" lang="en">{t("lang.en")}</option>
-              <option value="pt-BR" lang="pt-BR">{t("lang.ptBR")}</option>
-            </select>
-          </label>
-        </div>
+        <Show when={squeeze() < 3}>{historyTools()}</Show>
+        <Show when={squeeze() < 4}>{actionTools()}</Show>
+        <Show when={squeeze() < 2}>{viewTools()}</Show>
+        <Show when={squeeze() >= 2}>
+          <div class="group">
+            <button ref={moreBtn} class="tool more-toggle" title={t("toolbar.more")} aria-label={t("toolbar.more")} aria-controls="toolbar-more" aria-expanded={moreOpen()}
+              onClick={() => setMoreOpen(!moreOpen())}><Ellipsis size={16} aria-hidden="true" /></button>
+          </div>
+        </Show>
+        <Show when={tab() && panes() > 1}>
+          <div class="group">
+            <button ref={rightBtn} class="tool" title={t("details.label")} aria-label={t("details.label")} aria-controls="panel-right" aria-expanded={drawer() === "right"}
+              onClick={() => showDrawer(drawer() === "right" ? null : "right")}><PanelRight size={16} aria-hidden="true" /></button>
+          </div>
+        </Show>
       </header>
+      <Show when={moreOpen() && squeeze() >= 2}>
+        <div id="toolbar-more" class="toolbar-more" role="group" aria-label={t("toolbar.more")}
+          ref={(el) => queueMicrotask(() => focusables(el)[0]?.focus())}
+          onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); setMoreOpen(false); moreBtn?.focus(); } }}
+          onFocusOut={(e) => { const to = e.relatedTarget as Node | null; if (to && to !== moreBtn && !e.currentTarget.contains(to)) setMoreOpen(false); }}>
+          <Show when={squeeze() >= 3}>{historyTools()}</Show>
+          <Show when={squeeze() >= 4}>{actionTools()}</Show>
+          {viewTools()}
+        </div>
+      </Show>
 
       <Show
         when={tab()}
@@ -395,7 +496,7 @@ export function App() {
         }
       >
         <div class="body" style={{ "--left-w": `${leftW()}px`, "--right-w": `${rightW()}px` }}>
-          <aside class="left" aria-label={t("panel.refs")}>
+          <aside class="left" id="panel-left" ref={leftEl} aria-label={t("panel.refs")} onKeyDown={closeDrawerKey}>
             <div class="seg side-tabs" role="group" aria-label={t("ss.tabs")}>
               <button aria-pressed={sideView() === "refs"} onClick={() => setSideView("refs")}><GitBranch size={14} aria-hidden="true" />{t("ss.tabRefs")}</button>
               <button aria-pressed={sideView() === "shared"} onClick={() => setSideView("shared")}><Share2 size={14} aria-hidden="true" />{t("ss.tab")}</button>
@@ -488,7 +589,7 @@ export function App() {
               )}
             </Show>
             <Show when={(tab()!.wip && tab()!.wipFile) || (!tab()!.wip && tab()!.diffPath && tab()!.sha)}>
-              <Splitter label={t("split.diff")} axis="y" dir={-1} value={diffH()} min={120} max={Math.max(160, innerHeight - 260)} onChange={setDiffH} onCommit={saveDiffH} />
+              <Splitter label={t("split.diff")} axis="y" dir={-1} value={diffH()} min={120} max={Math.max(160, innerHeight / uiZoom() - 260)} onChange={setDiffH} onCommit={saveDiffH} />
             </Show>
             <Show when={tab()!.wip && tab()!.wipFile}>
               <DiffView
@@ -515,7 +616,7 @@ export function App() {
           </main>
 
           <Splitter label={t("split.right")} axis="x" dir={-1} value={rightW()} min={240} max={600} onChange={setRightW} onCommit={saveRightW} />
-          <aside class="right" aria-label={t("details.label")}>
+          <aside class="right" id="panel-right" ref={rightEl} aria-label={t("details.label")} onKeyDown={closeDrawerKey}>
             <Show when={tab()!.wip}>
               <WipPanel
                 repo={tab()!.repo}
@@ -591,6 +692,7 @@ export function App() {
               )}
             </Show></Show>
           </aside>
+          <Show when={drawer()}><div class="scrim" aria-hidden="true" onClick={() => showDrawer(null)} /></Show>
         </div>
       </Show>
 
@@ -687,6 +789,15 @@ export function App() {
           <span><Terminal size={14} aria-hidden="true" />{t("status.git", { v: tab()!.repo.gitVersion })}</span>
           <Show when={tab()!.repo.readOnlyReason}><span class="warn">{tab()!.repo.readOnlyReason}</span></Show>
         </Show>
+        <div class="zoom-ctl" role="group" aria-label={t("toolbar.uiZoom")}>
+          <button class="mini" title={t("toolbar.zoomOut")} aria-label={t("toolbar.zoomOut")} aria-keyshortcuts="Control+-" aria-disabled={uiZoom() <= 0.8}
+            onClick={() => zoomUi(-1)}><Minus size={12} aria-hidden="true" /></button>
+          <button class="mini pct" aria-label={t("toolbar.zoomReset", { n: Math.round(uiZoom() * 100) })} aria-keyshortcuts="Control+0"
+            onClick={() => zoomUi(0)}>{Math.round(uiZoom() * 100)}%</button>
+          <button class="mini" title={t("toolbar.zoomIn")} aria-label={t("toolbar.zoomIn")} aria-keyshortcuts="Control+Plus" aria-disabled={uiZoom() >= 1.5}
+            onClick={() => zoomUi(1)}><Plus size={12} aria-hidden="true" /></button>
+        </div>
+        <div class="sr-only" role="status">{zoomMsg()}</div>
       </footer>
     </div>
   );

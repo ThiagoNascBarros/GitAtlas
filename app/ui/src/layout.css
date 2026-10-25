@@ -1,0 +1,93 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Layout shell, imported last: no page scroll, a toolbar that never scrolls, side panes that turn
+   into drawers, and the global UI zoom. App.tsx measures the window in css px (so the zoom counts)
+   and sets data-drawers / data-open on .app and data-squeeze on .toolbar; the media queries in
+   styles.css see on-screen px and are overridden here where they would disagree. */
+
+html, body, #root { height: 100%; height: 100dvh; margin: 0; overflow: hidden; min-width: 0; min-height: 0; }
+:root { font-size: clamp(12px, 11.4px + .125vw, 14px); }
+/* clip, not hidden: closed drawers sit off-canvas and must not be reachable by programmatic scrolling. */
+.app { height: 100%; min-width: 0; min-height: 0; overflow: clip; position: relative; zoom: var(--ui-zoom, 1); }
+/* Fixed menus are placed from on-screen pointer coordinates: undo the zoom on their box, scale the look back. */
+menu.ctx { zoom: var(--ui-unzoom, 1); scale: var(--ui-zoom, 1); transform-origin: 0 0; }
+
+/* Toolbar: clipped, never scrolled. Squeeze 1+ keeps the labels for screen readers only. */
+.toolbar { overflow: hidden; scrollbar-width: none; }
+/* The repo tabs keep this much room: the action groups move into More before the tab names vanish. */
+.toolbar .crumb { min-width: clamp(120px, 30%, 300px); }
+.toolbar .crumb .repo { display: revert; }
+.toolbar .tabs, .toolbar .tab { min-width: 0; }
+.toolbar .tab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toolbar .tool .lbl { display: inline; }
+.toolbar:not([data-squeeze="0"]) .tool .lbl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.toolbar:not([data-squeeze="0"]) .tool { padding: 0 8px; }
+
+/* Overflow panel: a child of .app, not of the header, whose glass (backdrop-filter) would trap it. */
+.toolbar-more { position: absolute; z-index: 40; top: 52px; right: 12px; display: flex; flex-direction: column; gap: 8px; padding: 8px;
+  max-width: calc(100% - 24px); max-height: calc(100% - 64px); overflow: auto; border-radius: 14px;
+  background: var(--lg-tint-strong); -webkit-backdrop-filter: var(--lg-blur); backdrop-filter: var(--lg-blur);
+  border: 1px solid var(--lg-edge); box-shadow: var(--lg-shadow); }
+.toolbar-more .group { display: flex; flex-wrap: wrap; gap: 2px; }
+.toolbar-more .group + .group { padding-top: 8px; border-top: 1px solid var(--lg-edge); }
+.toolbar-more .tool { height: 30px; border-radius: var(--r-ctl); padding: 0 12px; color: var(--ak-color-text-primary); }
+.toolbar-more .tool:hover:not(:disabled) { background: color-mix(in srgb, var(--ak-color-text-primary) 10%, transparent); }
+.toolbar-more .tool:disabled { color: var(--ak-color-text-muted); }
+.toolbar-more .theme-pick select { width: auto; height: 30px; padding-left: 28px; color: var(--ak-color-text-primary); }
+.toolbar-more .lang-pick .lang-code { display: none; }
+
+/* Body grid per drawer mode: docked panes may not crowd out the graph. */
+.body { position: relative; min-width: 0; min-height: 0; }
+.app[data-drawers] .body { grid-template-rows: minmax(0, 1fr); }
+.app[data-drawers="none"] .body { grid-template-columns: min(var(--left-w, 232px), 25%) 0 minmax(0, 1fr) 0 min(var(--right-w, 360px), 35%); }
+.app[data-drawers="left"] .body { grid-template-columns: minmax(0, 1fr) 0 min(var(--right-w, 360px), 45%); }
+.app[data-drawers="both"] .body { grid-template-columns: minmax(0, 1fr); }
+.app[data-drawers] .splitter-x { display: block; }
+.app:not([data-drawers="none"]) .left + .splitter-x, .app[data-drawers="both"] .center + .splitter-x { display: none; }
+.app[data-drawers] .right { margin-left: 0; }
+.app[data-drawers="none"] .center { margin: 0 var(--s1) var(--win-inset); }
+.app:not([data-drawers="none"]) .center { margin: 0 var(--s1) var(--win-inset) var(--win-inset); }
+.app[data-drawers="both"] .center { margin-right: var(--win-inset); }
+
+/* Drawers: off-canvas until opened; visibility keeps closed ones out of the tab order and the a11y tree. */
+.app:not([data-drawers="none"]) .left, .app[data-drawers="both"] .right {
+  position: absolute; z-index: 20; top: 0; bottom: var(--win-inset); margin: 0; visibility: hidden;
+  box-shadow: var(--lift, var(--lg-shadow)); transition: transform .2s ease, visibility 0s .2s; }
+.app:not([data-drawers="none"]) .left { display: block; left: var(--win-inset); width: min(var(--left-w, 232px), calc(100% - 48px));
+  transform: translateX(calc(-100% - 2 * var(--win-inset))); }
+.app[data-drawers="both"] .right { right: var(--win-inset); width: min(var(--right-w, 360px), calc(100% - 48px));
+  transform: translateX(calc(100% + 2 * var(--win-inset))); }
+.app[data-open="left"] .left, .app[data-open="right"] .right { visibility: visible; transform: none; transition: transform .2s ease; }
+/* Overlays sit on busy content: near-solid glass keeps them legible where blur is unavailable. */
+.app:not([data-drawers="none"]) .left, .app[data-drawers="both"] .right, .toolbar-more { background: color-mix(in srgb, var(--ak-color-bg-overlay) 94%, transparent); }
+.scrim { position: absolute; inset: 0; z-index: 19; background: rgb(0 0 0 / .25); }
+
+/* Thin scrollbars on the long lists only. */
+:is(.left, .right, .wip-list, .diff-body, .graph-scroller, .modal, .files, .toolbar-more)::-webkit-scrollbar { width: 8px; height: 8px; }
+:is(.left, .right, .wip-list, .diff-body, .graph-scroller, .modal, .files, .toolbar-more)::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--ak-color-text-primary) 22%, transparent); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+:is(.left, .right, .wip-list, .diff-body, .graph-scroller, .modal, .files, .toolbar-more)::-webkit-scrollbar-thumb:hover {
+  background-color: color-mix(in srgb, var(--ak-color-text-primary) 38%, transparent); }
+:is(.left, .right, .wip-list, .diff-body, .graph-scroller, .modal, .files, .toolbar-more)::-webkit-scrollbar-track,
+:is(.left, .right, .wip-list, .diff-body, .graph-scroller, .modal, .files, .toolbar-more)::-webkit-scrollbar-corner { background: transparent; }
+
+/* Graph zoom / pan. */
+.graph-header { overflow: hidden; }
+.graph-header span:not(.col-resize) { overflow: hidden; text-overflow: ellipsis; }
+.graph-scroller { user-select: none; }
+.graph-scroller.panning { cursor: grabbing; }
+.graph-zoom { position: absolute; bottom: 8px; right: 12px; z-index: 2; padding: 2px 10px; border-radius: 999px; font-size: 12px;
+  font-variant-numeric: tabular-nums; color: var(--ak-color-text-primary); background: var(--ak-color-bg-raised);
+  border: 1px solid var(--ak-color-border-default); box-shadow: var(--lg-shadow); }
+.graph-zoom:hover { background: var(--ak-color-bg-overlay); }
+
+/* Status bar: never wider than the window; the UI zoom control sits at its end. */
+.statusbar { overflow: hidden; min-width: 0; white-space: nowrap; }
+.statusbar > .zoom-ctl { margin-left: auto; display: flex; gap: 2px; align-items: center; }
+.statusbar > .zoom-ctl::before, .statusbar > .sr-only::before { content: none; }
+.zoom-ctl .mini { height: 20px; min-width: 20px; padding: 0 6px; justify-content: center; }
+.zoom-ctl .pct { min-width: 5ch; font-variant-numeric: tabular-nums; }
+.zoom-ctl .mini[aria-disabled="true"] { color: var(--ak-color-text-muted); cursor: not-allowed; }
+
+@media (prefers-reduced-motion: reduce) {
+  .app:not([data-drawers="none"]) .left, .app[data-drawers="both"] .right { transition: none; }
+}
