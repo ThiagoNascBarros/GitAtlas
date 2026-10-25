@@ -7,7 +7,7 @@ import { groupStatus, WipItem } from "./status";
 import { ConflictEditor } from "../conflict/ConflictEditor";
 import { Check, ChevronDown, ChevronRight, FileCheck2, FilePen, GitBranch, Minus, Plus, TriangleAlert, X } from "lucide-solid";
 
-const OPEN_KEY = "atlasgit.wip.sections";
+const OPEN_KEY = "gitatlas.wip.sections";
 function loadOpen(): { unstaged: boolean; staged: boolean } {
   try {
     const v = JSON.parse(localStorage.getItem(OPEN_KEY) ?? "null");

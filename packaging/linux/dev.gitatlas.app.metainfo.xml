@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- SPDX-License-Identifier: CC0-1.0 -->
 <component type="desktop-application">
-  <id>dev.atlasgit.app</id>
+  <id>dev.gitatlas.app</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>Apache-2.0</project_license>
 
-  <name>AtlasGit</name>
+  <name>GitAtlas</name>
   <summary>Fast, friendly Git client</summary>
   <summary xml:lang="pt-BR">Cliente Git rápido e amigável</summary>
 
   <description>
     <p>
-      AtlasGit is a desktop Git client for Linux. It draws the commit graph of large repositories
+      GitAtlas is a desktop Git client for Linux. It draws the commit graph of large repositories
       quickly and lets you stage, commit, branch, merge, rebase and sync with remotes without
       leaving the window.
     </p>
     <p xml:lang="pt-BR">
-      AtlasGit é um cliente Git para desktop Linux. Ele desenha rapidamente o grafo de commits de
+      GitAtlas é um cliente Git para desktop Linux. Ele desenha rapidamente o grafo de commits de
       repositórios grandes e permite fazer stage, commit, branch, merge, rebase e sincronizar com
       remotos sem sair da janela.
     </p>
@@ -40,15 +40,15 @@
     </p>
   </description>
 
-  <developer id="dev.atlasgit">
-    <name>AtlasGit contributors</name>
+  <developer id="dev.gitatlas">
+    <name>GitAtlas contributors</name>
   </developer>
 
-  <url type="homepage">https://github.com/ThiagoNascBarros/AtlasGit</url>
-  <url type="bugtracker">https://github.com/ThiagoNascBarros/AtlasGit/issues</url>
-  <url type="vcs-browser">https://github.com/ThiagoNascBarros/AtlasGit</url>
+  <url type="homepage">https://github.com/ThiagoNascBarros/GitAtlas</url>
+  <url type="bugtracker">https://github.com/ThiagoNascBarros/GitAtlas/issues</url>
+  <url type="vcs-browser">https://github.com/ThiagoNascBarros/GitAtlas</url>
 
-  <launchable type="desktop-id">dev.atlasgit.app.desktop</launchable>
+  <launchable type="desktop-id">dev.gitatlas.app.desktop</launchable>
 
   <content_rating type="oars-1.1"/>
 
@@ -65,7 +65,7 @@
   </keywords>
 
   <provides>
-    <binary>atlasgit</binary>
+    <binary>gitatlas</binary>
   </provides>
 
   <requires>

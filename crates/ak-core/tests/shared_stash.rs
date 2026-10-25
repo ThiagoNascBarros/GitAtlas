@@ -127,7 +127,7 @@ fn find(e: &Engine, id: &str) -> SharedStashInfo {
 }
 
 fn remote_refs(bare: &Path) -> Vec<String> {
-    sh(bare, &["for-each-ref", "--format=%(refname)", "refs/atlasgit/"]).lines().map(str::to_owned).collect()
+    sh(bare, &["for-each-ref", "--format=%(refname)", "refs/gitatlas/"]).lines().map(str::to_owned).collect()
 }
 
 fn empty_tree(dir: &Path) -> String {
@@ -148,7 +148,7 @@ fn wrap(dir: &Path, parent: &str, message: &str) -> String {
 }
 
 fn meta_message(title: &str, email: &str, base: &str) -> String {
-    format!("{title}\n\nAtlasGit-Shared-Stash: 1\nAtlasGit-Author-Email: {email}\nAtlasGit-Base: {base}\nAtlasGit-Base-Branch: main\nAtlasGit-Created: 1700000000\nAtlasGit-Updated: 1700000000\n")
+    format!("{title}\n\nGitAtlas-Shared-Stash: 1\nGitAtlas-Author-Email: {email}\nGitAtlas-Base: {base}\nGitAtlas-Base-Branch: main\nGitAtlas-Created: 1700000000\nGitAtlas-Updated: 1700000000\n")
 }
 
 fn tree_state(dir: &Path) -> String {
@@ -200,15 +200,15 @@ fn a_publishes_a_stash_with_untracked_files() {
     let out = publish(&w.ea, &stash, "Try my WIP", "origin").unwrap();
     let id = shared_id(&out);
     assert_eq!(out.id, None, "network operations are not undoable");
-    assert_eq!(remote_refs(&w.r1), vec![format!("refs/atlasgit/shared-stash/ana-silva/{id}")]);
+    assert_eq!(remote_refs(&w.r1), vec![format!("refs/gitatlas/shared-stash/ana-silva/{id}")]);
     assert!(remote_refs(&w.r2).is_empty());
     // The wrapper: empty tree, parent = the stash, trailers.
-    let wrapper = sh(&w.r1, &["rev-parse", &format!("refs/atlasgit/shared-stash/ana-silva/{id}")]);
+    let wrapper = sh(&w.r1, &["rev-parse", &format!("refs/gitatlas/shared-stash/ana-silva/{id}")]);
     assert_eq!(sh(&w.r1, &["rev-parse", &format!("{wrapper}^{{tree}}")]), empty_tree(&w.r1));
     assert_eq!(sh(&w.r1, &["rev-parse", &format!("{wrapper}^")]), stash);
     let msg = sh(&w.r1, &["log", "-1", "--format=%B", &wrapper]);
-    assert!(msg.starts_with("Try my WIP\n\nAtlasGit-Shared-Stash: 1\nAtlasGit-Author-Email: ana@example.com\n"), "{msg}");
-    assert!(msg.contains(&format!("AtlasGit-Base: {}", w.base)) && msg.contains("AtlasGit-Base-Branch: main"), "{msg}");
+    assert!(msg.starts_with("Try my WIP\n\nGitAtlas-Shared-Stash: 1\nGitAtlas-Author-Email: ana@example.com\n"), "{msg}");
+    assert!(msg.contains(&format!("GitAtlas-Base: {}", w.base)) && msg.contains("GitAtlas-Base-Branch: main"), "{msg}");
     // The local stash is untouched, and A sees its own mirror straight away.
     assert_eq!(w.ea.stashes().unwrap().len(), 1);
     let mine = find(&w.ea, &id);
@@ -264,7 +264,7 @@ fn plain_fetch_ignores_the_namespace_and_shared_fetch_downloads_it() {
     let stash = make_stash(&w.a, &w.ea, "2");
     let id = shared_id(&publish(&w.ea, &stash, "From Ana", "origin").unwrap());
     w.eb.run(&Operation::Fetch).unwrap();
-    assert_eq!(sh(&w.b, &["for-each-ref", "refs/atlasgit/"]), "", "a plain fetch must not download shared stashes");
+    assert_eq!(sh(&w.b, &["for-each-ref", "refs/gitatlas/"]), "", "a plain fetch must not download shared stashes");
     assert!(list(&w.eb).is_empty());
 
     let out = fetch_all(&w.eb);
@@ -496,7 +496,7 @@ fn only_the_author_may_change_or_remove_and_forged_authors_are_only_claimed() {
     // B forges Ana's email in a wrapper and pushes it with plain Git.
     let bstash = make_stash(&w.b, &w.eb, "6b");
     let forged = wrap(&w.b, &bstash, &meta_message("totally from Ana", "ana@example.com", &w.base));
-    sh(&w.b, &["push", "-q", "origin", &format!("{forged}:refs/atlasgit/shared-stash/ana-silva/forged-1")]);
+    sh(&w.b, &["push", "-q", "origin", &format!("{forged}:refs/gitatlas/shared-stash/ana-silva/forged-1")]);
     fetch_all(&w.ea);
     let f = find(&w.ea, "forged-1");
     assert!(f.valid && f.mine, "it claims to be Ana's");
@@ -541,7 +541,7 @@ fn signed_wrapper_is_verified_only_for_the_matching_signer() {
     let stash = make_stash(&w.a, &w.ea, "sg");
     let id = shared_id(&publish(&w.ea, &stash, "signed", "origin").unwrap());
     assert!(
-        sh(&w.r1, &["cat-file", "-p", &format!("refs/atlasgit/shared-stash/ana-silva/{id}")]).contains("gpgsig"),
+        sh(&w.r1, &["cat-file", "-p", &format!("refs/gitatlas/shared-stash/ana-silva/{id}")]).contains("gpgsig"),
         "commit.gpgsign signs the wrapper"
     );
     fetch_all(&w.eb);
@@ -552,7 +552,7 @@ fn signed_wrapper_is_verified_only_for_the_matching_signer() {
     let tree = empty_tree(&w.b);
     sh(&w.b, &["config", "user.signingkey", "mallory@example.com"]);
     let forged = sh(&w.b, &["commit-tree", &tree, "-p", &bstash, "-S", "-m", &meta_message("forged", "ana@example.com", &w.base)]);
-    sh(&w.b, &["push", "-q", "origin", &format!("{forged}:refs/atlasgit/shared-stash/ana-silva/forged-2")]);
+    sh(&w.b, &["push", "-q", "origin", &format!("{forged}:refs/gitatlas/shared-stash/ana-silva/forged-2")]);
     fetch_all(&w.ea);
     let f = find(&w.ea, "forged-2");
     assert!(f.valid && !f.verified, "valid signature, wrong person");
@@ -597,7 +597,7 @@ fn update_is_refused_when_the_remote_ref_moved_in_the_meantime() {
     let w = world();
     let s1 = make_stash(&w.a, &w.ea, "7s");
     let id = shared_id(&publish(&w.ea, &s1, "title", "origin").unwrap());
-    let rref = format!("refs/atlasgit/shared-stash/ana-silva/{id}");
+    let rref = format!("refs/gitatlas/shared-stash/ana-silva/{id}");
     let original = sh(&w.r1, &["rev-parse", &rref]);
 
     // Another clone moves the ref after A's fresh fetch but before A's push: a pre-push hook plays that clone.
@@ -639,20 +639,20 @@ fn unshare_prunes_for_others_keeps_a_copy_and_reshare_restores_it() {
     w.ea.run(&Operation::SharedStashUnshare { id: id.clone(), remote: "origin".into() }).unwrap();
     assert!(remote_refs(&w.r1).is_empty());
     assert!(list(&w.ea).is_empty(), "gone from A's list at once");
-    assert_eq!(sh(&w.a, &["rev-parse", &format!("refs/atlasgit/keep/{id}")]), wrapper, "protected from gc");
+    assert_eq!(sh(&w.a, &["rev-parse", &format!("refs/gitatlas/keep/{id}")]), wrapper, "protected from gc");
     let kept = w.ea.shared_stash_kept().unwrap();
     assert_eq!(kept.len(), 1);
     assert_eq!((kept[0].id.as_str(), kept[0].title.as_str(), kept[0].remote.as_deref()), (id.as_str(), "to be unshared", Some("origin")));
     assert_eq!(list(&w.eb).len(), 1, "B still has its old copy until it fetches");
     fetch_all(&w.eb);
     assert!(list(&w.eb).is_empty(), "pruned");
-    assert_eq!(sh(&w.b, &["for-each-ref", "refs/atlasgit/remotes/"]), "");
+    assert_eq!(sh(&w.b, &["for-each-ref", "refs/gitatlas/remotes/"]), "");
 
     w.ea.run(&Operation::SharedStashReshare { id: id.clone(), remote: "origin".into() }).unwrap();
-    assert_eq!(remote_refs(&w.r1), vec![format!("refs/atlasgit/shared-stash/ana-silva/{id}")]);
-    assert_eq!(sh(&w.r1, &["rev-parse", &format!("refs/atlasgit/shared-stash/ana-silva/{id}")]), wrapper);
+    assert_eq!(remote_refs(&w.r1), vec![format!("refs/gitatlas/shared-stash/ana-silva/{id}")]);
+    assert_eq!(sh(&w.r1, &["rev-parse", &format!("refs/gitatlas/shared-stash/ana-silva/{id}")]), wrapper);
     assert!(w.ea.shared_stash_kept().unwrap().is_empty());
-    assert!(!sh_ok(&w.a, &["rev-parse", "--verify", "-q", &format!("refs/atlasgit/keep/{id}")]));
+    assert!(!sh_ok(&w.a, &["rev-parse", "--verify", "-q", &format!("refs/gitatlas/keep/{id}")]));
     assert_eq!(find(&w.ea, &id).wrapper, wrapper);
     fetch_all(&w.eb);
     assert_eq!(find(&w.eb, &id).title, "to be unshared");
@@ -667,7 +667,7 @@ fn reshare_refuses_to_overwrite_and_discard_keep_forgets_the_copy() {
     let id = shared_id(&publish(&w.ea, &stash, "t", "origin").unwrap());
     w.ea.run(&Operation::SharedStashUnshare { id: id.clone(), remote: "origin".into() }).unwrap();
     // Someone put another value on the same ref meanwhile: reshare is create-only.
-    let rref = format!("refs/atlasgit/shared-stash/ana-silva/{id}");
+    let rref = format!("refs/gitatlas/shared-stash/ana-silva/{id}");
     let squatter = wrap(&w.a, &stash, &meta_message("squatter", "ana@example.com", &w.base));
     sh(&w.a, &["push", "-q", "origin", &format!("{squatter}:{rref}")]);
     assert_eq!(code(w.ea.run(&Operation::SharedStashReshare { id: id.clone(), remote: "origin".into() })), "STALE_SHARED_STASH");
@@ -676,7 +676,7 @@ fn reshare_refuses_to_overwrite_and_discard_keep_forgets_the_copy() {
 
     w.ea.run(&Operation::SharedStashDiscardKeep { id: id.clone() }).unwrap();
     assert!(w.ea.shared_stash_kept().unwrap().is_empty());
-    assert!(!sh_ok(&w.a, &["rev-parse", "--verify", "-q", &format!("refs/atlasgit/keep/{id}")]));
+    assert!(!sh_ok(&w.a, &["rev-parse", "--verify", "-q", &format!("refs/gitatlas/keep/{id}")]));
     assert_eq!(code(w.ea.run(&Operation::SharedStashDiscardKeep { id: id.clone() })), "STASH_NOT_FOUND");
     assert_eq!(code(w.ea.run(&Operation::SharedStashReshare { id, remote: "origin".into() })), "STASH_NOT_FOUND");
     for odd in ["../../heads/main", "", "a b"] {
@@ -690,7 +690,7 @@ fn unshare_of_a_stash_that_is_already_gone_says_so() {
     let w = world();
     let stash = make_stash(&w.a, &w.ea, "8g");
     let id = shared_id(&publish(&w.ea, &stash, "t", "origin").unwrap());
-    sh(&w.r1, &["update-ref", "-d", &format!("refs/atlasgit/shared-stash/ana-silva/{id}")]);
+    sh(&w.r1, &["update-ref", "-d", &format!("refs/gitatlas/shared-stash/ana-silva/{id}")]);
     assert_eq!(code(w.ea.run(&Operation::SharedStashUnshare { id, remote: "origin".into() })), "SHARED_STASH_GONE");
     assert!(w.ea.shared_stash_kept().unwrap().is_empty());
     assert_eq!(code(w.ea.run(&Operation::SharedStashApply { id: "nope".into(), remote: "origin".into() })), "SHARED_STASH_GONE");
@@ -701,10 +701,10 @@ fn unshare_of_a_stash_that_is_already_gone_says_so() {
 #[test]
 fn a_ref_that_is_not_a_stash_is_listed_invalid_and_never_acted_on() {
     let w = world();
-    sh(&w.a, &["push", "-q", "origin", "HEAD:refs/atlasgit/shared-stash/mallory/not-a-stash"]);
+    sh(&w.a, &["push", "-q", "origin", "HEAD:refs/gitatlas/shared-stash/mallory/not-a-stash"]);
     // Also: a wrapper whose parent is a plain commit.
     let plain = wrap(&w.a, &w.base, &meta_message("looks fine", "ana@example.com", &w.base));
-    sh(&w.a, &["push", "-q", "origin", &format!("{plain}:refs/atlasgit/shared-stash/mallory/plain-parent")]);
+    sh(&w.a, &["push", "-q", "origin", &format!("{plain}:refs/gitatlas/shared-stash/mallory/plain-parent")]);
     fetch_all(&w.eb);
     let all = list(&w.eb);
     assert_eq!(all.len(), 2);
@@ -732,7 +732,7 @@ fn a_ref_that_is_not_a_stash_is_listed_invalid_and_never_acted_on() {
 
 fn reject_custom_refs(bare: &Path) {
     let hook = bare.join("hooks/pre-receive");
-    std::fs::write(&hook, "#!/bin/sh\nwhile read old new ref; do\n  case \"$ref\" in refs/atlasgit/*) echo \"custom refs are not allowed here\" >&2; exit 1;; esac\ndone\nexit 0\n").unwrap();
+    std::fs::write(&hook, "#!/bin/sh\nwhile read old new ref; do\n  case \"$ref\" in refs/gitatlas/*) echo \"custom refs are not allowed here\" >&2; exit 1;; esac\ndone\nexit 0\n").unwrap();
     std::fs::set_permissions(&hook, std::fs::Permissions::from_mode(0o755)).unwrap();
 }
 
@@ -742,7 +742,7 @@ fn a_host_that_rejects_custom_refs_is_detected_once_and_cached() {
     reject_custom_refs(&w.r1);
     let stash = make_stash(&w.a, &w.ea, "10");
     assert_eq!(w.ea.shared_stash_probe("origin", &[]).unwrap(), ProbeResult::Rejected);
-    let cache = w.a.join(".git/atlasgit/remotes.json");
+    let cache = w.a.join(".git/gitatlas/remotes.json");
     assert!(std::fs::read_to_string(&cache).unwrap().contains("rejected"));
     assert_eq!(w.ea.shared_stash_remotes().into_iter().find(|r| r.name == "origin").unwrap().probe, Some(ProbeResult::Rejected));
     let e = publish(&w.ea, &stash, "t", "origin").unwrap_err();
@@ -791,7 +791,7 @@ fn same_user_name_gives_distinct_refs_and_ownership_follows_the_email() {
     assert_ne!(ia, ib);
     let refs = remote_refs(&w.r1);
     assert_eq!(refs.len(), 2);
-    assert!(refs.iter().all(|r| r.starts_with("refs/atlasgit/shared-stash/ana-silva/")), "{refs:?}");
+    assert!(refs.iter().all(|r| r.starts_with("refs/gitatlas/shared-stash/ana-silva/")), "{refs:?}");
     fetch_all(&w.ea);
     fetch_all(&w.eb);
     for (e, mine, theirs) in [(&w.ea, &ia, &ib), (&w.eb, &ib, &ia)] {
@@ -803,10 +803,10 @@ fn same_user_name_gives_distinct_refs_and_ownership_follows_the_email() {
     assert!(find(&w.ea, &ia).mine);
     let sa2 = make_stash(&w.a, &w.ea, "11c");
     let ia2 = shared_id(&publish(&w.ea, &sa2, "after rename", "origin").unwrap());
-    assert!(remote_refs(&w.r1).contains(&format!("refs/atlasgit/shared-stash/ana-costa-silva/{ia2}")));
+    assert!(remote_refs(&w.r1).contains(&format!("refs/gitatlas/shared-stash/ana-costa-silva/{ia2}")));
     // They can still manage the old one.
     w.ea.run(&Operation::SharedStashUpdate { id: ia.clone(), remote: "origin".into(), stash_sha: None, title: Some("renamed".into()) }).unwrap();
-    assert!(remote_refs(&w.r1).contains(&format!("refs/atlasgit/shared-stash/ana-silva/{ia}")), "slug is fixed at publish time");
+    assert!(remote_refs(&w.r1).contains(&format!("refs/gitatlas/shared-stash/ana-silva/{ia}")), "slug is fixed at publish time");
     assert_eq!(find(&w.ea, &ia).title, "renamed");
 }
 
@@ -816,7 +816,7 @@ fn a_missing_user_name_uses_the_email_for_slug_and_wrapper_author() {
     let stash = make_stash(&w.a, &w.ea, "nn");
     sh(&w.a, &["config", "user.name", ""]);
     let id = shared_id(&publish(&w.ea, &stash, "t", "origin").unwrap());
-    assert_eq!(remote_refs(&w.r1), vec![format!("refs/atlasgit/shared-stash/ana/{id}")]);
+    assert_eq!(remote_refs(&w.r1), vec![format!("refs/gitatlas/shared-stash/ana/{id}")]);
     assert_eq!(find(&w.ea, &id).author_name, "ana");
 }
 

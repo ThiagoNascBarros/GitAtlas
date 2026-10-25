@@ -1,13 +1,13 @@
 # Settings
 
-AtlasGit has no settings window. The few choices it offers are where you use them.
+GitAtlas has no settings window. The few choices it offers are where you use them.
 
 ## Theme
 
 The theme picker in the toolbar offers **Follow system**, **Atlas Dark** and **Atlas Light**.
 **Follow system** switches between the two when your desktop switches between light and dark.
 
-AtlasGit starts with **Follow system** every time; a theme picked by hand lasts until you close
+GitAtlas starts with **Follow system** every time; a theme picked by hand lasts until you close
 the app.
 
 ## Language
@@ -30,11 +30,11 @@ messages that were already on screen when you switched.
 
 The **Shared stash** tab has a toggle in its header: **When opened** (default) or **Always**.
 See [Fetching](shared-stash.md#fetching) for what each does. The toggle applies to the current
-repository and is saved in `.git/atlasgit/settings.json`.
+repository and is saved in `.git/gitatlas/settings.json`.
 
 There is no window for a default that applies to every repository. If you want one, create
-`~/.config/dev.atlasgit.app/settings.json` (Flatpak:
-`~/.var/app/dev.atlasgit.app/config/dev.atlasgit.app/settings.json`) with:
+`~/.config/dev.gitatlas.app/settings.json` (Flatpak:
+`~/.var/app/dev.gitatlas.app/config/dev.gitatlas.app/settings.json`) with:
 
 ```json
 { "sharedStash": { "fetchMode": "always" } }
@@ -45,13 +45,13 @@ A repository's own setting wins over this default.
 The layers button in the same header (**Show shared stashes in the graph**) turns the **shared**
 marks in the graph on or off.
 
-## What AtlasGit remembers for you
+## What GitAtlas remembers for you
 
-Without asking, AtlasGit remembers for your user account: the panel sizes, the graph column
+Without asking, GitAtlas remembers for your user account: the panel sizes, the graph column
 widths, which sections of the commit panel are folded, the language, and whether shared stash
 marks are shown. Nothing of this is stored in your repositories.
 
-## Where AtlasGit keeps its data
+## Where GitAtlas keeps its data
 
 Inside each repository's Git directory (usually `.git`), written only when you run an operation:
 
@@ -60,11 +60,11 @@ Inside each repository's Git directory (usually `.git`), written only when you r
 | `.git/atlaskraken/journal.jsonl` | The operation journal |
 | `.git/atlaskraken/discarded/` | Backups of discarded files, for Undo |
 | `refs/atlaskraken/snapshots/` | Commits kept for Undo and Redo (amend, reset, undone commits) |
-| `.git/atlasgit/` and `refs/atlasgit/` | Shared stash data and settings (see [Shared stash](shared-stash.md#where-things-are-stored)) |
+| `.git/gitatlas/` and `refs/gitatlas/` | Shared stash data and settings (see [Shared stash](shared-stash.md#where-things-are-stored)) |
 
-`atlaskraken` is AtlasGit's former name; it was kept so data made before the rename still
-works. To clean up the journal and its backups, use the [operation journal](committing-and-undo.md#the-operation-journal).
+`atlaskraken` and `gitatlas` are GitAtlas's former names; they were kept so data made before
+the renames still works. To clean up the journal and its backups, use the [operation journal](committing-and-undo.md#the-operation-journal).
 
-Outside the repositories: a cache of each repository's commit list in `~/.cache/atlasgit/graph/`
-(Flatpak: `~/.var/app/dev.atlasgit.app/cache/atlasgit/graph/`; safe to delete, it is rebuilt),
+Outside the repositories: a cache of each repository's commit list in `~/.cache/gitatlas/graph/`
+(Flatpak: `~/.var/app/dev.gitatlas.app/cache/gitatlas/graph/`; safe to delete, it is rebuilt),
 and the shared stash default above.

@@ -1,10 +1,21 @@
-<p align="center"><img src="app/src-tauri/icons/icon.png" width="128" alt="AtlasGit icon"></p>
+<p align="center"><img src="app/src-tauri/icons/icon.png" width="128" alt="GitAtlas icon"></p>
 
-# AtlasGit
+# GitAtlas
 
-Desktop Git client for Linux — Tauri 2 + Rust core + SolidJS. Licensed under Apache-2.0.
+A fast, safe, open-source desktop Git client for Linux, built with Tauri 2, a Rust core and a SolidJS interface. Licensed under Apache-2.0.
 
-> Formerly **AtlasKraken**. Per-repository data still lives under `<git-dir>/atlaskraken/` and `refs/atlaskraken/` so journals, snapshots and backups made before the rename keep working.
+> **Why this exists.** GitAtlas was made as an open-source alternative to [GitKraken](https://www.gitkraken.com/): the same kind of experience (a visual commit graph, staging, branches, merges, stashes, remotes and rebase in one window) without a subscription, an account or a closed codebase. It is an independent project and is not affiliated with or endorsed by GitKraken.
+
+## Highlights
+
+- **Commit graph** drawn on a canvas with virtualized rows and a per-repository cache, so large histories stay smooth.
+- **Everything is undoable.** Each write goes through an operation engine with a lock, a journal and snapshots; Undo/Redo works for commits, amends, discards, resets and more.
+- **Git does the writing.** All changes run through your own `git` (with your credential helpers and SSH setup); `gix` is used only for reads.
+- **Branching and merging** with conflict preview, a 3-pane conflict editor, drag-a-ref-onto-the-branch to merge, plus interactive rebase, cherry-pick, revert, reset and tags.
+- **Shared Stash:** share a local stash through a plain Git remote, with no server and no extra branch.
+- **Accessible and localized:** keyboard menus, screen-reader rows for the graph, Atlas Dark/Light themes (WCAG AA checked), English and pt-BR.
+
+> Formerly **AtlasGit**, and before that **AtlasKraken**. Journals, snapshots and backups still live under `<git-dir>/atlaskraken/` and `refs/atlaskraken/`. Shared stashes and settings use `<git-dir>/gitatlas/` and `refs/gitatlas/`; ones made as AtlasGit are not read and must be shared again.
 
 ## Status
 
@@ -37,9 +48,9 @@ the Flatpak sandbox limits: [docs/user/install.md](docs/user/install.md).
 
 | Package | Build | Install |
 |---|---|---|
-| .deb (Ubuntu 22.04+, Debian) | `scripts/package.sh deb` | `sudo apt install ./target/release/bundle/deb/AtlasGit_0.1.0_amd64.deb` (package `atlas-git`, pulls in Git ≥ 2.20) |
-| AppImage | `scripts/package.sh appimage` | `chmod +x AtlasGit_0.1.0_amd64.AppImage` and run it (uses the system Git) |
-| Flatpak bundle | `scripts/package-flatpak.sh` | `flatpak install --user target/flatpak/AtlasGit-0.1.0.flatpak`, then `flatpak run dev.atlasgit.app` (bundles Git 2.56.0; needs the Flathub remote for the GNOME 51 runtime) |
+| .deb (Ubuntu 22.04+, Debian) | `scripts/package.sh deb` | `sudo apt install ./target/release/bundle/deb/GitAtlas_0.1.0_amd64.deb` (package `git-atlas`, pulls in Git ≥ 2.20) |
+| AppImage | `scripts/package.sh appimage` | `chmod +x GitAtlas_0.1.0_amd64.AppImage` and run it (uses the system Git) |
+| Flatpak bundle | `scripts/package-flatpak.sh` | `flatpak install --user target/flatpak/GitAtlas-0.1.0.flatpak`, then `flatpak run dev.gitatlas.app` (bundles Git 2.56.0; needs the Flathub remote for the GNOME 51 runtime) |
 
 The **Release packages** workflow (`.github/workflows/release.yml`, on `v*` tags or by hand)
 builds all three on GitHub and uploads them as artifacts; it never publishes a release.
@@ -64,7 +75,11 @@ Add `--release` for an optimized build. Requirements: Rust ≥ 1.80, Node 22+, p
 scripts/install-shortcut.sh
 ```
 
-Adds **AtlasGit** to the application menu (and the desktop, if there is one). It opens the app without a repository and rebuilds the release binary when sources changed; logs go to `~/.cache/atlasgit/launch.log`. Running it again replaces the old AtlasKraken shortcut.
+Adds **GitAtlas** to the application menu (and the desktop, if there is one). It opens the app without a repository and rebuilds the release binary when sources changed; logs go to `~/.cache/gitatlas/launch.log`. Running it again replaces the old AtlasKraken shortcut.
+
+## Architecture
+
+How the crates, the Tauri shell and the UI fit together, and how a write operation flows through the journal: [docs/architecture.md](docs/architecture.md).
 
 ## Layout
 
@@ -85,6 +100,10 @@ cargo test --workspace
 pnpm --dir app/ui test
 node scripts/contrast.mjs
 ```
+
+## Contributing
+
+Pull requests go to `develop`. Read [docs/HANDOFF.md](docs/HANDOFF.md) for the current state and the rules for contributors and agents, and [docs/architecture.md](docs/architecture.md) before touching the operation engine.
 
 ## Git flow
 

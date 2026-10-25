@@ -24,7 +24,7 @@ contracts, the file ownership per agent and the integration checks.
 
 Baseline measured on this branch before any Phase 5 change: `cargo test --workspace` 120 passed
 (2 ignored), `pnpm --dir app/ui test` 32 passed, `pnpm --dir app/ui build` ok,
-`cargo build -p atlasgit --features custom-protocol` ok.
+`cargo build -p gitatlas --features custom-protocol` ok.
 
 ## 2. Phase 5 gaps found in the code
 
@@ -66,9 +66,9 @@ the pt-BR table that `i18n-pt-br` creates. `packaging` touches none of the UI fi
 
 These are fixed for every agent. Changing one requires going back to the coordinator.
 
-1. **App id** `dev.atlasgit.app` (from `tauri.conf.json` `identifier`): Flatpak app id, desktop
-   file `dev.atlasgit.app.desktop`, metainfo `dev.atlasgit.app.metainfo.xml`, icon name
-   `dev.atlasgit.app`. Binary name stays `atlasgit`.
+1. **App id** `dev.gitatlas.app` (from `tauri.conf.json` `identifier`): Flatpak app id, desktop
+   file `dev.gitatlas.app.desktop`, metainfo `dev.gitatlas.app.metainfo.xml`, icon name
+   `dev.gitatlas.app`. Binary name stays `gitatlas`.
 2. **Version** stays `0.1.0` in this phase (workspace `Cargo.toml`, `tauri.conf.json`,
    `app/ui/package.json`). The release version is an owner decision (§8).
 3. **i18n API**: `t(key, vars)`, `errorText`, `errorFix`, type `Key` in `app/ui/src/i18n.ts`;
@@ -114,7 +114,7 @@ report; the coordinator re-checks them before merging. Playwright is not added t
    - `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -- -D warnings`
    - `cargo test --workspace --features ak-core/gix-reader`
    - `pnpm --dir app/ui test`, `pnpm --dir app/ui build`, `node scripts/contrast.mjs`
-   - `cargo build -p atlasgit --features custom-protocol`
+   - `cargo build -p gitatlas --features custom-protocol`
    - wave 1+: `desktop-file-validate` and `appstreamcli validate --no-net` on the packaging files
 3. Check every acceptance criterion of the merged specs against the code, not the agent report.
 4. Check the 5 screenshots exist and show the module's work (§5.1).
@@ -149,7 +149,7 @@ Blocking for a real release, not for this phase's implementation:
   files no Phase 5 agent touched (no `.rs` changed since `5657e39`); CI does not run it. Owner
   decision: add a `rustfmt.toml` matching the current style, or reformat in a separate PR.
 - Owner decisions raised by packaging: deb package/desktop file names come from `productName`
-  (`atlas-git`, `AtlasGit.desktop`), so the metainfo `launchable` only resolves in the Flatpak;
+  (`git-atlas`, `GitAtlas.desktop`), so the metainfo `launchable` only resolves in the Flatpak;
   Tauri warns that an identifier ending in `.app` clashes with macOS bundles; Flatpak Git source
   pinned by tag + commit (kernel.org tarball blocked here); `--filesystem=home` may be narrowed.
 
@@ -163,7 +163,7 @@ Blocking for a real release, not for this phase's implementation:
   desktop/metainfo validators ok; no `.rs` file changed in Phase 5.
 - Pre-existing behaviour found while documenting (verified in code, out of Phase 5 scope, owner
   decision): the graph walks every ref except `refs/stash` (`read_gix.rs` `tips`), so commits
-  kept only by `refs/atlaskraken/snapshots/*` or `refs/atlasgit/*` show as unlabelled rows;
+  kept only by `refs/atlaskraken/snapshots/*` or `refs/gitatlas/*` show as unlabelled rows;
   `Engine::prune_journal` deletes `snapshot_ref` but not the `-redo`/`-wip` refs; the theme
   choice is not remembered across launches (language is); the global shared-stash fetch-mode
   default has no UI; the journal "Keep last" value resets to 50.

@@ -1,6 +1,6 @@
 [package]
 name = "ak-core"
-description = "AtlasGit core: repository reading and commit graph layout"
+description = "GitAtlas core: repository reading and commit graph layout"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

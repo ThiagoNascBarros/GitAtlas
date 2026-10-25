@@ -5,9 +5,9 @@ spec: docs/specs/accessibility.md
 date: 2026-10-16
 ---
 
-# AtlasGit accessibility audit (WCAG 2.1 AA)
+# GitAtlas accessibility audit (WCAG 2.1 AA)
 
-Audit of the AtlasGit UI before the MVP release, with the fixes made in Phase 5. The first draft
+Audit of the GitAtlas UI before the MVP release, with the fixes made in Phase 5. The first draft
 (findings before any fix) is commit `c1d1c3b`; this version records the status of every finding.
 
 ## 1. Method

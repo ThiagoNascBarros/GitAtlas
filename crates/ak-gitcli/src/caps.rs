@@ -27,7 +27,7 @@ impl GitVersion {
     }
 }
 
-/// Minimum supported git. Below this, AtlasGit opens repos read-only.
+/// Minimum supported git. Below this, GitAtlas opens repos read-only.
 pub const MIN_SUPPORTED: GitVersion = GitVersion::new(2, 20, 0);
 
 #[derive(Debug, Clone, Serialize)]

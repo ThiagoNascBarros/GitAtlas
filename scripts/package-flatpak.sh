@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Builds the AtlasGit Flatpak from the release binary and exports a single-file bundle:
-#   target/flatpak/AtlasGit-<version>.flatpak
+# Builds the GitAtlas Flatpak from the release binary and exports a single-file bundle:
+#   target/flatpak/GitAtlas-<version>.flatpak
 # Usage: scripts/package-flatpak.sh
 # Needs flatpak + flatpak-builder and the GNOME runtime/SDK named in the manifest. When they are
 # missing and a "flathub" remote is configured, flatpak-builder installs them from it.
-# Runs scripts/package.sh first when target/release/atlasgit does not exist yet.
+# Runs scripts/package.sh first when target/release/gitatlas does not exist yet.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-manifest=packaging/flatpak/dev.atlasgit.app.yml
-app_id=dev.atlasgit.app
+manifest=packaging/flatpak/dev.gitatlas.app.yml
+app_id=dev.gitatlas.app
 out=target/flatpak
 flathub_url=https://dl.flathub.org/repo/flathub.flatpakrepo
 
@@ -20,8 +20,8 @@ for tool in flatpak flatpak-builder; do
   }
 done
 
-if [ ! -x target/release/atlasgit ]; then
-  echo "target/release/atlasgit not found: running scripts/package.sh deb first"
+if [ ! -x target/release/gitatlas ]; then
+  echo "target/release/gitatlas not found: running scripts/package.sh deb first"
   scripts/package.sh deb
 fi
 
@@ -54,7 +54,7 @@ version="$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' app/src-tauri/tauri.conf
 mkdir -p "$out"
 flatpak-builder --force-clean --sandbox "${fuse_args[@]}" "${deps_args[@]}" \
   --state-dir="$out/.flatpak-builder" --repo="$out/repo" "$out/build-dir" "$manifest"
-bundle="$out/AtlasGit-$version.flatpak"
+bundle="$out/GitAtlas-$version.flatpak"
 flatpak build-bundle --runtime-repo="$flathub_url" "$out/repo" "$bundle" "$app_id"
 echo
 echo "Flatpak bundle: $bundle"

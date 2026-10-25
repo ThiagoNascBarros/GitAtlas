@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 # Builds the release Linux packages (.deb and AppImage) with the Tauri bundler and prints their paths.
 # Usage: scripts/package.sh [deb|appimage|deb,appimage]   (default: deb,appimage)
-# The release binary it leaves in target/release/atlasgit is what scripts/package-flatpak.sh repacks.
+# The release binary it leaves in target/release/gitatlas is what scripts/package-flatpak.sh repacks.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 bundles="${1:-deb,appimage}"
@@ -27,12 +27,12 @@ TAURI_APP_PATH="$PWD/app/src-tauri" TAURI_FRONTEND_PATH="$PWD/app/ui" \
   pnpm --dir app/ui tauri build --features custom-protocol --bundles "$bundles"
 version="$(sed -n 's/^ *"version": *"\([^"]*\)".*/\1/p' app/src-tauri/tauri.conf.json | head -n1)"
 echo
-echo "AtlasGit $version packages:"
+echo "GitAtlas $version packages:"
 found=0
 for f in target/release/bundle/deb/*_"$version"_*.deb target/release/bundle/appimage/*_"$version"_*.AppImage; do
   [ -e "$f" ] || continue
   echo "  $f"
   found=1
 done
-echo "  target/release/atlasgit (release binary)"
+echo "  target/release/gitatlas (release binary)"
 [ "$found" = 1 ] || { echo "error: no package was produced" >&2; exit 1; }

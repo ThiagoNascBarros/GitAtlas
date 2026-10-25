@@ -3,7 +3,7 @@
 ## Browse the graph
 
 The graph shows the history of all your branches, tags and remote branches, newest first (plus
-the commits AtlasGit keeps for Undo and shared stashes; see
+the commits GitAtlas keeps for Undo and shared stashes; see
 [Troubleshooting](troubleshooting.md#a-commit-without-a-branch-in-the-graph)). Lines and colours
 show which commits belong to which line of work; merge commits join two lines.
 
@@ -13,7 +13,7 @@ show which commits belong to which line of work; merge commits join two lines.
   **shared** mark shows where a [shared stash](shared-stash.md) was made.
 - The text of each row is read as you scroll, so large repositories open quickly.
 - Drag the small handles in the header (after **Branch / tag**, before **Author** and before
-  **Date**) to change column widths. AtlasGit remembers them.
+  **Date**) to change column widths. GitAtlas remembers them.
 
 ## Find a branch or tag
 

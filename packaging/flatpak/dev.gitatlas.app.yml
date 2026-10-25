@@ -1,16 +1,16 @@
 # SPDX-License-Identifier: Apache-2.0
-# Flatpak manifest for AtlasGit ("repack": it installs the release binary built by
+# Flatpak manifest for GitAtlas ("repack": it installs the release binary built by
 # scripts/package.sh instead of compiling the Rust/TypeScript sources inside flatpak-builder).
 # Build it with scripts/package-flatpak.sh, which checks the binary and the runtime first.
 # A from-source manifest for Flathub (vendored cargo/pnpm sources) is a later step.
-id: dev.atlasgit.app
+id: dev.gitatlas.app
 # GNOME 51 is the newest stable GNOME runtime (built on freedesktop-sdk 26.08). Its Platform ships
 # WebKitGTK 4.1 (webkit2gtk-4.1, the GTK 3 + libsoup 3 API that Tauri 2 links against), GTK 3,
 # libsecret, gnupg and the OpenSSH client, but not Git (Git is only in the Sdk), so Git is built below.
 runtime: org.gnome.Platform
 runtime-version: '51'
 sdk: org.gnome.Sdk
-command: atlasgit
+command: gitatlas
 finish-args:
   # X11 shared memory; WebKitGTK and GTK need it under X11/XWayland.
   - --share=ipc
@@ -51,25 +51,25 @@ modules:
         tag: v2.56.0
         commit: a018953688f1b10bddf91bff8747068f5f4746a4
 
-  - name: atlasgit
+  - name: gitatlas
     buildsystem: simple
     build-commands:
-      - install -Dm755 atlasgit -t /app/bin/
-      - install -Dm644 dev.atlasgit.app.desktop -t /app/share/applications/
-      - install -Dm644 dev.atlasgit.app.metainfo.xml -t /app/share/metainfo/
+      - install -Dm755 gitatlas -t /app/bin/
+      - install -Dm644 dev.gitatlas.app.desktop -t /app/share/applications/
+      - install -Dm644 dev.gitatlas.app.metainfo.xml -t /app/share/metainfo/
       - |
         for size in 32 48 64 128 256; do
-          install -Dm644 "icons/${size}x${size}.png" "/app/share/icons/hicolor/${size}x${size}/apps/dev.atlasgit.app.png"
+          install -Dm644 "icons/${size}x${size}.png" "/app/share/icons/hicolor/${size}x${size}/apps/dev.gitatlas.app.png"
         done
-      - install -Dm644 icons/icon.png /app/share/icons/hicolor/512x512/apps/dev.atlasgit.app.png
+      - install -Dm644 icons/icon.png /app/share/icons/hicolor/512x512/apps/dev.gitatlas.app.png
     sources:
       # Release binary from scripts/package.sh (UI embedded, custom-protocol feature).
       - type: file
-        path: ../../target/release/atlasgit
+        path: ../../target/release/gitatlas
       - type: file
-        path: ../linux/dev.atlasgit.app.desktop
+        path: ../linux/dev.gitatlas.app.desktop
       - type: file
-        path: ../linux/dev.atlasgit.app.metainfo.xml
+        path: ../linux/dev.gitatlas.app.metainfo.xml
       - type: file
         path: ../../app/src-tauri/icons/32x32.png
         dest: icons

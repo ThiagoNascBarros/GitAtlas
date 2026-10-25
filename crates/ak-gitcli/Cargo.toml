@@ -1,6 +1,6 @@
 [package]
 name = "ak-gitcli"
-description = "AtlasGit: git CLI executor, capability detection and machine-format parsers"
+description = "GitAtlas: git CLI executor, capability detection and machine-format parsers"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

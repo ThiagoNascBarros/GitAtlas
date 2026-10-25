@@ -142,7 +142,7 @@ existing inline check in `SharedStashPanel.tsx` to use it.
 4. A-2 graph, refs, local stash; A-3 check.
 5. A-4 dialogs (one mechanism), A-5…A-7 fixes.
 6. Strings in both tables; `pnpm --dir app/ui test`, `pnpm --dir app/ui build`,
-   `node scripts/contrast.mjs`, `cargo build -p atlasgit --features custom-protocol`.
+   `node scripts/contrast.mjs`, `cargo build -p gitatlas --features custom-protocol`.
 7. Finalize the audit report (status per finding, keyboard map, owner checks) and §11 notes.
 
 ## 7. Test plan
@@ -241,7 +241,7 @@ Filled by the implementing agent (2026-10-16). Audit with every finding and its 
 
 **Verification**: `pnpm --dir app/ui test` 81 passed (baseline 48; +33 in `a11y.test.ts` and
 `overlay.test.ts`); `pnpm --dir app/ui build`, `node scripts/contrast.mjs` (0 failures),
-`cargo build -p atlasgit --features custom-protocol` pass. Perf before/after in the audit §6
+`cargo build -p gitatlas --features custom-protocol` pass. Perf before/after in the audit §6
 (canvas draw unchanged at ~1.2 ms median; mirror ~0.6 ms per scroll step; 45–46 rows in the DOM
 for 2,001 rows). Screenshots: `docs/screenshots/phase5/accessibility/`.
 

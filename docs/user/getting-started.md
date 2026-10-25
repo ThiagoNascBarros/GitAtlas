@@ -2,16 +2,16 @@
 
 ## Open a repository
 
-- Start AtlasGit from the menu and press **Open repository…**, then pick the folder of a Git
+- Start GitAtlas from the menu and press **Open repository…**, then pick the folder of a Git
   repository.
-- Or start it with a path: `atlasgit /path/to/repo`.
+- Or start it with a path: `gitatlas /path/to/repo`.
 - To open another repository next to the first one, press the `+` button after the repository
   tabs at the top left. Each repository gets its own tab; the `×` on a tab closes it.
 
 If the folder is not a repository Git can open, you see **Could not open the repository** with
 the reason and a fix (see [Troubleshooting](troubleshooting.md)).
 
-When the repository has local changes, AtlasGit opens straight on the commit panel.
+When the repository has local changes, GitAtlas opens straight on the commit panel.
 
 ## The window
 
@@ -32,9 +32,9 @@ From top to bottom, left to right:
 - Diff (under the graph): Opens when you pick a file.
 - Right panel: **Commit details** for the selected commit, or **Commit changes** when the
   uncommitted-changes row is selected.
-- Status bar: Number of commits and the Git version AtlasGit uses.
+- Status bar: Number of commits and the Git version GitAtlas uses.
 
-Drag the borders between the panels to resize them; AtlasGit remembers the sizes.
+Drag the borders between the panels to resize them; GitAtlas remembers the sizes.
 
 ## A first commit
 
@@ -46,8 +46,8 @@ Drag the borders between the panels to resize them; AtlasGit remembers the sizes
 
 More in [Committing and undo](committing-and-undo.md).
 
-## AtlasGit follows changes made elsewhere
+## GitAtlas follows changes made elsewhere
 
-AtlasGit watches the working directory. Files you edit in another program, and commits or
+GitAtlas watches the working directory. Files you edit in another program, and commits or
 checkouts made in a terminal, show up on their own after a moment. If watching fails, a banner
 says so; the view then refreshes each time the window gets focus.

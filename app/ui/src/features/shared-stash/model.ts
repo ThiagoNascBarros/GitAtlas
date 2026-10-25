@@ -70,7 +70,7 @@ export function forget(repoId: number): void {
   setModels(repoId, undefined as never);
 }
 
-const GLYPH_KEY = "atlasgit.sharedStash.glyph";
+const GLYPH_KEY = "gitatlas.sharedStash.glyph";
 const readGlyph = () => {
   try { return localStorage.getItem(GLYPH_KEY) !== "off"; } catch { return true; }
 };

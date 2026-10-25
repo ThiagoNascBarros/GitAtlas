@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Shell settings kept as JSON: a global file in the app config directory and an optional
-//! per-repository override in `<git-dir>/atlasgit/settings.json`. Both are written only when the
+//! per-repository override in `<git-dir>/gitatlas/settings.json`. Both are written only when the
 //! user changes a setting. Unknown keys are preserved, so a newer version's settings survive.
 //!
 //! This module has no Tauri dependency, so its logic is unit-tested on its own.
@@ -144,7 +144,7 @@ mod tests {
 
     #[test]
     fn files_round_trip_and_bad_files_read_empty() {
-        let dir = std::env::temp_dir().join(format!("atlasgit-settings-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("gitatlas-settings-{}", std::process::id()));
         let file = dir.join("nested").join("settings.json");
         assert_eq!(read(&file), json!({}), "missing file");
         let mut v = read(&file);

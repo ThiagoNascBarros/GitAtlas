@@ -1,7 +1,7 @@
 # Shared stash
 
 Hand your uncommitted changes to a teammate without creating a branch on the shared remote.
-Shared stash publishes one of your local stashes to a Git remote, and anyone using AtlasGit on the
+Shared stash publishes one of your local stashes to a Git remote, and anyone using GitAtlas on the
 same repository can see it, apply it or start a branch from it. It uses plain Git: no server, no
 account, nothing to install on the remote.
 
@@ -54,7 +54,7 @@ For stashes under **Mine** the menu also offers:
 - **Rename…**: change the title only.
 - **Unshare…**: remove it from the remote. It disappears for others after their next fetch.
 
-Unshare is not an undo-able step, so AtlasGit keeps a protected copy under **Recently unshared**
+Unshare is not an undo-able step, so GitAtlas keeps a protected copy under **Recently unshared**
 (visible only to you, for the remote it came from). **Reshare** puts it back on the remote,
 **Discard** deletes your copy for good.
 
@@ -63,7 +63,7 @@ stop with "changed on the remote" and overwrite nothing. Refresh and try again.
 
 ## Ownership is declarative
 
-"Only the author can update or unshare" is enforced by AtlasGit, not by the server. Anyone who can
+"Only the author can update or unshare" is enforced by GitAtlas, not by the server. Anyone who can
 push to the remote can change or delete any ref with plain Git, and the author recorded in a stash
 can be forged. So:
 
@@ -78,7 +78,7 @@ Use remote permissions if you need real access control, and do not put secrets i
 ## Fetching
 
 Shared stashes are not downloaded by a plain `git fetch`: they live in their own namespace
-(`refs/atlasgit/shared-stash/…`). AtlasGit fetches them according to the toggle in the tab header:
+(`refs/gitatlas/shared-stash/…`). GitAtlas fetches them according to the toggle in the tab header:
 
 - **When opened** (default): when you open the tab, press the refresh button, or run Fetch/Pull while the tab is open.
 - **Always**: also on every Fetch/Pull, even with the tab closed.
@@ -89,9 +89,9 @@ cannot be reached shows its error inline, with **Retry**, and the other remotes 
 
 ## Host compatibility
 
-The remote must accept pushes of custom refs under `refs/atlasgit/*`. Most hosts that serve plain Git accept them (we have not
+The remote must accept pushes of custom refs under `refs/gitatlas/*`. Most hosts that serve plain Git accept them (we have not
 checked every host; the check below tells you). Some are known to refuse them: Gerrit, Bitbucket Server, Azure DevOps and some
-gateways. The first time you share to a remote, AtlasGit pushes and deletes a throwaway ref to check;
+gateways. The first time you share to a remote, GitAtlas pushes and deletes a throwaway ref to check;
 the result is remembered for that remote and URL. On a refusing host the tab shows a notice and
 sharing is disabled for it. **Retry check** forgets the result so it runs again on your next share,
 for example after the host's admin allowed the refs.
@@ -101,10 +101,10 @@ cannot fetch and its actions are disabled).
 
 ## Where things are stored
 
-- On the remote: `refs/atlasgit/shared-stash/<author-slug>/<id>`, a small commit that points to your stash.
-- In your clone, only after an explicit fetch: `refs/atlasgit/remotes/<remote>/shared-stash/…`.
-- Your unshared copies: `refs/atlasgit/keep/<id>` and `.git/atlasgit/keep.json`.
-- The host check result: `.git/atlasgit/remotes.json`.
-- The fetch-mode setting: `.git/atlasgit/settings.json` (this repository) or the app settings (default for all).
+- On the remote: `refs/gitatlas/shared-stash/<author-slug>/<id>`, a small commit that points to your stash.
+- In your clone, only after an explicit fetch: `refs/gitatlas/remotes/<remote>/shared-stash/…`.
+- Your unshared copies: `refs/gitatlas/keep/<id>` and `.git/gitatlas/keep.json`.
+- The host check result: `.git/gitatlas/remotes.json`.
+- The fetch-mode setting: `.git/gitatlas/settings.json` (this repository) or the app settings (default for all).
 
-AtlasGit writes there only when you share, unshare, reshare, discard, fetch shared stashes or change the setting.
+GitAtlas writes there only when you share, unshare, reshare, discard, fetch shared stashes or change the setting.

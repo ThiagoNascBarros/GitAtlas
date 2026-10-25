@@ -1,6 +1,6 @@
 ---
 status: draft
-feature: Release checklist (cut an AtlasGit release)
+feature: Release checklist (cut an GitAtlas release)
 spec: docs/specs/release-docs.md
 date: 2026-10-16
 ---
@@ -30,10 +30,10 @@ checklist has run it.
   - [ ] `app/src-tauri/tauri.conf.json`: `"version"`. `scripts/package.sh` and
         `scripts/package-flatpak.sh` read it for the file names.
   - [ ] `app/ui/package.json`: `"version"`.
-  - [ ] `packaging/linux/dev.atlasgit.app.metainfo.xml`: `<release version="<version>"
+  - [ ] `packaging/linux/dev.gitatlas.app.metainfo.xml`: `<release version="<version>"
         date="YYYY-MM-DD" type="stable">` with a short description. Today it is `0.1.0`,
         `2026-10-16`, `type="development"`.
-  - [ ] Run `cargo build -p atlasgit --features custom-protocol` once so `Cargo.lock` picks up
+  - [ ] Run `cargo build -p gitatlas --features custom-protocol` once so `Cargo.lock` picks up
         the new version, and commit `Cargo.lock` with the rest.
 - [ ] `CHANGELOG.md`: rename `## [Unreleased]` to `## [<version>] - YYYY-MM-DD` and add a new
       empty `## [Unreleased]` above it.
@@ -63,8 +63,8 @@ ignored; UI 81 passed).
 - [ ] `pnpm --dir app/ui test`
 - [ ] `pnpm --dir app/ui build`
 - [ ] `node scripts/contrast.mjs` (0 failures)
-- [ ] `desktop-file-validate packaging/linux/dev.atlasgit.app.desktop` and
-      `appstreamcli validate --no-net packaging/linux/dev.atlasgit.app.metainfo.xml`
+- [ ] `desktop-file-validate packaging/linux/dev.gitatlas.app.desktop` and
+      `appstreamcli validate --no-net packaging/linux/dev.gitatlas.app.metainfo.xml`
 
 ## 4. Benchmarks
 
@@ -84,7 +84,7 @@ they run on 22.04 and newer. A package built on your machine needs at least your
 
 - [ ] Run the **Release packages** workflow (`.github/workflows/release.yml`) on the release
       branch: `gh workflow run release.yml --ref release/<version>` (or the "Run workflow" button).
-      It only uploads artifacts (`atlasgit-deb`, `atlasgit-appimage`, `atlasgit-flatpak`); it
+      It only uploads artifacts (`gitatlas-deb`, `gitatlas-appimage`, `gitatlas-flatpak`); it
       never creates a release or pushes a tag.
 - [ ] Check the Flatpak job's smoke test: `git --version` reports 2.56.0 and `ssh -V` runs inside
       the sandbox. The Flatpak has never been built outside this workflow (Flathub was not
@@ -98,12 +98,12 @@ they run on 22.04 and newer. A package built on your machine needs at least your
 On a clean machine or VM (Ubuntu 22.04 for the .deb and AppImage; any distribution with
 Flatpak for the bundle). Tick each line per package: .deb / AppImage / Flatpak.
 
-- [ ] Install: `sudo apt install ./AtlasGit_<version>_amd64.deb`;
-      `chmod +x` and run the AppImage; `flatpak install --user AtlasGit-<version>.flatpak`.
-- [ ] Launch from the application menu: the AtlasGit icon shows in the menu and in the dock or
-      task bar (not a generic icon), on X11 and on Wayland. Window class is `atlasgit`
+- [ ] Install: `sudo apt install ./GitAtlas_<version>_amd64.deb`;
+      `chmod +x` and run the AppImage; `flatpak install --user GitAtlas-<version>.flatpak`.
+- [ ] Launch from the application menu: the GitAtlas icon shows in the menu and in the dock or
+      task bar (not a generic icon), on X11 and on Wayland. Window class is `gitatlas`
       (`StartupWMClass`).
-- [ ] Open a repository with **Open repository…** and with `atlasgit /path/to/repo`.
+- [ ] Open a repository with **Open repository…** and with `gitatlas /path/to/repo`.
 - [ ] PRD criteria 4 and 7 (still pending from Phase 2): stage and unstage a file, stage a hunk,
       commit, amend, Undo/Redo of each, discard + Undo, a file edited in another editor shows up
       by itself, commit with no `user.name`/`user.email` shows the identity message and fix.
@@ -122,11 +122,11 @@ Flatpak for the bundle). Tick each line per package: .deb / AppImage / Flatpak.
 - [ ] Orca spot check, `docs/a11y/audit.md` §7 items 1 and 2: graph rows are read, Shift+F10 and
       the Menu key open exactly one in-app menu (no WebKit menu on top).
 - [ ] Flatpak only (*to be verified*): a repository outside home after
-      `flatpak override --user --filesystem=/path dev.atlasgit.app`; a credential helper set by
+      `flatpak override --user --filesystem=/path dev.gitatlas.app`; a credential helper set by
       absolute path falls back to the dialog; `credential.helper=libsecret` stores the password
       in the keyring; settings from `/etc/gitconfig` are not applied.
-- [ ] .deb only: `dpkg -s atlas-git` shows `Depends: git (>= 1:2.20), …`; `sudo apt remove
-      atlas-git` removes the menu entry.
+- [ ] .deb only: `dpkg -s git-atlas` shows `Depends: git (>= 1:2.20), …`; `sudo apt remove
+      git-atlas` removes the menu entry.
 - [ ] AppImage only: works with the system Git; without FUSE with `APPIMAGE_EXTRACT_AND_RUN=1`.
 - [ ] Write the results (pass/fail per line and package) in the release pull request.
 
@@ -140,7 +140,7 @@ Flatpak for the bundle). Tick each line per package: .deb / AppImage / Flatpak.
 - [ ] Merge the pull request `release/<version>` → `main`.
 - [ ] Tag the merge commit on `main` and push the tag (owner only):
 
-      git tag -a v<version> -m "AtlasGit <version>"
+      git tag -a v<version> -m "GitAtlas <version>"
       git push origin v<version>
 
       The tag starts the release workflow again; its artifacts are the release files.

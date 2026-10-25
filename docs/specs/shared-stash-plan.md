@@ -22,7 +22,7 @@ TDD throughout: each task starts with a failing test. Heavy processes one at a t
 - **T6. `Lock::Remote`** in `lock.rs` + test that two network ops conflict and Index ops don't.
 - **T7. Error codes** in `OpError` constructors (§5.1 list).
 - **T8. Fetch.** `SharedStashFetch { remote }` with prune; per-remote results (`Vec<(remote, Result)>`). Test with two bare remotes, one missing.
-- **T9. Probe.** Throwaway ref push/delete, cache in `.git/atlasgit/remotes.json`; test with a bare remote whose `pre-receive` hook rejects `refs/atlasgit/*`.
+- **T9. Probe.** Throwaway ref push/delete, cache in `.git/gitatlas/remotes.json`; test with a bare remote whose `pre-receive` hook rejects `refs/gitatlas/*`.
 - **T10. Publish.** By stash sha; identity/remote checks; size estimate warning (returned in `OpOutcome`, not an error); `commit-tree` (+ `-S` when `commit.gpgsign`); push; mirror fetch; journal entry (not undoable).
 - **T11. Update / Rename.** Fresh single-ref fetch → lease from mirror → push; `NOT_AUTHOR`, `STALE_SHARED_STASH` tests (simulate concurrent move from a second clone).
 - **T12. Unshare / Reshare / Discard keep.** Keep ref write, lease delete, create-only re-push; tests.

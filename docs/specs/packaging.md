@@ -22,7 +22,7 @@ artifacts for the owner to test and publish.
 **In scope**
 - Canonical desktop entry and AppStream metainfo (with pt-BR localized name/summary/description).
 - Tauri bundle config for `.deb` (dependency on Git ≥ 2.20, canonical desktop entry) and AppImage.
-- Flatpak manifest (app id `dev.atlasgit.app`) built from the release binary produced by the
+- Flatpak manifest (app id `dev.gitatlas.app`) built from the release binary produced by the
   Tauri build ("repack" manifest), with sandbox permissions a Git client needs.
 - Hicolor icons generated from the existing `app/src-tauri/icons/icon.png` (no new artwork).
 - Scripts: `scripts/package.sh` (deb + AppImage) and `scripts/package-flatpak.sh` (bundle).
@@ -38,17 +38,17 @@ artifacts for the owner to test and publish.
 
 ## 3. Repository context
 
-- `app/src-tauri/tauri.conf.json`: `productName` AtlasGit, `identifier` `dev.atlasgit.app`,
+- `app/src-tauri/tauri.conf.json`: `productName` GitAtlas, `identifier` `dev.gitatlas.app`,
   `version` 0.1.0, bundle `targets: ["deb","appimage"]`, icon `icons/icon.png` (512×512 only),
   `category: DeveloperTool`, license file `../../LICENSE`.
-- Binary name `atlasgit` (`app/src-tauri/Cargo.toml` package name). It takes an optional repo
+- Binary name `gitatlas` (`app/src-tauri/Cargo.toml` package name). It takes an optional repo
   path as first argument (`main.rs`). It re-executes itself as Git's askpass helper when
-  `ATLASGIT_ASKPASS_SOCK` is set (`askpass.rs`), so the binary must be able to run itself.
+  `GITATLAS_ASKPASS_SOCK` is set (`askpass.rs`), so the binary must be able to run itself.
 - All writes go through the `git` CLI (spawned by `ak-gitcli`, override `AK_GIT`); minimum Git
   2.20, read-only below. Remote operations rely on Git's credential helpers, ssh/ssh-agent and
   the askpass bridge; signing uses the user's `gpg`/ssh config.
-- `scripts/install-shortcut.sh` writes a per-user `atlasgit.desktop` (`Categories=Development;
-  RevisionControl;`, `StartupWMClass=atlasgit`). Keep it working; it is a dev convenience.
+- `scripts/install-shortcut.sh` writes a per-user `gitatlas.desktop` (`Categories=Development;
+  RevisionControl;`, `StartupWMClass=gitatlas`). Keep it working; it is a dev convenience.
 - `@tauri-apps/cli` is a devDependency of `app/ui` (`pnpm --dir app/ui tauri …`).
 - CI (`.github/workflows/ci.yml`): `core` matrix incl. Git 2.20.5, `app` job builds UI and the
   Tauri crate on ubuntu-24.04 with WebKitGTK 4.1 dev libs.
@@ -57,25 +57,25 @@ artifacts for the owner to test and publish.
 
 ### 4.1 Functional
 
-- **FR-1 Desktop entry** `packaging/linux/dev.atlasgit.app.desktop`: `Type=Application`,
-  `Name=AtlasGit`, `GenericName=Git Client` (+`[pt_BR]` "Cliente Git"), `Comment=…`
-  (+`[pt_BR]`), `Exec=atlasgit %f`, `Icon=dev.atlasgit.app`, `Terminal=false`,
+- **FR-1 Desktop entry** `packaging/linux/dev.gitatlas.app.desktop`: `Type=Application`,
+  `Name=GitAtlas`, `GenericName=Git Client` (+`[pt_BR]` "Cliente Git"), `Comment=…`
+  (+`[pt_BR]`), `Exec=gitatlas %f`, `Icon=dev.gitatlas.app`, `Terminal=false`,
   `Categories=Development;RevisionControl;`, `Keywords=git;vcs;version control;…`,
   `StartupWMClass` matching what the app window really reports (verify; `install-shortcut.sh`
-  uses `atlasgit`), `StartupNotify=true`. Passes `desktop-file-validate` with no errors.
-- **FR-2 AppStream** `packaging/linux/dev.atlasgit.app.metainfo.xml`: `component type=
-  desktop-application`, `id` `dev.atlasgit.app`, `metadata_license` CC0-1.0,
+  uses `gitatlas`), `StartupNotify=true`. Passes `desktop-file-validate` with no errors.
+- **FR-2 AppStream** `packaging/linux/dev.gitatlas.app.metainfo.xml`: `component type=
+  desktop-application`, `id` `dev.gitatlas.app`, `metadata_license` CC0-1.0,
   `project_license` Apache-2.0, `name`, `summary`, `description` (EN + `xml:lang="pt-BR"`),
-  `developer` name "AtlasGit contributors" (owner may change), `url type="homepage"`
-  `https://github.com/ThiagoNascBarros/AtlasGit`, `url type="bugtracker"` (…/issues),
+  `developer` name "GitAtlas contributors" (owner may change), `url type="homepage"`
+  `https://github.com/ThiagoNascBarros/GitAtlas`, `url type="bugtracker"` (…/issues),
   `launchable type="desktop-id"`, `content_rating type="oars-1.1"`, `categories`, `provides`
-  `binary atlasgit`, `releases` with `0.1.0` (type development unless the owner sets a date),
+  `binary gitatlas`, `releases` with `0.1.0` (type development unless the owner sets a date),
   `requires`/`recommends` display length if the validator asks. Passes
   `appstreamcli validate --no-net` with no errors (warnings listed in §12; screenshots are the
   expected one).
 - **FR-3 Icons** hicolor PNGs (at least 32, 48, 64, 128, 256, 512) generated from the existing
   icon (e.g. `pnpm --dir app/ui tauri icon app/src-tauri/icons/icon.png` or ImageMagick if
-  present); installed as `dev.atlasgit.app.png` in the Flatpak; Tauri bundle `icon` list updated
+  present); installed as `dev.gitatlas.app.png` in the Flatpak; Tauri bundle `icon` list updated
   to the generated files.
 - **FR-4 .deb** via Tauri: `bundle.linux.deb.depends` includes `git (>= 1:2.20)`; desktop entry
   from FR-1 (Tauri `desktopTemplate` or equivalent supported key — verify against the Tauri 2
@@ -83,10 +83,10 @@ artifacts for the owner to test and publish.
   `/usr/share/metainfo/` if Tauri supports extra `files`; section/priority sane.
 - **FR-5 AppImage** via Tauri, same desktop entry and icon. Git is **not** bundled (uses the
   host Git; documented).
-- **FR-6 Flatpak** `packaging/flatpak/dev.atlasgit.app.yml`:
+- **FR-6 Flatpak** `packaging/flatpak/dev.gitatlas.app.yml`:
   - runtime/sdk: the newest stable `org.gnome.Platform`/`org.gnome.Sdk` that ships
     WebKitGTK 4.1 (Tauri 2 requirement); record the version chosen and why.
-  - `command: atlasgit`; installs binary, desktop file (renamed to the app id), metainfo, icons.
+  - `command: gitatlas`; installs binary, desktop file (renamed to the app id), metainfo, icons.
   - Source: the release binary built by `scripts/package.sh` (repack). The script, not the user,
     passes the path; no absolute paths in the manifest.
   - **Git in the sandbox**: check whether the runtime contains `git` ≥ 2.20 and an `ssh`
@@ -103,7 +103,7 @@ artifacts for the owner to test and publish.
     deb + AppImage, prints artifact paths.
   - `scripts/package-flatpak.sh`: requires a prior `package.sh` (or runs it), runs
     `flatpak-builder` into `target/flatpak/…`, exports a single-file bundle
-    `target/flatpak/AtlasGit-<version>.flatpak`. Fails with a clear message if
+    `target/flatpak/GitAtlas-<version>.flatpak`. Fails with a clear message if
     `flatpak-builder` or the runtime is missing.
 - **FR-8 CI validation** (existing `app` job in `ci.yml`): install `desktop-file-utils` and
   `appstream`, run `desktop-file-validate` and `appstreamcli validate --no-net` on the files.
@@ -128,7 +128,7 @@ artifacts for the owner to test and publish.
 | Host credential helpers configured by absolute path (e.g. `/usr/lib/git-core/git-credential-libsecret`) | Not present in the sandbox → documented limitation; askpass bridge still works |
 | `~/.gitconfig`, `~/.ssh`, `~/.config/git` | Reachable through `--filesystem=home` |
 | `/etc/gitconfig` (system config) | Not visible in the sandbox → documented |
-| Askpass re-exec of `/app/bin/atlasgit` | Must work inside the sandbox; verify the socket path is writable (`$XDG_RUNTIME_DIR`) |
+| Askpass re-exec of `/app/bin/gitatlas` | Must work inside the sandbox; verify the socket path is writable (`$XDG_RUNTIME_DIR`) |
 | Repositories outside home (e.g. `/mnt`, `/media`) | Not reachable by default → documented; user can grant with Flatseal/`flatpak override` |
 
 ## 6. Implementation steps
@@ -151,13 +151,13 @@ artifacts for the owner to test and publish.
 
 | Check | How |
 |---|---|
-| Desktop entry valid | `desktop-file-validate packaging/linux/dev.atlasgit.app.desktop` exit 0 |
-| Metainfo valid | `appstreamcli validate --no-net packaging/linux/dev.atlasgit.app.metainfo.xml` exit 0 |
+| Desktop entry valid | `desktop-file-validate packaging/linux/dev.gitatlas.app.desktop` exit 0 |
+| Metainfo valid | `appstreamcli validate --no-net packaging/linux/dev.gitatlas.app.metainfo.xml` exit 0 |
 | .deb metadata/content | `dpkg-deb -I` shows `git (>= 1:2.20)`; `dpkg-deb -c` lists binary, desktop, icons |
-| .deb installs and launches | `apt install ./AtlasGit_*.deb` in the container; `atlasgit --help`-less smoke: start with `timeout` under `xvfb-run` if available, else record not run |
+| .deb installs and launches | `apt install ./GitAtlas_*.deb` in the container; `gitatlas --help`-less smoke: start with `timeout` under `xvfb-run` if available, else record not run |
 | AppImage | built (or blocked, recorded); `--appimage-extract` lists desktop + icon |
-| Flatpak | bundle built (or manifest-only, recorded); `flatpak run --command=git dev.atlasgit.app --version` ≥ 2.20 when built |
-| Regression | `pnpm --dir app/ui build`, `cargo build -p atlasgit --features custom-protocol`, existing CI steps unchanged |
+| Flatpak | bundle built (or manifest-only, recorded); `flatpak run --command=git dev.gitatlas.app --version` ≥ 2.20 when built |
+| Regression | `pnpm --dir app/ui build`, `cargo build -p gitatlas --features custom-protocol`, existing CI steps unchanged |
 
 ## 8. Errors and edge cases
 
@@ -204,11 +204,11 @@ flatpak 1.14.6, flatpak-builder 1.4.2, AppStream 1.0.2, desktop-file-utils 0.27.
 
 | File | Purpose |
 |---|---|
-| `packaging/linux/dev.atlasgit.app.desktop` | FR-1 canonical desktop entry |
-| `packaging/linux/dev.atlasgit.app.metainfo.xml` | FR-2 AppStream metainfo (EN + pt-BR) |
+| `packaging/linux/dev.gitatlas.app.desktop` | FR-1 canonical desktop entry |
+| `packaging/linux/dev.gitatlas.app.metainfo.xml` | FR-2 AppStream metainfo (EN + pt-BR) |
 | `app/src-tauri/icons/{32x32,48x48,64x64,128x128,256x256}.png` | FR-3, from `icon.png` (512) via `tauri icon icons/icon.png -p 32,48,64,128,256,512` (the 512 output is byte-identical to `icon.png`, so it was not added) |
 | `app/src-tauri/tauri.conf.json` (`bundle` only) | FR-3/4/5 |
-| `packaging/flatpak/dev.atlasgit.app.yml` | FR-6 |
+| `packaging/flatpak/dev.gitatlas.app.yml` | FR-6 |
 | `scripts/package.sh`, `scripts/package-flatpak.sh` | FR-7 |
 | `.github/workflows/ci.yml` (`app` job), `.github/workflows/release.yml` | FR-8, FR-9 |
 
@@ -219,27 +219,27 @@ flatpak 1.14.6, flatpak-builder 1.4.2, AppStream 1.0.2, desktop-file-utils 0.27.
 - `bundle.linux.deb`: `depends` = `["git (>= 1:2.20)"]` (Tauri adds `libwebkit2gtk-4.1-0` and
   `libgtk-3-0` itself), `section` = `vcs`, `priority` = `optional`, `desktopTemplate` = the
   canonical desktop file (it has no Handlebars variables, so it is copied verbatim), `files` =
-  metainfo to `/usr/share/metainfo/` and the icons as `dev.atlasgit.app.png`.
+  metainfo to `/usr/share/metainfo/` and the icons as `dev.gitatlas.app.png`.
 - `bundle.linux.appimage`: `bundleMediaFramework` = false, same `files`. The AppImage bundler
   reuses `deb.desktopTemplate` (verified: the AppDir desktop entry is the canonical one).
 - The installed CLI has **no key to rename the deb package or the desktop file**: the package is
-  `atlas-git` and the entry `/usr/share/applications/AtlasGit.desktop`, both derived from
+  `git-atlas` and the entry `/usr/share/applications/GitAtlas.desktop`, both derived from
   `productName` (shared contract, not changed). Consequences: the metainfo `launchable`
-  (`dev.atlasgit.app.desktop`) does not resolve in the .deb/AppImage (software centres cannot
+  (`dev.gitatlas.app.desktop`) does not resolve in the .deb/AppImage (software centres cannot
   offer "Launch" for them; the menu entry itself works); Tauri also installs its own
-  `atlasgit.png` icons next to `dev.atlasgit.app.png` (~430 KB duplicated). Owner question below.
+  `gitatlas.png` icons next to `dev.gitatlas.app.png` (~430 KB duplicated). Owner question below.
 - `package.sh` sets `TAURI_APP_PATH`/`TAURI_FRONTEND_PATH`: started from `app/ui` the CLI cannot find
   `tauri.conf.json` (it only searches subfolders), and started from `app/src-tauri` it runs
   `beforeBuildCommand` (`pnpm --dir ../ui build`) from `app/`, which fails.
-- Side effect to know: `tauri build` patches `target/release/atlasgit` with the bundle type of the
+- Side effect to know: `tauri build` patches `target/release/gitatlas` with the bundle type of the
   last bundle (`appimage`). The Flatpak repacks that binary; harmless today (no updater).
 
 ### Desktop entry and window class
 
-`StartupWMClass=atlasgit` verified: under Xvfb, `xprop` on the window of the installed .deb and of
-the AppImage reports `WM_CLASS = "atlasgit", "Atlasgit"` (GTK uses the binary name; Tauri's
+`StartupWMClass=gitatlas` verified: under Xvfb, `xprop` on the window of the installed .deb and of
+the AppImage reports `WM_CLASS = "gitatlas", "Gitatlas"` (GTK uses the binary name; Tauri's
 `enableGTKAppId` is off). Not checked on a real Wayland session (owner check: the shell should show
-the AtlasGit icon, not a generic one). `Exec=atlasgit %f` as specified; a directory argument through
+the GitAtlas icon, not a generic one). `Exec=gitatlas %f` as specified; a directory argument through
 the Flatpak document portal (`@@ %f @@`) is not verified.
 
 ### Validators
@@ -275,17 +275,17 @@ the Flatpak document portal (`@@ %f @@`) is not verified.
   `--socket=ssh-auth`, `--talk-name=org.freedesktop.secrets` (useful because the bundled
   `git-credential-libsecret` is reachable by the short name `credential.helper=libsecret`),
   `--filesystem=xdg-run/gnupg:ro`. None dropped (no build here to show one is useless); none added.
-- Sandbox notes (§5): askpass re-exec uses `std::env::current_exe()` = `/app/bin/atlasgit` and a socket
+- Sandbox notes (§5): askpass re-exec uses `std::env::current_exe()` = `/app/bin/gitatlas` and a socket
   in `$XDG_RUNTIME_DIR` (per-app, writable in Flatpak). Credential helpers configured by absolute
   host path (`/usr/lib/git-core/git-credential-libsecret`, `/usr/share/doc/git/contrib/...`) do not
   exist in the sandbox; the short name `libsecret`, `store`, `cache` and the askpass bridge work.
   `/etc/gitconfig` of the host is not visible (the sandbox Git reads `/app/etc/gitconfig`).
-  Repositories outside home need `flatpak override --user --filesystem=/path dev.atlasgit.app`.
+  Repositories outside home need `flatpak override --user --filesystem=/path dev.gitatlas.app`.
 - **Not built here**: `dl.flathub.org` (and `flathub.org`, `gitlab.gnome.org`) are refused by the
   container's egress proxy (CONNECT 403), so neither the Flathub remote nor the GNOME 51 runtime
   could be installed. Validated instead: `flatpak-builder --show-manifest` parses it, sources
   download, Git module replay; `scripts/package-flatpak.sh` stops with the "missing runtime" message.
-  `flatpak run --command=git dev.atlasgit.app --version` is run by `release.yml` instead.
+  `flatpak run --command=git dev.gitatlas.app --version` is run by `release.yml` instead.
 
 ### Build image and glibc
 
@@ -296,21 +296,21 @@ supported distro = Ubuntu 22.04 / Debian 12-era glibc ≥ 2.35 with WebKitGTK 4.
 
 ### What was built and checked here
 
-- `scripts/package.sh` → `AtlasGit_0.1.0_amd64.deb` (5.1 MiB) and `AtlasGit_0.1.0_amd64.AppImage`
+- `scripts/package.sh` → `GitAtlas_0.1.0_amd64.deb` (5.1 MiB) and `GitAtlas_0.1.0_amd64.AppImage`
   (79.5 MiB; linuxdeploy downloads from GitHub worked; `APPIMAGE_EXTRACT_AND_RUN=1` because there is
   no FUSE). `dpkg-deb -I`: `Depends: git (>= 1:2.20), libwebkit2gtk-4.1-0, libgtk-3-0`.
-- `apt-get install ./AtlasGit_0.1.0_amd64.deb` then `atlasgit tests/fixtures/out/demo` under Xvfb:
+- `apt-get install ./GitAtlas_0.1.0_amd64.deb` then `gitatlas tests/fixtures/out/demo` under Xvfb:
   window renders the repository; the AppImage renders `tests/fixtures/out/merges` the same way
   (screenshots in `docs/screenshots/phase5/packaging/`). Git is not bundled in the AppImage.
-- Regression: `pnpm --dir app/ui build` and `cargo build -p atlasgit --features custom-protocol` pass;
+- Regression: `pnpm --dir app/ui build` and `cargo build -p gitatlas --features custom-protocol` pass;
   `scripts/run.sh`, `scripts/install-shortcut.sh` and `scripts/launch.sh` are unchanged.
 - Workflows parse as YAML. The release workflow has `permissions: contents: read`, no secrets, and
   only `actions/upload-artifact`. It has not run on GitHub yet (needs a `v*` tag or a manual run).
 
 ### Open questions for the owner
 
-1. Deb package name `atlas-git` and desktop file `AtlasGit.desktop` come from `productName`: accept,
+1. Deb package name `git-atlas` and desktop file `GitAtlas.desktop` come from `productName`: accept,
    or change `productName`/add a post-processing step (shared contract)?
-2. Release date/type in the metainfo for the real release; developer name "AtlasGit contributors".
+2. Release date/type in the metainfo for the real release; developer name "GitAtlas contributors".
 3. Git source for the Flatpak: keep the tag+commit pin or switch to the kernel.org tarball + sha256.
 4. Narrow `--filesystem=home` later (e.g. portal-based folder picking)?

@@ -10,17 +10,17 @@ use serde::Serialize;
 use super::{Engine, OpError};
 
 /// Where a shared stash lives on the remote: `<REMOTE_PREFIX><slug>/<id>`.
-pub const REMOTE_PREFIX: &str = "refs/atlasgit/shared-stash/";
+pub const REMOTE_PREFIX: &str = "refs/gitatlas/shared-stash/";
 /// Local mirrors, written only by an explicit fetch: `<MIRROR_ROOT><remote>/shared-stash/<slug>/<id>`.
-pub const MIRROR_ROOT: &str = "refs/atlasgit/remotes/";
+pub const MIRROR_ROOT: &str = "refs/gitatlas/remotes/";
 /// Local copies of stashes their author unshared, so Reshare can bring them back.
-pub const KEEP_PREFIX: &str = "refs/atlasgit/keep/";
+pub const KEEP_PREFIX: &str = "refs/gitatlas/keep/";
 /// Throwaway refs used to find out whether a host accepts custom refs.
-pub const PROBE_PREFIX: &str = "refs/atlasgit/probe/";
+pub const PROBE_PREFIX: &str = "refs/gitatlas/probe/";
 
 pub const MAX_TITLE: usize = 120;
 pub const MAX_SLUG: usize = 40;
-const MARK: &str = "AtlasGit-Shared-Stash";
+const MARK: &str = "GitAtlas-Shared-Stash";
 
 // ---------------------------------------------------------------- slug
 
@@ -141,7 +141,7 @@ fn is_hex_sha(s: &str) -> bool {
 impl SharedStashMeta {
     pub fn format_message(&self) -> String {
         format!(
-            "{}\n\n{MARK}: 1\nAtlasGit-Author-Email: {}\nAtlasGit-Base: {}\nAtlasGit-Base-Branch: {}\nAtlasGit-Created: {}\nAtlasGit-Updated: {}\n",
+            "{}\n\n{MARK}: 1\nGitAtlas-Author-Email: {}\nGitAtlas-Base: {}\nGitAtlas-Base-Branch: {}\nGitAtlas-Created: {}\nGitAtlas-Updated: {}\n",
             clean_title(&self.title),
             one_line(&self.author_email),
             self.base,
@@ -168,15 +168,15 @@ impl SharedStashMeta {
         if t.get(MARK) != Some(&"1") {
             return None;
         }
-        let email = t.get("AtlasGit-Author-Email").filter(|e| !e.is_empty())?;
-        let base = t.get("AtlasGit-Base").filter(|b| is_hex_sha(b))?;
+        let email = t.get("GitAtlas-Author-Email").filter(|e| !e.is_empty())?;
+        let base = t.get("GitAtlas-Base").filter(|b| is_hex_sha(b))?;
         Some(Self {
             title: clean_title(title),
             author_email: (*email).to_owned(),
             base: (*base).to_owned(),
-            base_branch: t.get("AtlasGit-Base-Branch").copied().unwrap_or("").to_owned(),
-            created: t.get("AtlasGit-Created")?.parse().ok()?,
-            updated: t.get("AtlasGit-Updated")?.parse().ok()?,
+            base_branch: t.get("GitAtlas-Base-Branch").copied().unwrap_or("").to_owned(),
+            created: t.get("GitAtlas-Created")?.parse().ok()?,
+            updated: t.get("GitAtlas-Updated")?.parse().ok()?,
         })
     }
 }
@@ -217,13 +217,13 @@ fn component(s: &str) -> bool {
     !s.is_empty() && !s.contains('/')
 }
 
-/// `refs/atlasgit/shared-stash/<slug>/<id>` -> `(slug, id)`.
+/// `refs/gitatlas/shared-stash/<slug>/<id>` -> `(slug, id)`.
 pub fn parse_remote_ref(r: &str) -> Option<(&str, &str)> {
     let (slug, id) = r.strip_prefix(REMOTE_PREFIX)?.split_once('/')?;
     (component(slug) && component(id)).then_some((slug, id))
 }
 
-/// `refs/atlasgit/remotes/<remote>/shared-stash/<slug>/<id>` -> `(remote, slug, id)`.
+/// `refs/gitatlas/remotes/<remote>/shared-stash/<slug>/<id>` -> `(remote, slug, id)`.
 /// Remote names may contain `/`, so the ref is read from the right.
 pub fn parse_mirror_ref(r: &str) -> Option<(&str, &str, &str)> {
     let rest = r.strip_prefix(MIRROR_ROOT)?;
@@ -600,7 +600,7 @@ mod tests {
         assert_eq!(
             meta().format_message(),
             format!(
-                "Fix the thing\n\nAtlasGit-Shared-Stash: 1\nAtlasGit-Author-Email: a@example.com\nAtlasGit-Base: {}\nAtlasGit-Base-Branch: feature/x\nAtlasGit-Created: 1700000000\nAtlasGit-Updated: 1700000500\n",
+                "Fix the thing\n\nGitAtlas-Shared-Stash: 1\nGitAtlas-Author-Email: a@example.com\nGitAtlas-Base: {}\nGitAtlas-Base-Branch: feature/x\nGitAtlas-Created: 1700000000\nGitAtlas-Updated: 1700000500\n",
                 "a".repeat(40)
             )
         );
@@ -620,7 +620,7 @@ mod tests {
         assert_eq!(clean_title(&"é".repeat(300)).chars().count(), MAX_TITLE);
         assert_eq!(clean_title(" \n\t"), "Shared stash");
         let mut m = meta();
-        m.title = "line one\nAtlasGit-Author-Email: evil@example.com".into();
+        m.title = "line one\nGitAtlas-Author-Email: evil@example.com".into();
         let back = SharedStashMeta::parse_message(&m.format_message()).unwrap();
         assert_eq!(back.author_email, "a@example.com", "a title cannot inject trailers");
         assert!(!back.title.contains('\n'));
@@ -649,13 +649,13 @@ mod tests {
         for bad in [
             "".to_owned(),
             "just a title".to_owned(),
-            "title\n\nAtlasGit-Shared-Stash: 2\n".to_owned(),
-            good.replace("AtlasGit-Shared-Stash: 1\n", ""),
-            good.replace("AtlasGit-Author-Email: a@example.com\n", ""),
-            good.replace("AtlasGit-Author-Email: a@example.com", "AtlasGit-Author-Email: "),
+            "title\n\nGitAtlas-Shared-Stash: 2\n".to_owned(),
+            good.replace("GitAtlas-Shared-Stash: 1\n", ""),
+            good.replace("GitAtlas-Author-Email: a@example.com\n", ""),
+            good.replace("GitAtlas-Author-Email: a@example.com", "GitAtlas-Author-Email: "),
             good.replace(&"a".repeat(40), "nothex"),
-            good.replace("AtlasGit-Created: 1700000000", "AtlasGit-Created: soon"),
-            good.replace("AtlasGit-Updated: 1700000500\n", ""),
+            good.replace("GitAtlas-Created: 1700000000", "GitAtlas-Created: soon"),
+            good.replace("GitAtlas-Updated: 1700000500\n", ""),
             good.replacen("Fix the thing", "", 1),
             // trailers must be the last paragraph
             format!("{good}\nSigned-off-by: someone\n"),
@@ -663,18 +663,18 @@ mod tests {
             assert_eq!(SharedStashMeta::parse_message(&bad), None, "{bad:?}");
         }
         // Base-Branch is optional on input.
-        assert!(SharedStashMeta::parse_message(&good.replace("AtlasGit-Base-Branch: feature/x\n", "")).is_some());
+        assert!(SharedStashMeta::parse_message(&good.replace("GitAtlas-Base-Branch: feature/x\n", "")).is_some());
     }
 
     #[test]
     fn ref_names_round_trip() {
-        assert_eq!(remote_ref("ana", "1f-2"), "refs/atlasgit/shared-stash/ana/1f-2");
-        assert_eq!(parse_remote_ref("refs/atlasgit/shared-stash/ana/1f-2"), Some(("ana", "1f-2")));
-        assert_eq!(mirror_ref("origin", "ana", "1f-2"), "refs/atlasgit/remotes/origin/shared-stash/ana/1f-2");
-        assert_eq!(parse_mirror_ref("refs/atlasgit/remotes/origin/shared-stash/ana/1f-2"), Some(("origin", "ana", "1f-2")));
-        assert_eq!(keep_ref("1f-2"), "refs/atlasgit/keep/1f-2");
-        assert_eq!(probe_ref("1f-2"), "refs/atlasgit/probe/1f-2");
-        assert_eq!(mirror_refspec("up"), "+refs/atlasgit/shared-stash/*:refs/atlasgit/remotes/up/shared-stash/*");
+        assert_eq!(remote_ref("ana", "1f-2"), "refs/gitatlas/shared-stash/ana/1f-2");
+        assert_eq!(parse_remote_ref("refs/gitatlas/shared-stash/ana/1f-2"), Some(("ana", "1f-2")));
+        assert_eq!(mirror_ref("origin", "ana", "1f-2"), "refs/gitatlas/remotes/origin/shared-stash/ana/1f-2");
+        assert_eq!(parse_mirror_ref("refs/gitatlas/remotes/origin/shared-stash/ana/1f-2"), Some(("origin", "ana", "1f-2")));
+        assert_eq!(keep_ref("1f-2"), "refs/gitatlas/keep/1f-2");
+        assert_eq!(probe_ref("1f-2"), "refs/gitatlas/probe/1f-2");
+        assert_eq!(mirror_refspec("up"), "+refs/gitatlas/shared-stash/*:refs/gitatlas/remotes/up/shared-stash/*");
     }
 
     #[test]
@@ -686,18 +686,18 @@ mod tests {
     #[test]
     fn foreign_or_incomplete_refs_do_not_parse() {
         for r in [
-            "refs/atlasgit/shared-stash/ana",
-            "refs/atlasgit/shared-stash/ana/",
-            "refs/atlasgit/shared-stash//id",
-            "refs/atlasgit/shared-stash/ana/id/extra",
+            "refs/gitatlas/shared-stash/ana",
+            "refs/gitatlas/shared-stash/ana/",
+            "refs/gitatlas/shared-stash//id",
+            "refs/gitatlas/shared-stash/ana/id/extra",
             "refs/heads/ana/id",
         ] {
             assert_eq!(parse_remote_ref(r), None, "{r}");
         }
         for r in [
-            "refs/atlasgit/remotes/origin/shared-stash/ana",
-            "refs/atlasgit/remotes/origin/other/ana/id",
-            "refs/atlasgit/remotes//shared-stash/ana/id",
+            "refs/gitatlas/remotes/origin/shared-stash/ana",
+            "refs/gitatlas/remotes/origin/other/ana/id",
+            "refs/gitatlas/remotes//shared-stash/ana/id",
             "refs/remotes/origin/shared-stash/ana/id",
         ] {
             assert_eq!(parse_mirror_ref(r), None, "{r}");

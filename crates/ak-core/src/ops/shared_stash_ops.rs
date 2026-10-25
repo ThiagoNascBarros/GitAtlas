@@ -94,7 +94,7 @@ fn gone() -> OpError {
 }
 
 fn invalid_stash() -> OpError {
-    OpError::new("INVALID_SHARED_STASH", "That shared stash is malformed, so AtlasGit will not use it.", Some("Ask its author to share it again."))
+    OpError::new("INVALID_SHARED_STASH", "That shared stash is malformed, so GitAtlas will not use it.", Some("Ask its author to share it again."))
 }
 
 fn not_author() -> OpError {
@@ -213,8 +213,8 @@ enum Applied {
 }
 
 impl Engine {
-    fn atlasgit_file(&self, name: &str) -> std::path::PathBuf {
-        self.git_dir.join("atlasgit").join(name)
+    fn gitatlas_file(&self, name: &str) -> std::path::PathBuf {
+        self.git_dir.join("gitatlas").join(name)
     }
 
     fn identity(&self) -> Result<Identity, OpError> {
@@ -390,7 +390,7 @@ impl Engine {
     // ---------------------------------------------------------------- probe (spec §5.2)
 
     fn probe_cache(&self) -> BTreeMap<String, ProbeEntry> {
-        read_json(&self.atlasgit_file("remotes.json"))
+        read_json(&self.gitatlas_file("remotes.json"))
     }
 
     fn remote_url(&self, remote: &str) -> String {
@@ -421,7 +421,7 @@ impl Engine {
                 None
             }
         };
-        write_json(&self.atlasgit_file("remotes.json"), &cache)
+        write_json(&self.gitatlas_file("remotes.json"), &cache)
     }
 
     /// Pushes and deletes a throwaway ref to learn whether the host accepts custom refs.
@@ -442,13 +442,13 @@ impl Engine {
         // An unrelated commit with a fixed identity: nothing of the user's history is uploaded.
         let tree = self.empty_tree()?;
         let probe_env = [
-            ("GIT_AUTHOR_NAME", "AtlasGit"),
-            ("GIT_AUTHOR_EMAIL", "probe@atlasgit.invalid"),
-            ("GIT_COMMITTER_NAME", "AtlasGit"),
-            ("GIT_COMMITTER_EMAIL", "probe@atlasgit.invalid"),
+            ("GIT_AUTHOR_NAME", "GitAtlas"),
+            ("GIT_AUTHOR_EMAIL", "probe@gitatlas.invalid"),
+            ("GIT_COMMITTER_NAME", "GitAtlas"),
+            ("GIT_COMMITTER_EMAIL", "probe@gitatlas.invalid"),
         ]
         .map(|(k, v)| (k.to_owned(), v.to_owned()));
-        let commit = self.git.run_with_input_env(&self.root, ["commit-tree", tree.as_str(), "-m", "AtlasGit probe"], b"", &probe_env)?;
+        let commit = self.git.run_with_input_env(&self.root, ["commit-tree", tree.as_str(), "-m", "GitAtlas probe"], b"", &probe_env)?;
         let commit = String::from_utf8_lossy(&commit).trim().to_owned();
         let target = probe_ref(&new_id());
         let verdict = match self.push_shared(remote, &commit, &target, None, env) {
@@ -463,7 +463,7 @@ impl Engine {
         };
         let mut cache = self.probe_cache();
         cache.insert(remote.to_owned(), ProbeEntry { probe: verdict, url: self.remote_url(remote), checked: now() });
-        write_json(&self.atlasgit_file("remotes.json"), &cache)?;
+        write_json(&self.gitatlas_file("remotes.json"), &cache)?;
         Ok(verdict)
     }
 
@@ -575,14 +575,14 @@ impl Engine {
     // ---------------------------------------------------------------- unshare / reshare / discard
 
     fn keep_book(&self) -> BTreeMap<String, KeepEntry> {
-        read_json(&self.atlasgit_file("keep.json"))
+        read_json(&self.gitatlas_file("keep.json"))
     }
 
     fn forget_keep(&self, id: &str) -> Result<(), OpError> {
         let _ = self.git.run(&self.root, ["update-ref", "-d", keep_ref(id).as_str()]);
         let mut book = self.keep_book();
         if book.remove(id).is_some() {
-            write_json(&self.atlasgit_file("keep.json"), &book)?;
+            write_json(&self.gitatlas_file("keep.json"), &book)?;
         }
         Ok(())
     }
@@ -600,7 +600,7 @@ impl Engine {
         self.git.run(&self.root, ["rev-parse", "--verify", "-q", r.as_str()]).ok().map(|o| String::from_utf8_lossy(&o).trim().to_owned())
     }
 
-    /// Removes your shared stash from the remote. A copy stays in `refs/atlasgit/keep/<id>`.
+    /// Removes your shared stash from the remote. A copy stays in `refs/gitatlas/keep/<id>`.
     pub(super) fn shared_unshare(&self, id: &str, remote: &str, env: &Env) -> Result<OpOutcome, OpError> {
         let _g = self.busy_remote()?;
         self.identity()?;
@@ -614,7 +614,7 @@ impl Engine {
         self.git.run(&self.root, ["update-ref", keep_ref(id).as_str(), fresh.wrapper.as_str()])?;
         let mut book = self.keep_book();
         book.insert(id.to_owned(), KeepEntry { remote: remote.to_owned(), slug: fresh.slug.clone(), unshared_at: now() });
-        write_json(&self.atlasgit_file("keep.json"), &book)?;
+        write_json(&self.gitatlas_file("keep.json"), &book)?;
 
         let dst = remote_ref(&fresh.slug, id);
         if let Err(e) = self.push_shared(remote, "", &dst, Some(&fresh.wrapper), env) {
@@ -627,7 +627,7 @@ impl Engine {
                         Some(en) => book.insert(id.to_owned(), en),
                         None => book.remove(id),
                     };
-                    let _ = write_json(&self.atlasgit_file("keep.json"), &book);
+                    let _ = write_json(&self.gitatlas_file("keep.json"), &book);
                 }
                 (None, _) => self.forget_keep(id)?,
             }
@@ -955,12 +955,12 @@ mod tests {
 
     #[test]
     fn push_failures_map_to_stable_codes() {
-        let hook = "!\tabc:refs/atlasgit/probe/x\t[remote rejected] (pre-receive hook declined)";
+        let hook = "!\tabc:refs/gitatlas/probe/x\t[remote rejected] (pre-receive hook declined)";
         assert_eq!(push_error("origin", hook.into(), false).code, "REMOTE_REJECTED");
         let race = "[remote rejected] (failed to update ref)\nremote: error: cannot lock ref 'r': is at a but expected b";
         assert_eq!(push_error("origin", race.into(), true).code, "STALE_SHARED_STASH");
         assert_eq!(push_error("origin", "[rejected] (stale info)".into(), true).code, "STALE_SHARED_STASH");
-        let newer = "!\tabc:refs/atlasgit/shared-stash/a/b\t[remote rejected] (incorrect old value provided)\nremote: error: cannot lock ref 'r': is at a but expected b";
+        let newer = "!\tabc:refs/gitatlas/shared-stash/a/b\t[remote rejected] (incorrect old value provided)\nremote: error: cannot lock ref 'r': is at a but expected b";
         assert_eq!(push_error("origin", newer.into(), true).code, "STALE_SHARED_STASH");
         assert_eq!(push_error("origin", hook.into(), true).code, "REMOTE_REJECTED");
         // Without a lease the same text is just a rejection by the host.

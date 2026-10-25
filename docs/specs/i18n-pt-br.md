@@ -143,7 +143,7 @@ trailing period on labels (match `en`). Keep keyboard key names (Esc, Enter, Shi
 6. FR-5 call sites; make the graph redraw depend on the locale signal.
 7. Toolbar picker (FR-4) and `initLocale()` wiring.
 8. `pnpm --dir app/ui test && pnpm --dir app/ui build && node scripts/contrast.mjs`;
-   `cargo build -p atlasgit --features custom-protocol` must still pass.
+   `cargo build -p gitatlas --features custom-protocol` must still pass.
 9. Browser check with the dev mock (`pnpm --dir app/ui exec vite`, `devMock.ts`): switch
    language, confirm texts and dates update without reload (screenshot optional).
 
@@ -182,7 +182,7 @@ sizes).
 - [ ] Toolbar picker switches live; choice survives reload; `system` follows the WebView language.
 - [ ] No user-visible English left when pt-BR is active, except Git terms from §6, Git/core raw
       output and the language name "English".
-- [ ] `node scripts/contrast.mjs` and `cargo build -p atlasgit --features custom-protocol` pass.
+- [ ] `node scripts/contrast.mjs` and `cargo build -p gitatlas --features custom-protocol` pass.
 - [ ] No files outside the ownership list in `mvp-phase5.md` §5 changed; no new dependency.
 - [ ] 5 screenshots in `docs/screenshots/phase5/i18n-pt-br/` (picker, main window pt-BR, WIP pt-BR, dates pt-BR, error text pt-BR).
 - [ ] §12 "Implementation notes" filled with decisions taken where the spec was silent.
@@ -247,7 +247,7 @@ Filled by the implementing agent (2026-10-16).
    chip); the sidebar tab is "Compartilhados" (the panel title keeps "Stash compartilhado").
 
 **Verification**: `pnpm --dir app/ui test` 48 passed (baseline 32 + 16); `pnpm --dir app/ui
-build`, `node scripts/contrast.mjs`, `cargo build -p atlasgit --features custom-protocol` pass.
+build`, `node scripts/contrast.mjs`, `cargo build -p gitatlas --features custom-protocol` pass.
 Browser check with the dev mock (Playwright, 1280×800): live switch without reload, choice kept
 after reload, `system` gives pt-BR for browser locales pt-BR/pt-PT and en for fr-FR/en-GB, the
 canvas date column repaints on switch, no English UI text left in pt-BR across the main view,

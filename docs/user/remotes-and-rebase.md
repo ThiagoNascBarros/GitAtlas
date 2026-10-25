@@ -27,12 +27,12 @@ Fetch and push cannot be undone (see [Undo and Redo](committing-and-undo.md#undo
 
 ## Credentials
 
-AtlasGit runs your Git, so your existing setup keeps working: credential helpers
+GitAtlas runs your Git, so your existing setup keeps working: credential helpers
 (`credential.helper`, for example `libsecret`, `store` or `cache`), the SSH agent and your
 `~/.ssh/config`.
 
 When Git or SSH needs to ask you something (a user name, a password or token, an SSH key
-passphrase, whether to trust a new host key), AtlasGit shows the question in a dialog. Passwords
+passphrase, whether to trust a new host key), GitAtlas shows the question in a dialog. Passwords
 are hidden while you type. **OK** answers, **Cancel** stops the operation.
 
 If the remote rejects what you typed, you see **The remote refused your credentials.** If it
@@ -87,7 +87,7 @@ key or Shift+F10):
   - **Reset current branch here (mixed: keep changes unstaged)**
   - **Reset current branch here (hard: discard changes)**
 
-All three can be undone. Before a hard reset AtlasGit saves your uncommitted changes to tracked
+All three can be undone. Before a hard reset GitAtlas saves your uncommitted changes to tracked
 files, so **Undo** brings both the commits and those changes back (untracked files are not
 touched by a reset).
 

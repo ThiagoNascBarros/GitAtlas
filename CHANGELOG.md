@@ -1,11 +1,19 @@
 # Changelog
 
-All notable changes to AtlasGit are listed here. The format follows
+All notable changes to GitAtlas are listed here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow
 [Semantic Versioning](https://semver.org/). The first release (the MVP) has not been cut yet;
 everything below is in `Unreleased` until then (version `0.1.0` in the sources).
 
 ## [Unreleased]
+
+### Renamed to GitAtlas
+
+The app was called AtlasGit (and before that AtlasKraken). Binary, Cargo package, `.deb`
+package (`git-atlas`), app id (`dev.gitatlas.app`), environment variables (`GITATLAS_*`) and
+the cache/log folders changed; the app's global settings and cache start fresh. Shared-stash data inside
+repositories was renamed too (`.git/gitatlas/`, `refs/gitatlas/`, `GitAtlas-*` trailers) with no
+migration: shared stashes made as AtlasGit must be shared again. `.git/atlaskraken/` is unchanged.
 
 ### Phase 5: MVP release
 
@@ -14,14 +22,14 @@ everything below is in `Unreleased` until then (version `0.1.0` in the sources).
   **English**, **Português (Brasil)**). The choice switches live and is remembered; dates and
   numbers follow the chosen language.
 - Plain-language messages and fixes for errors that used to show raw text (Git not found, folder
-  not a repository, read failures, AtlasGit's own files not writable, closed repository).
+  not a repository, read failures, GitAtlas's own files not writable, closed repository).
 - Keyboard access to every context menu: the Menu key or Shift+F10 opens the menu of the
   selected commit, branch, tag, stash or shared stash.
 - Screen reader support for the commit graph: each visible commit is read with its branches and
   tags, message, author, date and SHA.
 - Dialogs keep the keyboard inside until they are closed, and focus returns to where it was.
-- Desktop entry and AppStream metadata (`dev.atlasgit.app`), app icons in every size.
-- Packages: .deb (`atlas-git`, depends on Git 2.20 or newer), AppImage, and a Flatpak bundle with
+- Desktop entry and AppStream metadata (`dev.gitatlas.app`), app icons in every size.
+- Packages: .deb (`git-atlas`, depends on Git 2.20 or newer), AppImage, and a Flatpak bundle with
   its own Git and the libsecret credential helper. Build scripts `scripts/package.sh` and
   `scripts/package-flatpak.sh`, and a release workflow that builds all three.
 - User guide (`docs/user/`), release checklist (`docs/release/checklist.md`) and this changelog.
@@ -48,7 +56,7 @@ everything below is in `Unreleased` until then (version `0.1.0` in the sources).
 - **Fetch**, **Pull** and **Push** in the toolbar, with ahead/behind counts and force push with
   lease after a rejected push.
 - Credentials through Git's own helpers and the SSH agent; questions from Git or SSH (passwords,
-  passphrases, host keys) appear in an AtlasGit dialog.
+  passphrases, host keys) appear in an GitAtlas dialog.
 - Rebase and an interactive rebase editor (pick, reword, squash, fixup, drop, reorder).
 - Cherry-pick, revert, reset (soft, mixed, hard) and tags (create, delete, push) from the graph
   and the sidebar; all of them can be undone except pushing.
@@ -73,7 +81,7 @@ everything below is in `Unreleased` until then (version `0.1.0` in the sources).
 - Undo and Redo for commits, amends, discards and, later, every local history operation, backed
   by an operation journal and snapshots.
 - Operation journal window with the exact Git commands, and opt-in cleanup of old entries.
-- The view refreshes by itself when files or the repository change outside AtlasGit.
+- The view refreshes by itself when files or the repository change outside GitAtlas.
 
 ### Phase 1: Read-only viewer
 

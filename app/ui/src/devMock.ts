@@ -50,7 +50,7 @@ export async function installDevMock(first: string, next = "hubbi") {
     const fx = repos.values().next().value as Fixture;
     const small = Object.values(fx.details).filter((d: any) => d.files.length >= 2 && d.files.length <= 6).map((d: any) => d.sha as string);
     const mk = (id: string, remote: string, name: string, email: string, title: string, row: number, branch: string, ago: number, extra: object = {}) => ({
-      remote, slug: name.toLowerCase().replace(/\W+/g, "-"), id, ref_name: `refs/atlasgit/shared-stash/x/${id}`, wrapper: hex(ssSeq + 100), stash: small[ssSeq++ % small.length],
+      remote, slug: name.toLowerCase().replace(/\W+/g, "-"), id, ref_name: `refs/gitatlas/shared-stash/x/${id}`, wrapper: hex(ssSeq + 100), stash: small[ssSeq++ % small.length],
       title, author_name: name, author_email: email, base: fx.rows[row].sha, base_branch: branch, created: sec() - ago, updated: sec() - ago,
       has_untracked: false, mine: email === me.email, verified: false, valid: true, invalid_reason: null, ...extra,
     });
@@ -131,7 +131,7 @@ export async function installDevMock(first: string, next = "hubbi") {
         const fx = repos.values().next().value as Fixture;
         const id = `m${++ssSeq}`;
         const small = Object.values(fx.details).filter((d: any) => d.files.length >= 2 && d.files.length <= 6).map((d: any) => d.sha as string);
-        ss().unshift({ remote, slug: "thiago-barros", id, ref_name: `refs/atlasgit/shared-stash/thiago-barros/${id}`, wrapper: hex(ssSeq + 100), stash: small[ssSeq % small.length],
+        ss().unshift({ remote, slug: "thiago-barros", id, ref_name: `refs/gitatlas/shared-stash/thiago-barros/${id}`, wrapper: hex(ssSeq + 100), stash: small[ssSeq % small.length],
           title: args.title, author_name: me.name, author_email: me.email, base: fx.rows[2 + (ssSeq % 3)].sha, base_branch: "feature/shared-stash", created: sec(), updated: sec(),
           has_untracked: false, mine: true, verified: false, valid: true, invalid_reason: null });
         return ssOut({ id, remote, large_bytes: /large/i.test(args.title) ? 12_582_912 : null });

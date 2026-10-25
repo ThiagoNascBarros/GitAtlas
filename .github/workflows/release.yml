@@ -40,8 +40,8 @@ jobs:
             librsvg2-dev file desktop-file-utils appstream
       - name: Validate desktop entry and AppStream metainfo
         run: |
-          desktop-file-validate packaging/linux/dev.atlasgit.app.desktop
-          appstreamcli validate --no-net packaging/linux/dev.atlasgit.app.metainfo.xml
+          desktop-file-validate packaging/linux/dev.gitatlas.app.desktop
+          appstreamcli validate --no-net packaging/linux/dev.gitatlas.app.metainfo.xml
       - name: Build .deb and AppImage
         run: scripts/package.sh
       - name: Inspect .deb
@@ -52,19 +52,19 @@ jobs:
           dpkg-deb -c "$deb"
       - uses: actions/upload-artifact@v4
         with:
-          name: atlasgit-deb
+          name: gitatlas-deb
           path: target/release/bundle/deb/*.deb
           if-no-files-found: error
       - uses: actions/upload-artifact@v4
         with:
-          name: atlasgit-appimage
+          name: gitatlas-appimage
           path: target/release/bundle/appimage/*.AppImage
           if-no-files-found: error
       # Input of the Flatpak job (repack of the same release binary).
       - uses: actions/upload-artifact@v4
         with:
-          name: atlasgit-binary
-          path: target/release/atlasgit
+          name: gitatlas-binary
+          path: target/release/gitatlas
           if-no-files-found: error
           retention-days: 1
 
@@ -76,9 +76,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: atlasgit-binary
+          name: gitatlas-binary
           path: target/release
-      - run: chmod +x target/release/atlasgit
+      - run: chmod +x target/release/gitatlas
       - name: Flatpak tools
         run: |
           sudo apt-get update
@@ -88,11 +88,11 @@ jobs:
         run: scripts/package-flatpak.sh
       - name: Smoke test (Git and SSH inside the sandbox)
         run: |
-          flatpak install --user --noninteractive --bundle target/flatpak/AtlasGit-*.flatpak
-          flatpak run --command=git dev.atlasgit.app --version
-          flatpak run --command=ssh dev.atlasgit.app -V
+          flatpak install --user --noninteractive --bundle target/flatpak/GitAtlas-*.flatpak
+          flatpak run --command=git dev.gitatlas.app --version
+          flatpak run --command=ssh dev.gitatlas.app -V
       - uses: actions/upload-artifact@v4
         with:
-          name: atlasgit-flatpak
+          name: gitatlas-flatpak
           path: target/flatpak/*.flatpak
           if-no-files-found: error

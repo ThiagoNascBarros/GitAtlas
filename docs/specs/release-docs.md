@@ -156,7 +156,7 @@ merged).
 5. The Flatpak sandbox limits are written from the manifest, the packaging notes and the
    coordinator's list, and marked "to be verified" (the Flatpak was never built here).
 6. The global shared-stash fetch-mode default is documented as a file
-   (`~/.config/dev.atlasgit.app/settings.json`, from `app_config_dir()` + identifier); there is
+   (`~/.config/dev.gitatlas.app/settings.json`, from `app_config_dir()` + identifier); there is
    no UI for it.
 
 **Mismatches between docs/HANDOFF and the code (reported, documented as the code behaves)**
@@ -164,7 +164,7 @@ merged).
   says so. (The language is persisted.)
 - The graph's tips are all refs except `refs/stash` (`read_gix.rs` `tips`, CLI `--all`), so
   commits only reachable from `refs/atlaskraken/snapshots/*` (amend, reset, undone commits) and
-  `refs/atlasgit/*` (shared stash mirrors) appear as unlabelled rows. Documented in
+  `refs/gitatlas/*` (shared stash mirrors) appear as unlabelled rows. Documented in
   troubleshooting.
 - `journal_prune` deletes each entry's `snapshot_ref` but not the `-redo` (undone commit/pull) and
   `-wip` (hard reset) refs, so "Forget" does not remove everything Undo kept. Documented.
@@ -186,5 +186,5 @@ screenshots.
 
 **Open questions for the owner**
 - Everything in `mvp-phase5.md` §8/§8.1 (not resolved here), plus: persist the theme choice like
-  the language? Hide AtlasGit's own refs from the graph, and make "Forget" delete the `-redo`/`-wip`
+  the language? Hide GitAtlas's own refs from the graph, and make "Forget" delete the `-redo`/`-wip`
   refs? Both are code changes outside this module.
