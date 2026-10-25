@@ -149,3 +149,6 @@ export function decodeWindow(buf: ArrayBuffer): GraphWindow {
   return { start, laneCount, rows };
 }
 export interface CredentialsRequest { id: number; repoId: number; prompt: string; secret: boolean }
+
+export interface CrashReport { details: string }
+export interface DiagnosticsStatus { logDir: string; uncleanPreviousExit: boolean; previousCrash: CrashReport | null }
