@@ -2,25 +2,14 @@
 //! Graph layout against fixture repos (golden files) and random DAGs.
 //! Fixtures are built by `tests/fixtures/make.sh`; missing ones are built on demand.
 
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::Path;
 
 use ak_core::graph::{self, verify, Layout, Topology};
 use ak_core::read::{CliReader, RepoReader};
 use ak_gitcli::{Git, Mode};
 
-fn workspace() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap()
-}
-
-fn fixture(name: &str) -> PathBuf {
-    let dir = workspace().join("tests/fixtures/out").join(name);
-    if !dir.exists() {
-        let ok = Command::new(workspace().join("tests/fixtures/make.sh")).arg(name).status().unwrap().success();
-        assert!(ok, "failed to build fixture {name}");
-    }
-    dir
-}
+mod common;
+use common::fixture;
 
 fn load(name: &str) -> (Vec<ak_gitcli::parse::CommitRecord>, Topology, Layout) {
     let reader = CliReader::open(Git::discover(Mode::ReadOnly).unwrap(), &fixture(name)).unwrap();

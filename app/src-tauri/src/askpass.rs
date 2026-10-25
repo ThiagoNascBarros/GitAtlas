@@ -15,6 +15,7 @@ use std::time::Duration;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
+
 pub const SOCK_ENV: &str = "ATLASGIT_ASKPASS_SOCK";
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(300);
 

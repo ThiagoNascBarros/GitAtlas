@@ -5,6 +5,7 @@ import { api, OpenedRepo, StatusReport, UiError } from "../../api";
 import { t } from "../../i18n";
 import { groupStatus, WipItem } from "./status";
 import { ConflictEditor } from "../conflict/ConflictEditor";
+import { ConfirmDialog } from "../../components";
 import { Check, ChevronDown, ChevronRight, FileCheck2, FilePen, GitBranch, Minus, Plus, TriangleAlert, X } from "lucide-solid";
 
 const OPEN_KEY = "gitatlas.wip.sections";
@@ -31,7 +32,8 @@ export function WipPanel(props: {
   const [summary, setSummary] = createSignal("");
   const [body, setBody] = createSignal("");
   const [amend, setAmend] = createSignal(false);
-  const [confirm, setConfirm] = createSignal<string | null>(null);
+  // File whose discard is waiting for confirmation (ConfirmDialog).
+  const [discarding, setDiscarding] = createSignal<WipItem | null>(null);
   const [busy, setBusy] = createSignal(false);
   const [editing, setEditing] = createSignal<string | null>(null);
   const id = props.repo.repoId;
@@ -83,12 +85,7 @@ export function WipPanel(props: {
   }
 
   function discard(item: WipItem) {
-    if (confirm() !== item.path) {
-      setConfirm(item.path);
-      setTimeout(() => confirm() === item.path && setConfirm(null), 3000);
-      return;
-    }
-    setConfirm(null);
+    setDiscarding(null);
     void props.run(() => api.discard(id, [item.path]), { toast: t("toast.discarded", { s: item.path }) });
   }
 
@@ -107,9 +104,7 @@ export function WipPanel(props: {
       <span class="row-actions">
         <Show when={!staged}>
           <button class="mini" aria-describedby={pathId(item.path, "u")} onClick={() => props.run(() => api.stage(id, [item.path]))}><Plus size={14} aria-hidden="true" />{t("wip.stage")}</button>
-          <button class="mini danger" aria-describedby={pathId(item.path, "u")} onClick={() => discard(item)}>
-            {confirm() === item.path ? t("wip.discardConfirm") : t("wip.discard")}
-          </button>
+          <button class="mini danger" aria-describedby={pathId(item.path, "u")} onClick={() => setDiscarding(item)}>{t("wip.discard")}</button>
         </Show>
         <Show when={staged}>
           <button class="mini" aria-describedby={pathId(item.path, "s")} onClick={() => props.run(() => api.unstage(id, [item.path]))}><Minus size={14} aria-hidden="true" />{t("wip.unstage")}</button>
@@ -126,6 +121,17 @@ export function WipPanel(props: {
       </header>
       <Show when={editing()}>
         {(p) => <ConflictEditor repoId={id} path={p()} run={props.run} onClose={() => setEditing(null)} onError={(e) => props.onError(e as UiError)} />}
+      </Show>
+      <Show when={discarding()}>
+        {(item) => (
+          <ConfirmDialog
+            title={t("confirm.discard.title", { s: item().path })}
+            message={t("confirm.discard.message")}
+            confirmLabel={t("wip.discard")}
+            onConfirm={() => discard(item())}
+            onCancel={() => setDiscarding(null)}
+          />
+        )}
       </Show>
       <Show when={props.status?.merging}>
         <div class="merge-banner" role="alert">

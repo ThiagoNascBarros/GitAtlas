@@ -1,0 +1,111 @@
+/* Settings screen. Kept in its own file so the shared stylesheet stays as it is. */
+
+/* "Reduce animations" (settings.json: animations = reduced) sets data-motion on <html>. */
+:root[data-motion="reduced"] *,
+:root[data-motion="reduced"] *::before,
+:root[data-motion="reduced"] *::after {
+  transition: none !important;
+  animation: none !important;
+  scroll-behavior: auto !important;
+}
+
+.settings-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 0.45);
+}
+
+.settings-dialog {
+  width: min(540px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 16px 18px;
+  border: 1px solid var(--ak-color-border-default);
+  border-radius: 10px;
+  background: var(--ak-color-bg-raised);
+  color: var(--ak-color-text-primary);
+  box-shadow: 0 12px 40px rgb(0 0 0 / 0.35);
+}
+
+.settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.settings-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.settings-note {
+  margin: 6px 0 12px;
+  font-size: 12px;
+}
+
+.settings-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--ak-color-border-default);
+}
+
+.settings-row > label:first-child {
+  color: var(--ak-color-text-secondary);
+}
+
+.settings-row select {
+  min-width: 0;
+  width: 100%;
+}
+
+.settings-zoom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.settings-zoom input[type="range"] {
+  flex: 1;
+  min-width: 80px;
+}
+
+.settings-zoom output {
+  min-width: 5ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.settings-inherit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ak-color-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.settings-error {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border: 1px solid var(--ak-color-status-deleted);
+  border-radius: 6px;
+  color: var(--ak-color-status-deleted);
+}
+
+/* Narrow windows: labels above their controls. */
+@media (max-width: 460px) {
+  .settings-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

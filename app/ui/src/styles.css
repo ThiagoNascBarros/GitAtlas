@@ -196,6 +196,9 @@ select { appearance: none; background-color: var(--ak-color-bg-raised); color: v
 /* Top, under the toolbar: at the bottom it would cover the error banner. */
 .toast { z-index: 30; position: fixed; left: 50%; top: 86px; transform: translateX(-50%); display: flex; gap: 12px; align-items: center; padding: 8px 14px; border-radius: var(--r-m); background: var(--ak-color-bg-overlay); border: 1px solid var(--ak-color-border-strong); box-shadow: 0 4px 16px rgb(0 0 0 / .3); }
 .toast button { color: var(--ak-color-accent-default); font-weight: 600; }
+.crash-banner { z-index: 40; position: fixed; left: 16px; bottom: 16px; max-width: min(560px, calc(100vw - 32px)); display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 10px 14px; border-radius: var(--r-m); background: var(--ak-color-bg-overlay); border: 1px solid var(--ak-color-border-strong); box-shadow: 0 4px 16px rgb(0 0 0 / .3); }
+.crash-banner button { color: var(--ak-color-accent-default); font-weight: 600; }
+.crash-details { flex-basis: 100%; max-height: 40vh; overflow: auto; margin: 0; padding: 8px; font-size: 12px; white-space: pre-wrap; word-break: break-word; }
 /* In the column layout a flex child would grow to its content (millions of px for 100k rows). */
 .center > .graph, .center > .diff { flex: 1 1 0; min-height: 0; }
 
@@ -251,7 +254,7 @@ svg { flex: none; }
 /* Shell: two rows of chrome around one continuous workspace. */
 .app { grid-template-rows: var(--bar-h) minmax(0, 1fr); }
 .toolbar { gap: var(--s2); padding: 0 var(--s2) 0 var(--s3); background: var(--glass);
-  -webkit-backdrop-filter: saturate(160%) blur(20px); backdrop-filter: saturate(160%) blur(20px); }
+  -webkit-backdrop-filter: saturate(160%) blur(12px); backdrop-filter: saturate(160%) blur(12px); }
 .toolbar .group { display: flex; gap: 2px; padding-left: var(--s2); border-left: 1px solid var(--ak-color-border-default); }
 .toolbar .group:first-of-type { border-left: 0; }
 
@@ -322,7 +325,7 @@ input:not([type="checkbox"]):not([type="radio"]), .commit-form textarea { border
 .empty h1 { font-size: 22px; font-weight: 600; }
 
 /* Floating layers: the only other place glass appears. */
-.modal, menu.ctx, .toast { background: var(--glass); -webkit-backdrop-filter: saturate(160%) blur(24px); backdrop-filter: saturate(160%) blur(24px);
+.modal, menu.ctx, .toast { background: var(--glass); -webkit-backdrop-filter: saturate(160%) blur(12px); backdrop-filter: saturate(160%) blur(12px);
   border: 1px solid var(--glass-edge); box-shadow: var(--lift); }
 .modal { border-radius: var(--r-l); padding: var(--s6); }
 .modal-back { background: rgb(0 0 0 / .3); }
@@ -408,19 +411,24 @@ menu.ctx button:focus svg { color: currentColor; }
   --lg-tint-strong: color-mix(in srgb, var(--ak-color-bg-overlay) 80%, transparent);
   --lg-edge: color-mix(in srgb, var(--ak-color-text-primary) 12%, transparent);
   --lg-spec: color-mix(in srgb, white 18%, transparent);
-  --lg-blur: saturate(180%) blur(28px);
+  /* Blur only on small capsules and floating overlays; never on the large permanent panes (PERF-02). */
+  --lg-blur: saturate(160%) blur(12px);
   --lg-shadow: 0 1px 1px rgb(0 0 0 / .08), 0 10px 30px rgb(0 0 0 / .22);
 }
 [data-theme="light"] { --lg-spec: color-mix(in srgb, white 85%, transparent); --lg-shadow: 0 1px 1px rgb(0 0 0 / .04), 0 10px 30px rgb(0 0 0 / .10); }
 
 /* The glass material, one definition. */
-.toolbar .group, .toolbar .tabs, .toolbar .crumb .branch, .left, .right, .modal, menu.ctx, .toast {
+.toolbar .group, .toolbar .tabs, .toolbar .crumb .branch, .modal, menu.ctx, .toast {
   background: var(--lg-tint);
   -webkit-backdrop-filter: var(--lg-blur); backdrop-filter: var(--lg-blur);
   border: 1px solid var(--lg-edge);
   box-shadow: inset 0 1px 0 var(--lg-spec), inset 0 -1px 0 color-mix(in srgb, black 8%, transparent), var(--lg-shadow);
 }
 .modal, menu.ctx { background: var(--lg-tint-strong); }
+/* Sidebar and inspector: large and always on screen, so they are opaque-ish with no backdrop blur (PERF-02). */
+.left, .right { background: color-mix(in srgb, var(--ak-color-bg-surface) 92%, transparent);
+  border: 1px solid var(--lg-edge);
+  box-shadow: inset 0 1px 0 var(--lg-spec), inset 0 -1px 0 color-mix(in srgb, black 8%, transparent), var(--lg-shadow); }
 
 /* Toolbar: transparent bar; controls float in glass capsules (grouped by function). */
 .app { grid-template-rows: 56px minmax(0, 1fr); }
@@ -485,14 +493,40 @@ menu.ctx button:focus svg { color: currentColor; }
 .center { position: relative; }
 /* Full size inside the center pane: toolbar and the file list on the right stay usable. */
 .center > .diff.full { position: absolute; inset: 0; z-index: 5; max-height: none; flex: none; background: var(--ak-color-bg-canvas); }
-.modal.conflict { width: min(1100px, 95vw); }
-.conflict-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-.conflict-side h3 { margin: 0 0 4px; font-size: 12px; color: var(--ak-color-text-secondary); }
-.conflict-side pre { margin: 0; max-height: 28vh; overflow: auto; padding: 8px; border-radius: var(--r-m, 6px); background: var(--ak-color-bg-canvas); border: 1px solid var(--ak-color-border-default); }
-.conflict-chunks { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
-.conflict-chunk { display: flex; gap: 4px; align-items: center; }
-.conflict-result { display: grid; gap: 4px; }
-.conflict-result textarea { min-height: 30vh; resize: vertical; background: var(--ak-color-bg-canvas); color: var(--ak-color-text-primary); border: 1px solid var(--ak-color-border-default); border-radius: var(--r-m, 6px); padding: 8px; }
+/* Conflict editor: a full-screen view over the app; the blocks above, the live result below. */
+.conflict-page { position: fixed; inset: 0; z-index: 15; display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--ak-color-bg-canvas); color: var(--ak-color-text-primary); }
+.conflict-page:focus, .conflict-page h2[tabindex]:focus { outline: none; }
+.conflict-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--ak-color-border-default); background: var(--ak-color-bg-surface); }
+.conflict-bar h2 { font-size: 14px; margin: 0 8px 0 0; }
+.conflict-bar .grow { flex: 1 1 auto; }
+.conflict-bar button { height: var(--ctl-h); padding: 0 10px; border-radius: var(--r-m, 6px); border: 1px solid var(--ak-color-border-default); background: var(--ak-color-bg-raised); color: var(--ak-color-text-primary); white-space: nowrap; }
+.conflict-bar button.primary { border-color: transparent; background: var(--ak-color-accent-default); color: var(--ak-color-text-onAccent); font-weight: 600; }
+.conflict-bar button:disabled { opacity: .5; }
+.conflict-nav { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.conflict-body { display: grid; grid-template-rows: minmax(0, 1fr) minmax(0, 34vh); min-height: 0; }
+.conflict-hunks { overflow: auto; min-height: 0; padding: 10px 14px; display: grid; align-content: start; gap: 10px; }
+.conflict-hint, .conflict-loading { margin: 0; font-size: 13px; }
+.conflict-hunk { border: 1px solid var(--ak-color-border-default); border-radius: var(--r-m, 6px); background: var(--ak-color-bg-surface); }
+.conflict-hunk.current { border-color: var(--ak-color-border-strong); }
+.conflict-hunk-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--ak-color-border-default); }
+.conflict-hunk-head h3 { margin: 0; font-size: 13px; }
+.conflict-state { font-size: 12px; color: var(--ak-color-text-secondary); }
+.conflict-choices { display: flex; flex-wrap: wrap; gap: 4px; margin-left: auto; }
+.conflict-cols { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; padding: 8px; }
+.conflict-col { min-width: 0; }
+.conflict-col h4 { margin: 0 0 4px; font-size: 12px; font-weight: 600; color: var(--ak-color-text-secondary); }
+.conflict-col pre { margin: 0; padding: 6px; max-height: 40vh; overflow: auto; border-radius: var(--r-m, 6px); background: var(--ak-color-bg-canvas); border: 1px solid var(--ak-color-border-default); }
+.conflict-line { display: flex; align-items: flex-start; gap: 6px; padding: 0 4px; border-radius: 4px; cursor: pointer; }
+.conflict-line:hover { background: var(--ak-color-bg-overlay); }
+.conflict-line code { font-family: var(--mono, ui-monospace, monospace); font-size: 12px; white-space: pre-wrap; word-break: break-word; min-width: 0; }
+.conflict-output { display: flex; flex-direction: column; gap: 4px; min-height: 0; padding: 8px 14px 12px; border-top: 1px solid var(--ak-color-border-default); background: var(--ak-color-bg-surface); }
+.conflict-output-head { display: flex; align-items: baseline; gap: 10px; }
+.conflict-output-head h3 { margin: 0; font-size: 13px; }
+.conflict-output pre { flex: 1 1 auto; min-height: 0; margin: 0; padding: 8px; overflow: auto; border-radius: var(--r-m, 6px); background: var(--ak-color-bg-canvas); border: 1px solid var(--ak-color-border-default); }
+@media (max-width: 720px) {
+  .conflict-cols { grid-template-columns: 1fr; }
+  .conflict-body { grid-template-rows: minmax(0, 1fr) minmax(0, 30vh); }
+}
 .files li.dir button { display: flex; gap: 4px; align-items: center; color: var(--ak-color-text-secondary); }
 .files li button.tree-file .st { margin-left: auto; }
 .right .files-head { flex-wrap: wrap; row-gap: 4px; }
@@ -594,3 +628,37 @@ menu.ctx button:focus svg { color: currentColor; }
   .toolbar .lang-pick select { width: var(--ctl-h); padding: 0; background-image: none; }
   .lang-pick .lang-code { display: none; }
 }
+
+/* ---- Motion (UI-01): tokens from design-tokens §6. The reduced-motion rule near the top of this
+   file turns every animation and transition off; the Modal skips its close delay as well. ---- */
+:root { --ak-motion-fast: 90ms; --ak-motion-normal: 160ms; --ak-motion-ease: cubic-bezier(.2, 0, 0, 1); }
+@keyframes ak-fade { from { opacity: 0; } }
+@keyframes ak-rise { from { opacity: 0; transform: translateY(-4px); } }
+@keyframes ak-pop { from { opacity: 0; transform: scale(.98); } }
+.modal-back { animation: ak-fade var(--ak-motion-normal) var(--ak-motion-ease); }
+.modal-back.closing { animation: none; opacity: 0; transition: opacity var(--ak-motion-fast) var(--ak-motion-ease); }
+.modal { animation: ak-pop var(--ak-motion-normal) var(--ak-motion-ease); }
+menu.ctx { animation: ak-rise var(--ak-motion-fast) var(--ak-motion-ease); }
+/* Toast: opacity only, its centring uses a transform. */
+.toast { animation: ak-fade var(--ak-motion-normal) var(--ak-motion-ease); }
+
+/* ---- Base modal (components/Modal.tsx): sizes, fixed header and footer, scrolling body ---- */
+.modal.modal-base { display: flex; flex-direction: column; padding: 0; overflow: hidden; max-height: 80vh; }
+.modal.modal-sm { width: min(400px, 92vw); }
+.modal.modal-md { width: min(560px, 92vw); }
+.modal.modal-lg { width: min(820px, 95vw); }
+.modal.modal-full { width: 96vw; height: 92vh; max-height: 92vh; }
+.modal-head { display: flex; align-items: center; gap: 8px; padding: 12px 12px 0 16px; flex: none; }
+.modal-head h2 { flex: 1; min-width: 0; margin: 0; font-size: 15px; }
+.modal-x { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: var(--r-s); color: var(--ak-color-text-secondary); }
+.modal-x:hover { background: color-mix(in srgb, currentColor 12%, transparent); color: var(--ak-color-text-primary); }
+.modal-body { flex: 1 1 auto; min-height: 0; overflow: auto; padding: 12px 16px; }
+.modal-base .modal-foot { flex: none; margin: 0; padding: 12px 16px; border-top: 1px solid var(--ak-color-border-default); }
+.modal-base .modal-body > p:first-child { margin-top: 0; }
+
+/* ---- Menus: separators and destructive items (MOD-05) ---- */
+menu.ctx .menu-sep { height: 1px; margin: 4px 6px; padding: 0; background: var(--ak-color-border-default); }
+menu.ctx button.danger { color: var(--ak-color-status-deleted); }
+menu.ctx button.danger svg { color: currentColor; }
+.primary.danger { background: var(--ak-color-status-deleted); border-color: transparent; }
+.primary.danger:hover:not(:disabled) { background: var(--ak-color-status-deleted); filter: brightness(1.08); }

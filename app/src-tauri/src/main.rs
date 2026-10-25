@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! AtlasGit Tauri shell. The UI can only reach the commands below
+//! GitAtlas Tauri shell. The UI can only reach the commands below
 //! (SDD §4.1). All Git access stays in the core.
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -7,8 +7,11 @@
 mod askpass;
 mod avatar;
 mod diagnostics;
+mod prefs;
+mod session;
 mod settings;
 mod shared_stash;
+mod watch_slots;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -37,12 +40,13 @@ struct Repo {
     shas: Vec<String>,
     topo: Topology,
     layout: Layout,
-    _watcher: Option<SharedWatcher>,
 }
 
 #[derive(Default)]
 struct AppState {
     repos: Mutex<HashMap<u32, Arc<Repo>>>,
+    /// One file watcher per open repository, kept across refreshes (PERF-01).
+    watchers: Mutex<watch_slots::WatcherSlots<SharedWatcher>>,
     askpass: Arc<askpass::Pending>,
     /// Repositories whose "Shared stash" tab is open (reported by the UI).
     shared_tab_open: Mutex<HashSet<u32>>,
@@ -74,6 +78,11 @@ impl From<OpError> for UiError {
 }
 
 type Result<T> = std::result::Result<T, UiError>;
+
+/// Runs blocking git work off the async runtime (PERF-05): a slow read must not hold a runtime thread.
+async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
+    tauri::async_runtime::spawn_blocking(f).await.map_err(|e| UiError::new("READ_FAILED", e))?
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -136,13 +145,70 @@ fn start_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<SharedWatc
     w
 }
 
-fn is_ignored_dir(root: &Path, name: &str) -> bool {
+/// Directory key used by the watcher: path relative to the repository root, with a trailing `/`.
+fn dir_key(root: &Path, dir: &Path) -> String {
+    let rel = dir.strip_prefix(root).unwrap_or(dir);
+    format!("{}/", rel.to_string_lossy().replace('\\', "/"))
+}
+
+fn is_ignored_dir(root: &Path, key: &str) -> bool {
     std::process::Command::new("git")
         .current_dir(root)
-        .args(["check-ignore", "-q", "--", &format!("{name}/")])
+        .args(["check-ignore", "-q", "--", key])
         .status()
         .map(|s| s.success())
         .unwrap_or(false)
+}
+
+/// Ignored directories at any depth (`packages/a/node_modules/`), from one git call (PERF-07).
+fn ignored_dirs(root: &Path) -> HashSet<String> {
+    std::process::Command::new("git")
+        .current_dir(root)
+        .args(["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).split('\0').filter(|d| d.ends_with('/')).map(str::to_owned).collect())
+        .unwrap_or_default()
+}
+
+/// `dir` and the directories below it that git does not ignore (symlinks are not followed).
+fn collect_watch_dirs(root: &Path, dir: &Path, ignored: &HashSet<String>, out: &mut Vec<PathBuf>) {
+    out.push(dir.to_path_buf());
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for e in entries.flatten() {
+        let path = e.path();
+        if e.file_type().map(|t| t.is_dir()).unwrap_or(false) && !ignored.contains(&dir_key(root, &path)) {
+            collect_watch_dirs(root, &path, ignored, out);
+        }
+    }
+}
+
+/// Watches the directories from [`collect_watch_dirs`], one non-recursive watch each: ignored trees
+/// such as `packages/*/node_modules` cost no inotify watches.
+fn watch_tree(g: &mut notify::RecommendedWatcher, root: &Path, ignored: &HashSet<String>) -> Option<()> {
+    let mut dirs = Vec::new();
+    collect_watch_dirs(root, root, ignored, &mut dirs);
+    for d in &dirs {
+        g.watch(d, RecursiveMode::NonRecursive).ok()?;
+    }
+    Some(())
+}
+
+/// A directory created while watching: watched unless git ignores it, and so are the folders in it.
+fn adopt_new_dir(w: &SharedWatcher, root: &Path, dir: &Path) {
+    // `.git` is bookkeeping (see `relevant`): never adopted, so its churn does not refresh the view.
+    if dir.file_name().is_some_and(|n| n == ".git") || is_ignored_dir(root, &dir_key(root, dir)) {
+        return;
+    }
+    if diagnostics::lock(w).watch(dir, RecursiveMode::NonRecursive).is_err() {
+        return;
+    }
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for e in entries.flatten() {
+            if e.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                adopt_new_dir(w, root, &e.path());
+            }
+        }
+    }
 }
 
 fn setup_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<SharedWatcher> {
@@ -150,10 +216,10 @@ fn setup_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<SharedWatc
     let base = root.to_path_buf();
     let w = notify::recommended_watcher(move |ev: notify::Result<notify::Event>| {
         if let Ok(ev) = ev {
-            // A new top-level directory: the root is watched non-recursively, so add it later
+            // A new directory (at any depth, outside git's bookkeeping): watch it later
             // (not here: adding a watch from inside the event callback can deadlock the backend).
             if matches!(ev.kind, notify::EventKind::Create(_)) {
-                for p in ev.paths.iter().filter(|p| p.parent() == Some(base.as_path()) && p.is_dir()) {
+                for p in ev.paths.iter().filter(|p| relevant(p, &base) && p.is_dir()) {
                     let _ = tx.send(WatchMsg::NewDir(p.clone()));
                 }
             }
@@ -164,33 +230,19 @@ fn setup_watcher(app: AppHandle, repo_id: u32, root: &Path) -> Option<SharedWatc
     })
     .ok()?;
     let w = Arc::new(Mutex::new(w));
-    // Watch each top-level entry except ignored dirs (node_modules, target...): saves inotify watches.
-    let ignored: Vec<String> = std::process::Command::new("git")
-        .current_dir(root)
-        .args(["ls-files", "--others", "--ignored", "--exclude-standard", "--directory", "-z"])
-        .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).split('\0').map(|d| d.trim_end_matches('/').to_string()).collect())
-        .unwrap_or_default();
+    // Every directory git does not ignore, at any depth (node_modules and target trees are skipped).
+    let ignored = ignored_dirs(root);
     {
-        let mut g = crate::diagnostics::lock(&w);
-        g.watch(root, RecursiveMode::NonRecursive).ok()?;
-        for e in std::fs::read_dir(root).ok()?.flatten() {
-            let name = e.file_name().to_string_lossy().to_string();
-            if e.path().is_dir() && !ignored.contains(&name) {
-                g.watch(&e.path(), RecursiveMode::Recursive).ok()?;
-            }
-        }
+        let mut g = diagnostics::lock(&w);
+        watch_tree(&mut g, root, &ignored)?;
     }
     let weak = Arc::downgrade(&w);
     let root = root.to_path_buf();
     std::thread::spawn(move || {
         let handle = |m: WatchMsg| {
             if let WatchMsg::NewDir(p) = m {
-                let name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                if name != ".git" && !is_ignored_dir(&root, &name) {
-                    if let Some(w) = weak.upgrade() {
-                        let _ = crate::diagnostics::lock(&w).watch(&p, RecursiveMode::Recursive);
-                    }
+                if let Some(w) = weak.upgrade() {
+                    adopt_new_dir(&w, &root, &p);
                 }
             }
         };
@@ -279,7 +331,7 @@ fn load(path: &Path) -> Result<(Repo, OpenedRepo)> {
     let shas: Vec<String> = commits.iter().map(|c| c.sha.clone()).collect();
     drop(commits);
     trim_memory();
-    Ok((Repo { reader, engine, shas, topo, layout, _watcher: None }, opened))
+    Ok((Repo { reader, engine, shas, topo, layout }, opened))
 }
 
 #[tauri::command]
@@ -289,35 +341,114 @@ fn get_initial_path(state: State<'_, AppState>) -> Option<String> {
 
 #[tauri::command]
 async fn repo_open(path: String, app: AppHandle, state: State<'_, AppState>) -> Result<OpenedRepo> {
-    let (mut repo, opened) = load(&PathBuf::from(&path))?;
+    let (repo, opened) = blocking(move || load(&PathBuf::from(&path)))
+        .await
+        .inspect_err(|e| tracing::warn!(code = e.code, "falha ao abrir repositório"))?;
     let repo_id = {
-        let mut id = crate::diagnostics::lock(&state.next_id);
+        let mut id = diagnostics::lock(&state.next_id);
         *id += 1;
         *id
     };
-    repo._watcher = start_watcher(app, repo_id, repo.reader.root());
-    crate::diagnostics::lock(&state.repos).insert(repo_id, Arc::new(repo));
-    Ok(OpenedRepo { repo_id, ..opened })
+    let root = repo.reader.root().to_path_buf();
+    let watch_app = app.clone();
+    let watcher = blocking(move || Ok(start_watcher(watch_app, repo_id, &root))).await?;
+    diagnostics::lock(&state.watchers).ensure(repo_id, move || watcher);
+    diagnostics::lock(&state.repos).insert(repo_id, Arc::new(repo));
+    let opened = OpenedRepo { repo_id, ..opened };
+    // Recents are a convenience: a failure to save them never fails the open.
+    let _ = update_session(&app, |s| session::touch_recent(&mut s.recents, &opened.root, &opened.name, now_secs()));
+    Ok(opened)
+}
+
+/// Serializes read-modify-write of `session.json`.
+static SESSION_WRITE: Mutex<()> = Mutex::new(());
+
+fn session_path(app: &AppHandle) -> Option<PathBuf> {
+    app.path().app_config_dir().ok().map(|d| d.join("session.json"))
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0)
+}
+
+/// Loads `session.json`, applies `change` and writes it back.
+fn update_session(app: &AppHandle, change: impl FnOnce(&mut session::Session)) -> std::io::Result<()> {
+    let _g = SESSION_WRITE.lock().unwrap_or_else(|p| p.into_inner());
+    let path = session_path(app).ok_or_else(|| std::io::Error::other("no config directory"))?;
+    let mut s = session::read(&path);
+    change(&mut s);
+    session::write(&path, &s)
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct RecentView {
+    #[serde(flatten)]
+    recent: session::Recent,
+    /// Whether the folder is still there (a missing one is listed, but cannot be opened).
+    exists: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionView {
+    /// Tabs whose folder still exists, in order.
+    tabs: Vec<String>,
+    /// Index of the tab to show first, within `tabs`.
+    active: usize,
+    recents: Vec<RecentView>,
+}
+
+/// What the UI needs at startup and after changes: the tabs to reopen and the recent repositories.
+#[tauri::command]
+fn session_get(app: AppHandle) -> SessionView {
+    let s = session_path(&app).map(|p| session::read(&p)).unwrap_or_default();
+    let exists = |p: &str| Path::new(p).is_dir();
+    let (tabs, active) = session::restorable(&s, exists);
+    let recents = s.recents.into_iter().map(|recent| RecentView { exists: exists(recent.path.as_str()), recent }).collect();
+    SessionView { tabs, active, recents }
+}
+
+/// The open tabs (repository roots, in order) and the active index, after each change.
+#[tauri::command]
+fn session_save_tabs(tabs: Vec<String>, active: usize, app: AppHandle) -> Result<()> {
+    update_session(&app, |s| {
+        s.tabs = tabs;
+        s.active = active;
+    })
+    .map_err(|e| UiError::new("IO_ERROR", e))
+}
+
+#[tauri::command]
+fn recents_remove(path: String, app: AppHandle) -> Result<()> {
+    update_session(&app, |s| session::remove_recent(&mut s.recents, &path)).map_err(|e| UiError::new("IO_ERROR", e))
 }
 
 /// Re-reads history and refs after the repository changed (commit, undo, external edits).
+/// The file watcher is kept: the root does not change, so it is not started again (PERF-01).
 #[tauri::command]
 async fn repo_refresh(repo_id: u32, app: AppHandle, state: State<'_, AppState>) -> Result<OpenedRepo> {
     let root = get(&state, repo_id)?.reader.root().to_path_buf();
-    let (mut repo, opened) = load(&root)?;
-    repo._watcher = start_watcher(app, repo_id, &root);
-    crate::diagnostics::lock(&state.repos).insert(repo_id, Arc::new(repo));
+    let watch_root = root.clone();
+    let (repo, opened) = blocking(move || load(&root)).await?;
+    // Start the watcher only if this repository has none yet (the slot survives refreshes).
+    if !diagnostics::lock(&state.watchers).contains(repo_id) {
+        let watcher = blocking(move || Ok(start_watcher(app, repo_id, &watch_root))).await?;
+        diagnostics::lock(&state.watchers).ensure(repo_id, move || watcher);
+    }
+    diagnostics::lock(&state.repos).insert(repo_id, Arc::new(repo));
     Ok(OpenedRepo { repo_id, ..opened })
 }
 
 #[tauri::command]
 fn repo_close(repo_id: u32, state: State<'_, AppState>) {
-    crate::diagnostics::lock(&state.repos).remove(&repo_id);
-    crate::diagnostics::lock(&state.shared_tab_open).remove(&repo_id);
+    diagnostics::lock(&state.repos).remove(&repo_id);
+    diagnostics::lock(&state.watchers).remove(repo_id);
+    diagnostics::lock(&state.shared_tab_open).remove(&repo_id);
 }
 
 fn get(state: &AppState, repo_id: u32) -> Result<Arc<Repo>> {
-    crate::diagnostics::lock(&state.repos).get(&repo_id).cloned().ok_or_else(|| UiError::new("UNKNOWN_REPO", repo_id))
+    diagnostics::lock(&state.repos).get(&repo_id).cloned().ok_or_else(|| UiError::new("UNKNOWN_REPO", repo_id))
 }
 
 fn engine(r: &Repo) -> Result<&Engine> {
@@ -336,18 +467,24 @@ async fn graph_rows(repo_id: u32, start: u32, count: u32, state: State<'_, AppSt
     let r = get(&state, repo_id)?;
     let s = (start as usize).min(r.shas.len());
     let e = (s + count.min(2000) as usize).min(r.shas.len());
-    let wanted: Vec<&str> = r.shas[s..e].iter().map(String::as_str).collect();
-    r.reader.rows_text(&wanted).map_err(|e| UiError::new("READ_FAILED", e))
+    let wanted: Vec<String> = r.shas[s..e].to_vec();
+    blocking(move || {
+        let wanted: Vec<&str> = wanted.iter().map(String::as_str).collect();
+        r.reader.rows_text(&wanted).map_err(|e| UiError::new("READ_FAILED", e))
+    })
+    .await
 }
 
 #[tauri::command]
 async fn commit_details(repo_id: u32, sha: String, state: State<'_, AppState>) -> Result<CommitDetails> {
-    get(&state, repo_id)?.reader.commit_details(&sha).map_err(|e| UiError::new("READ_FAILED", e))
+    let r = get(&state, repo_id)?;
+    blocking(move || r.reader.commit_details(&sha).map_err(|e| UiError::new("READ_FAILED", e))).await
 }
 
 #[tauri::command]
 async fn diff_file(repo_id: u32, sha: String, path: String, state: State<'_, AppState>) -> Result<String> {
-    get(&state, repo_id)?.reader.file_diff(&sha, &path).map_err(|e| UiError::new("READ_FAILED", e))
+    let r = get(&state, repo_id)?;
+    blocking(move || r.reader.file_diff(&sha, &path).map_err(|e| UiError::new("READ_FAILED", e))).await
 }
 
 #[tauri::command]
@@ -358,18 +495,19 @@ async fn diff_worktree(
     untracked: bool,
     state: State<'_, AppState>,
 ) -> Result<String> {
-    get(&state, repo_id)?
-        .reader
-        .worktree_diff(&path, staged, untracked)
-        .map_err(|e| UiError::new("READ_FAILED", e))
+    let r = get(&state, repo_id)?;
+    blocking(move || r.reader.worktree_diff(&path, staged, untracked).map_err(|e| UiError::new("READ_FAILED", e))).await
 }
 
 #[tauri::command]
 async fn status_get(repo_id: u32, state: State<'_, AppState>) -> Result<StatusWithMerge> {
     let r = get(&state, repo_id)?;
-    let status = r.reader.status().map_err(|e| UiError::new("READ_FAILED", e))?;
-    let in_progress = engine(&r)?.in_progress();
-    Ok(StatusWithMerge { status, merging: in_progress.is_some(), in_progress })
+    blocking(move || {
+        let status = r.reader.status().map_err(|e| UiError::new("READ_FAILED", e))?;
+        let in_progress = engine(&r)?.in_progress();
+        Ok(StatusWithMerge { status, merging: in_progress.is_some(), in_progress })
+    })
+    .await
 }
 
 #[derive(Serialize)]
@@ -384,39 +522,67 @@ struct StatusWithMerge {
 #[tauri::command]
 async fn merge_preview(repo_id: u32, source: String, state: State<'_, AppState>) -> Result<MergePreview> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.merge_preview(&source)?)
+    blocking(move || Ok(engine(&r)?.merge_preview(&source)?)).await
 }
 
 #[tauri::command]
 async fn stash_list(repo_id: u32, state: State<'_, AppState>) -> Result<Vec<StashInfo>> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.stashes()?)
+    blocking(move || Ok(engine(&r)?.stashes()?)).await
 }
 
 #[tauri::command]
 async fn op_merge(repo_id: u32, source: String, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Merge { source })
+    run_op(&state, repo_id, Operation::Merge { source }).await
 }
 
 #[tauri::command]
 async fn op_merge_abort(repo_id: u32, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::MergeAbort)
+    run_op(&state, repo_id, Operation::MergeAbort).await
 }
 
 #[tauri::command]
 async fn conflict_versions(repo_id: u32, path: String, state: State<'_, AppState>) -> Result<ConflictVersions> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.conflict_versions(&path)?)
+    blocking(move || Ok(engine(&r)?.conflict_versions(&path)?)).await
 }
 
 #[tauri::command]
 async fn op_resolve_with(repo_id: u32, path: String, content: String, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::ResolveWith { path, content })
+    run_op(&state, repo_id, Operation::ResolveWith { path, content }).await
+}
+
+/// Opens a file of the repository in an external tool, without waiting for it to close.
+/// `ATLASGIT_EDITOR` (if set) is run with the file as its argument; otherwise the desktop
+/// default application is used (`xdg-open`). Terminal editors need `ATLASGIT_EDITOR` to be a
+/// wrapper that opens a terminal, since the app has no terminal of its own.
+#[tauri::command]
+async fn open_external(repo_id: u32, path: String, state: State<'_, AppState>) -> Result<()> {
+    let r = get(&state, repo_id)?;
+    let root = engine(&r)?.root().to_path_buf();
+    let rel = Path::new(&path);
+    if path.is_empty() || !rel.components().all(|c| matches!(c, std::path::Component::Normal(_))) {
+        return Err(UiError::new("INVALID_PATH", "That path is not inside the repository."));
+    }
+    let program = match std::env::var("ATLASGIT_EDITOR") {
+        Ok(cmd) if !cmd.trim().is_empty() => cmd,
+        _ => "xdg-open".to_owned(),
+    };
+    let mut child = std::process::Command::new(&program)
+        .arg(root.join(rel))
+        .current_dir(&root)
+        .spawn()
+        .map_err(|e| UiError::new("EXTERNAL_TOOL_FAILED", format!("Could not start {program}: {e}")))?;
+    // Reap the child in the background so it does not linger as a zombie.
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+    Ok(())
 }
 
 #[tauri::command]
 async fn op_resolve(repo_id: u32, path: String, theirs: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::ResolveConflict { path, theirs })
+    run_op(&state, repo_id, Operation::ResolveConflict { path, theirs }).await
 }
 
 #[tauri::command]
@@ -427,22 +593,22 @@ async fn op_stash(repo_id: u32, action: String, index: usize, message: Option<St
         "pop" => Operation::StashPop { index },
         _ => Operation::StashDrop { index },
     };
-    run_op(&state, repo_id, op)
+    run_op(&state, repo_id, op).await
 }
 
-fn run_op(state: &AppState, repo_id: u32, op: Operation) -> Result<OpOutcome> {
+async fn run_op(state: &AppState, repo_id: u32, op: Operation) -> Result<OpOutcome> {
     let r = get(state, repo_id)?;
-    Ok(engine(&r)?.run(&op)?)
+    blocking(move || Ok(engine(&r)?.run(&op)?)).await
 }
 
 #[tauri::command]
 async fn op_stage(repo_id: u32, paths: Vec<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Stage { paths })
+    run_op(&state, repo_id, Operation::Stage { paths }).await
 }
 
 #[tauri::command]
 async fn op_unstage(repo_id: u32, paths: Vec<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Unstage { paths })
+    run_op(&state, repo_id, Operation::Unstage { paths }).await
 }
 
 #[tauri::command]
@@ -453,37 +619,49 @@ async fn op_stage_hunk(
     unstage: bool,
     state: State<'_, AppState>,
 ) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::StageHunk { path, hunk, unstage })
+    run_op(&state, repo_id, Operation::StageHunk { path, hunk, unstage }).await
 }
 
 #[tauri::command]
 async fn op_discard(repo_id: u32, paths: Vec<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Discard { paths })
+    run_op(&state, repo_id, Operation::Discard { paths }).await
 }
 
 #[tauri::command]
 async fn op_commit(repo_id: u32, message: String, amend: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Commit { message, amend })
+    run_op(&state, repo_id, Operation::Commit { message, amend }).await
 }
 
 #[tauri::command]
 async fn op_branch_create(repo_id: u32, name: String, at: Option<String>, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::BranchCreate { name, at })
+    run_op(&state, repo_id, Operation::BranchCreate { name, at }).await
+}
+
+#[tauri::command]
+async fn op_branch_create_from(repo_id: u32, name: String, base: Option<String>, checkout: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
+    run_op(&state, repo_id, Operation::BranchCreateFrom { name, base, checkout }).await
+}
+
+/// Name and base of a branch the "New branch" dialog is about to create (pure; no repository needed).
+#[tauri::command]
+fn branch_plan(kind: String, template: String, ticket: String, title: String, main: String, develop: String) -> Result<ak_core::ops::flow::BranchPlan> {
+    let kind = ak_core::ops::flow::BranchKind::parse(&kind).ok_or_else(|| UiError::new("INVALID_ARGUMENT", "Unknown branch type."))?;
+    Ok(ak_core::ops::flow::plan(kind, &template, &ticket, &title, &main, &develop))
 }
 
 #[tauri::command]
 async fn op_branch_rename(repo_id: u32, old: String, new: String, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::BranchRename { old, new })
+    run_op(&state, repo_id, Operation::BranchRename { old, new }).await
 }
 
 #[tauri::command]
 async fn op_branch_delete(repo_id: u32, name: String, force: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::BranchDelete { name, force })
+    run_op(&state, repo_id, Operation::BranchDelete { name, force }).await
 }
 
 #[tauri::command]
 async fn op_checkout(repo_id: u32, target: String, is_branch: bool, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Checkout { target, is_branch })
+    run_op(&state, repo_id, Operation::Checkout { target, is_branch }).await
 }
 
 /// Fetch, pull or push. Runs off the async runtime (it can wait on the network and on the user
@@ -531,47 +709,47 @@ async fn op_history(repo_id: u32, action: String, sha: String, mode: Option<Stri
         "tag-delete" => Operation::TagDelete { name: name.unwrap_or_default() },
         _ => return Err(UiError::new("GIT_FAILED", "unknown history action")),
     };
-    run_op(&state, repo_id, op)
+    run_op(&state, repo_id, op).await
 }
 
 #[tauri::command]
 async fn rebase_todo(repo_id: u32, onto: String, state: State<'_, AppState>) -> Result<Vec<TodoItem>> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.rebase_todo(&onto)?)
+    blocking(move || Ok(engine(&r)?.rebase_todo(&onto)?)).await
 }
 
 #[tauri::command]
 async fn op_rebase(repo_id: u32, onto: String, todo: Option<Vec<TodoItem>>, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::Rebase { onto, todo })
+    run_op(&state, repo_id, Operation::Rebase { onto, todo }).await
 }
 
 #[tauri::command]
 async fn op_rebase_continue(repo_id: u32, state: State<'_, AppState>) -> Result<OpOutcome> {
-    run_op(&state, repo_id, Operation::RebaseContinue)
+    run_op(&state, repo_id, Operation::RebaseContinue).await
 }
 
 #[tauri::command]
 async fn op_undo(repo_id: u32, id: String, state: State<'_, AppState>) -> Result<OpOutcome> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.undo(&id)?)
+    blocking(move || Ok(engine(&r)?.undo(&id)?)).await
 }
 
 #[tauri::command]
 async fn op_redo(repo_id: u32, state: State<'_, AppState>) -> Result<OpOutcome> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.redo_last()?)
+    blocking(move || Ok(engine(&r)?.redo_last()?)).await
 }
 
 #[tauri::command]
 async fn journal_list(repo_id: u32, state: State<'_, AppState>) -> Result<Vec<JournalEntry>> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.journal())
+    blocking(move || Ok(engine(&r)?.journal())).await
 }
 
 #[tauri::command]
 async fn journal_prune(repo_id: u32, keep: usize, state: State<'_, AppState>) -> Result<usize> {
     let r = get(&state, repo_id)?;
-    Ok(engine(&r)?.prune_journal(keep)?)
+    blocking(move || Ok(engine(&r)?.prune_journal(keep)?)).await
 }
 
 /// Author photo as raw image bytes; empty when the author has none or no provider is reachable.
@@ -595,34 +773,25 @@ async fn avatar_get(app: AppHandle, state: State<'_, AppState>, repo_id: u32, em
     Ok(Response::new(bytes))
 }
 
-#[tauri::command]
-fn diagnostics_status(d: State<'_, Arc<diagnostics::Diagnostics>>) -> diagnostics::DiagnosticsStatus {
-    d.status()
-}
-
-#[tauri::command]
-fn diagnostics_dismiss(d: State<'_, Arc<diagnostics::Diagnostics>>) {
-    d.dismiss_crash();
-}
-
 fn main() {
     // Started by Git/ssh as the askpass program: forward the prompt to the running app and exit.
     if let Ok(sock) = std::env::var(askpass::SOCK_ENV) {
         std::process::exit(askpass::client(&sock));
     }
     // Keeps the log writer alive and installs the panic hook; finish() marks a clean exit.
-    let diag = Arc::new(diagnostics::init());
-    let on_exit = diag.clone();
     let initial_path = std::env::args_os().nth(1).map(PathBuf::from);
+    let diag = diagnostics::init();
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(AppState { initial_path, ..Default::default() })
         .manage(diag)
         .invoke_handler(tauri::generate_handler![
             get_initial_path,
             avatar_get,
             diagnostics_status,
-            diagnostics_dismiss,
+            diagnostics_dismiss_crash,
+            diagnostics_open_log_dir,
             repo_open,
             repo_refresh,
             repo_close,
@@ -638,6 +807,8 @@ fn main() {
             op_discard,
             op_commit,
             op_branch_create,
+            op_branch_create_from,
+            branch_plan,
             op_branch_rename,
             op_branch_delete,
             op_checkout,
@@ -647,6 +818,7 @@ fn main() {
             op_merge_abort,
             op_resolve,
             conflict_versions,
+            open_external,
             op_resolve_with,
             op_stash,
             op_history,
@@ -672,13 +844,61 @@ fn main() {
             shared_stash::shared_stash_tab_open,
             shared_stash::shared_stash_cancel,
             shared_stash::shared_stash_settings_get,
-            shared_stash::shared_stash_settings_set
+            shared_stash::shared_stash_settings_set,
+            prefs::prefs_get,
+            prefs::prefs_set,
+            session_get,
+            session_save_tabs,
+            recents_remove
         ])
         .build(tauri::generate_context!())
         .expect("error while building GitAtlas")
-        .run(move |_, event| {
+        .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
-                on_exit.finish();
+                app.state::<diagnostics::Diagnostics>().finish();
             }
         });
+}
+
+#[tauri::command]
+fn diagnostics_status(diag: State<'_, diagnostics::Diagnostics>) -> diagnostics::DiagnosticsStatus {
+    diag.status()
+}
+
+#[tauri::command]
+fn diagnostics_dismiss_crash(diag: State<'_, diagnostics::Diagnostics>) {
+    diag.dismiss_crash();
+}
+
+#[tauri::command]
+fn diagnostics_open_log_dir(app: AppHandle, diag: State<'_, diagnostics::Diagnostics>) -> Result<()> {
+    use tauri_plugin_opener::OpenerExt;
+    let dir = diag.status().log_dir;
+    app.opener().open_path(dir, None::<&str>).map_err(|e| UiError::new("OPEN_FAILED", e))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn ignored_trees_at_any_depth_are_not_watched() {
+        let root = std::env::temp_dir().join(format!("atlas-watch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("packages/a/node_modules/x")).unwrap();
+        std::fs::create_dir_all(root.join("packages/a/src")).unwrap();
+        std::fs::create_dir_all(root.join("docs")).unwrap();
+        std::fs::write(root.join(".gitignore"), "node_modules/\n").unwrap();
+        let init = std::process::Command::new("git").arg("-C").arg(&root).args(["init", "-q"]).status().unwrap();
+        assert!(init.success());
+        let ignored = ignored_dirs(&root);
+        assert!(ignored.contains("packages/a/node_modules/"), "{ignored:?}");
+        let mut dirs = Vec::new();
+        collect_watch_dirs(&root, &root, &ignored, &mut dirs);
+        let keys: Vec<String> = dirs.iter().map(|d| dir_key(&root, d)).collect();
+        assert!(keys.contains(&"packages/a/src/".to_owned()), "{keys:?}");
+        assert!(keys.contains(&"docs/".to_owned()), "{keys:?}");
+        assert!(!keys.iter().any(|k| k.contains("node_modules")), "{keys:?}");
+        let _ = std::fs::remove_dir_all(&root);
+    }
 }

@@ -140,7 +140,9 @@ impl RepoReader for CliReader {
     fn status(&self) -> Result<StatusReport, ReadError> {
         Ok(parse::parse_status_v2(&self.git.run(
             &self.root,
-            ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=all"],
+            // `normal`: a new folder is one entry (`dir/`). Its files are listed when acted on
+            // (see `untracked_under`), so the status stays cheap in big untracked trees (PERF-06).
+            ["status", "--porcelain=v2", "-z", "--branch", "--untracked-files=normal"],
         )?)?)
     }
 
@@ -209,14 +211,15 @@ impl CliReader {
     /// staged (index against HEAD). Untracked files are shown as all-added.
     pub fn worktree_diff(&self, path: &str, staged: bool, untracked: bool) -> Result<String, ReadError> {
         let spec = format!(":(literal){path}");
-        let out = if untracked {
-            // `--no-index` exits with 1 when the files differ, which is the normal case.
-            let o = self
-                .git
-                .command(&self.root, ["diff", "--no-index", "--no-color", "--no-ext-diff", "--", "/dev/null", path])?
-                .output()
-                .map_err(GitError::from)?;
-            o.stdout
+        let out = if untracked && path.ends_with('/') {
+            // A new folder: every file in it, all shown as added.
+            let mut all = Vec::new();
+            for file in untracked_under(&self.git, &self.root, path)? {
+                all.extend(self.no_index_diff(&file)?);
+            }
+            all
+        } else if untracked {
+            self.no_index_diff(path)?
         } else if staged {
             self.git.run(&self.root, ["diff", "--cached", "--no-color", "--no-ext-diff", "--", spec.as_str()])?
         } else {
@@ -224,5 +227,28 @@ impl CliReader {
         };
         Ok(String::from_utf8_lossy(&out).into_owned())
     }
+
+    /// Diff of one untracked file against nothing. `--no-index` exits with 1 when the
+    /// files differ, which is the normal case, so the exit status is not checked.
+    fn no_index_diff(&self, file: &str) -> Result<Vec<u8>, ReadError> {
+        let o = self
+            .git
+            .command(&self.root, ["diff", "--no-index", "--no-color", "--no-ext-diff", "--", "/dev/null", file])?
+            .output()
+            .map_err(GitError::from)?;
+        Ok(o.stdout)
+    }
+}
+
+/// Untracked, non-ignored files under a status directory entry (`dir/`), relative to the root.
+/// Listed only when the user acts on that folder, not on every status refresh.
+pub fn untracked_under(git: &Git, root: &Path, dir: &str) -> Result<Vec<String>, GitError> {
+    let spec = format!(":(literal){dir}");
+    let out = git.run(root, ["ls-files", "--others", "--exclude-standard", "-z", "--", spec.as_str()])?;
+    Ok(out
+        .split(|b| *b == 0)
+        .filter(|s| !s.is_empty())
+        .map(|s| String::from_utf8_lossy(s).into_owned())
+        .collect())
 }
 

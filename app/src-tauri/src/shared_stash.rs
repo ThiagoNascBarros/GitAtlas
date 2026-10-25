@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use ak_core::ops::lock::{self, Lock};
 use ak_core::ops::{Engine, KeptSharedStash, OpOutcome, Operation, RemoteStatus, SharedStashInfo, SharedStashOutcome};
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, State};
 
 use crate::settings::{self, FetchMode};
 use crate::{askpass, engine, get, AppState, Result, UiError};
@@ -17,11 +17,11 @@ use crate::{askpass, engine, get, AppState, Result, UiError};
 const CHANGED_EVENT: &str = "shared-stash-changed";
 
 fn global_settings_path(app: &AppHandle) -> Option<PathBuf> {
-    app.path().app_config_dir().ok().map(|d| d.join("settings.json"))
+    crate::prefs::global_path(app)
 }
 
 fn repo_settings_path(e: &Engine) -> PathBuf {
-    e.git_dir().join("atlasgit").join("settings.json")
+    crate::prefs::repo_path(e.git_dir())
 }
 
 fn modes(app: &AppHandle, e: &Engine) -> (Option<FetchMode>, Option<FetchMode>) {
@@ -233,6 +233,7 @@ pub async fn shared_stash_settings_set(
         detail: None,
         suggestion: Some("Wait for it to finish and try again.".into()),
     })?;
+    let _global = crate::prefs::lock_global();
     let mut value = settings::read(&path);
     settings::set_fetch_mode(&mut value, mode);
     settings::write(&path, &value).map_err(|err| UiError::new("IO_ERROR", err))?;

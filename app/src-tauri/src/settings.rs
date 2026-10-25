@@ -89,6 +89,176 @@ pub fn write(path: &Path, settings: &Value) -> std::io::Result<()> {
     std::fs::rename(&tmp, path)
 }
 
+/// UI preferences (`theme`, `zoom`, `language`, `animations`). A scope (the global file or a
+/// repository file) holds only the keys it sets. The effective value of a key is the repository's,
+/// else the global one, else the default (`resolve_prefs`).
+///
+/// Reserved for other features: the UI does not read these yet, they are never validated here, and
+/// every write keeps them as they are. Shapes for the agent that implements them:
+/// - `gitFlow`: `{ "enabled": bool, "mainBranch": str, "developBranch": str,
+///   "prefixes": { "feature": str, "release": str, "fix": str, "hotfix": str } }`
+/// - `branchNaming`: `{ "template": str, "slug": { "lowercase": bool, "separator": str } }`
+pub const PREF_KEYS: [&str; 4] = ["theme", "zoom", "language", "animations"];
+
+/// Zoom bounds (80 % to 150 %, the range the layout supports).
+pub const ZOOM_MIN: f64 = 0.8;
+pub const ZOOM_MAX: f64 = 1.5;
+
+/// Checks one preference value and returns it as it is stored.
+pub fn validate_pref(key: &str, value: &Value) -> Result<Value, String> {
+    let allowed: &[&str] = match key {
+        "theme" => &["system", "atlas-dark", "atlas-light"],
+        "language" => &["system", "en", "pt-BR"],
+        "animations" => &["on", "reduced"],
+        "zoom" => {
+            return value
+                .as_f64()
+                .filter(|z| (ZOOM_MIN..=ZOOM_MAX).contains(z))
+                .map(|z| json!(z))
+                .ok_or_else(|| format!("zoom must be a number from {ZOOM_MIN} to {ZOOM_MAX}"));
+        }
+        _ => return Err(format!("unknown setting: {key}")),
+    };
+    match value.as_str() {
+        Some(s) if allowed.contains(&s) => Ok(value.clone()),
+        _ => Err(format!("{key} must be one of: {}", allowed.join(", "))),
+    }
+}
+
+/// Default for a preference key when no scope sets it.
+fn default_pref(key: &str) -> Value {
+    match key {
+        "theme" | "language" => json!("system"),
+        "zoom" => json!(1.0),
+        _ => json!("on"),
+    }
+}
+
+/// The preferences one scope sets. Invalid values read as unset.
+pub fn scope_prefs(settings: &Value) -> Map<String, Value> {
+    PREF_KEYS.iter().filter_map(|k| validate_pref(k, settings.get(*k)?).ok().map(|v| ((*k).to_string(), v))).collect()
+}
+
+/// Effective preferences: the repository's value, else the global one, else the default.
+pub fn resolve_prefs(repo: &Map<String, Value>, global: &Map<String, Value>) -> Value {
+    let pick = |k: &str| repo.get(k).or_else(|| global.get(k)).cloned().unwrap_or_else(|| default_pref(k));
+    Value::Object(PREF_KEYS.iter().map(|k| ((*k).to_string(), pick(k))).collect())
+}
+
+/// Applies a patch to one scope. A `null` removes that key. Every entry is checked first, so a
+/// bad entry changes nothing. Keys outside `PREF_KEYS` are refused here (reserved sections are not
+/// reachable through this path).
+pub fn apply_prefs_patch(settings: &mut Value, patch: &Map<String, Value>) -> Result<(), String> {
+    let mut edits = Vec::with_capacity(patch.len());
+    for (key, value) in patch {
+        if !PREF_KEYS.contains(&key.as_str()) {
+            return Err(format!("unknown setting: {key}"));
+        }
+        let stored = if value.is_null() { None } else { Some(validate_pref(key, value)?) };
+        edits.push((key.as_str(), stored));
+    }
+    if !settings.is_object() {
+        *settings = json!({});
+    }
+    if let Some(root) = settings.as_object_mut() {
+        for (key, stored) in edits {
+            match stored {
+                Some(v) => {
+                    root.insert(key.to_string(), v);
+                }
+                None => {
+                    root.remove(key);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod prefs_tests {
+    use super::*;
+
+    #[test]
+    fn validates_each_key() {
+        assert_eq!(validate_pref("theme", &json!("atlas-light")).unwrap(), json!("atlas-light"));
+        assert!(validate_pref("theme", &json!("neon")).is_err());
+        assert_eq!(validate_pref("language", &json!("pt-BR")).unwrap(), json!("pt-BR"));
+        assert!(validate_pref("language", &json!("pt")).is_err());
+        assert_eq!(validate_pref("animations", &json!("reduced")).unwrap(), json!("reduced"));
+        assert!(validate_pref("animations", &json!(true)).is_err());
+        assert!(validate_pref("nope", &json!("x")).is_err());
+    }
+
+    #[test]
+    fn zoom_is_a_number_within_the_prd_bounds() {
+        assert_eq!(validate_pref("zoom", &json!(1.25)).unwrap(), json!(1.25));
+        assert_eq!(validate_pref("zoom", &json!(0.8)).unwrap(), json!(0.8));
+        assert_eq!(validate_pref("zoom", &json!(1)).unwrap(), json!(1.0));
+        assert!(validate_pref("zoom", &json!(0.79)).is_err());
+        assert!(validate_pref("zoom", &json!(1.51)).is_err());
+        assert!(validate_pref("zoom", &json!("1.0")).is_err());
+    }
+
+    #[test]
+    fn repository_beats_global_beats_default() {
+        let repo = scope_prefs(&json!({ "theme": "atlas-light" }));
+        let global = scope_prefs(&json!({ "theme": "atlas-dark", "zoom": 1.5 }));
+        assert_eq!(resolve_prefs(&repo, &global), json!({ "theme": "atlas-light", "zoom": 1.5, "language": "system", "animations": "on" }));
+        assert_eq!(
+            resolve_prefs(&Map::new(), &Map::new()),
+            json!({ "theme": "system", "zoom": 1.0, "language": "system", "animations": "on" })
+        );
+    }
+
+    #[test]
+    fn invalid_stored_values_read_as_unset() {
+        let scope = scope_prefs(&json!({ "theme": "neon", "zoom": 9, "language": "en", "other": 1 }));
+        assert_eq!(scope, json!({ "language": "en" }).as_object().unwrap().clone());
+    }
+
+    #[test]
+    fn patch_sets_and_null_removes_keeping_other_keys() {
+        let mut v = json!({ "sharedStash": { "fetchMode": "always" }, "theme": "atlas-dark" });
+        let patch = json!({ "zoom": 1.25, "theme": null });
+        apply_prefs_patch(&mut v, patch.as_object().unwrap()).unwrap();
+        assert_eq!(v, json!({ "sharedStash": { "fetchMode": "always" }, "zoom": 1.25 }));
+    }
+
+    #[test]
+    fn a_bad_entry_changes_nothing() {
+        let mut v = json!({ "theme": "atlas-dark" });
+        let before = v.clone();
+        let patch = json!({ "zoom": 1.5, "theme": "neon" });
+        assert!(apply_prefs_patch(&mut v, patch.as_object().unwrap()).is_err());
+        assert_eq!(v, before);
+        let patch = json!({ "gitFlow": { "enabled": true } });
+        assert!(apply_prefs_patch(&mut v, patch.as_object().unwrap()).is_err());
+        assert_eq!(v, before);
+    }
+
+    #[test]
+    fn reserved_sections_survive_every_write() {
+        let reserved = json!({
+            "gitFlow": { "enabled": true, "mainBranch": "main", "developBranch": "develop",
+                         "prefixes": { "feature": "feature/", "release": "release/", "fix": "fix/", "hotfix": "hotfix/" } },
+            "branchNaming": { "template": "{prefix}{title}", "slug": { "lowercase": true, "separator": "-" } }
+        });
+        let mut v = reserved.clone();
+        apply_prefs_patch(&mut v, json!({ "animations": "reduced" }).as_object().unwrap()).unwrap();
+        apply_prefs_patch(&mut v, json!({ "animations": null }).as_object().unwrap()).unwrap();
+        assert_eq!(v["gitFlow"], reserved["gitFlow"]);
+        assert_eq!(v["branchNaming"], reserved["branchNaming"]);
+    }
+
+    #[test]
+    fn non_object_roots_are_replaced_by_a_patch() {
+        let mut v = json!([1, 2]);
+        apply_prefs_patch(&mut v, json!({ "language": "pt-BR" }).as_object().unwrap()).unwrap();
+        assert_eq!(v, json!({ "language": "pt-BR" }));
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
