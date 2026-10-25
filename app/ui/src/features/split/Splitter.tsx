@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 // Draggable seam between two panes. Keyboard: arrows move 16 px, Home/End jump to the limits.
 import { createSignal } from "solid-js";
-import { readSize } from "./size";
+import { readSize, visualScale } from "./size";
 
 export const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
@@ -33,8 +33,10 @@ export function Splitter(props: Props) {
   function start(e: PointerEvent) {
     e.preventDefault();
     const p0 = props.axis === "x" ? e.clientX : e.clientY, v0 = props.value;
+    // Pointer deltas are on-screen px; the sizes are css px under the global UI zoom.
+    const k = visualScale((e.currentTarget as HTMLElement).parentElement);
     document.body.classList.add(`resizing-${props.axis}`);
-    const move = (ev: PointerEvent) => set(v0 + dir() * ((props.axis === "x" ? ev.clientX : ev.clientY) - p0));
+    const move = (ev: PointerEvent) => set(v0 + dir() * ((props.axis === "x" ? ev.clientX : ev.clientY) - p0) / k);
     const up = () => {
       document.body.classList.remove(`resizing-${props.axis}`);
       props.onCommit();
