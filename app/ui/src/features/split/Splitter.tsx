@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
 // Draggable seam between two panes. Keyboard: arrows move 16 px, Home/End jump to the limits.
 import { createSignal } from "solid-js";
+import { readSize } from "./size";
 
 export const clamp = (v: number, min: number, max: number) => Math.min(max, Math.max(min, v));
 
 /** A pane size in px, remembered per key in localStorage (a per-viewer convenience; falls back to `initial`). */
-export function storedSize(key: string, initial: number) {
-  let saved = NaN;
-  try { saved = Number(localStorage.getItem(`ak.split.${key}`)); } catch { /* storage unavailable */ }
-  const [size, setSize] = createSignal(saved > 0 ? saved : initial);
+export function storedSize(key: string, initial: number, min = 0, max = Infinity) {
+  let saved: string | null = null;
+  try { saved = localStorage.getItem(`ak.split.${key}`); } catch { /* storage unavailable */ }
+  const [size, setSize] = createSignal(readSize(saved, initial, min, max));
   const save = () => { try { localStorage.setItem(`ak.split.${key}`, String(size())); } catch { /* ignore */ } };
   return [size, setSize, save] as const;
 }
