@@ -15,7 +15,7 @@ import { perfEnabled, perfStats, recordDraw } from "./perf";
 import { columns, ColumnWidths, loadWidths, saveWidths, clampWidth, resolveWidths } from "./columns";
 import { menuAnchor, rowId, rowText, visibleRange, wipText } from "./a11y";
 import { isMenuKey } from "../overlay";
-import { LANE_W, ROW_H, crisp, edgeCurve, laneX as laneXAt, rowY } from "./geometry";
+import { LANE_W, ROW_H, canvasFont, crisp, edgeCurve, laneX as laneXAt, rowY } from "./geometry";
 
 /** Rows mirrored in the DOM above and below the viewport (spec accessibility §4.2: ≤ 20). */
 const OVERSCAN = 10;
@@ -137,7 +137,7 @@ export function GraphView(props: {
     const gx = widths().refs - 8;
     const laneX = (l: number) => crisp(laneXAt(gx, l), 2, dpr);
     const refs = refsByRow();
-    ctx.font = "13px Inter, Cantarell, system-ui, sans-serif";
+    ctx.font = canvasFont(13);
     ctx.textBaseline = "middle";
 
     for (let i = first; i <= last; i++) {
@@ -248,7 +248,7 @@ export function GraphView(props: {
       // Muted text is below 4.5:1 on the selection colour of Atlas Dark (3.86): use secondary there.
       ctx.fillStyle = token(i === props.selected ? "color.text.secondary" : "color.text.muted");
       ctx.fillText(r.m.sha.slice(0, 7), col.shaX, cy);
-      ctx.font = "13px Inter, Cantarell, system-ui, sans-serif";
+      ctx.font = canvasFont(13);
     }
     if (props.wip) drawWip(ctx, w, top, laneX);
     recordDraw(drawStart, painted);
@@ -316,12 +316,12 @@ export function GraphView(props: {
       ctx.restore();
       x += 20;
     }
-    ctx.font = "600 13px Inter, Cantarell, system-ui, sans-serif";
+    ctx.font = canvasFont(13, 600);
     ctx.fillStyle = token("color.text.primary");
     const label = t("wip.row");
     ctx.fillText(label, x, cy);
     x += ctx.measureText(label).width + 10;
-    ctx.font = "600 11.5px Inter, Cantarell, system-ui, sans-serif";
+    ctx.font = canvasFont(11.5, 600);
     const pills: [number, string, string][] = [
       [wip.conflicted, t("wip.chipConflicts", { n: wip.conflicted }), token("color.status.deleted")],
       [wip.unstaged, t("wip.chipUnstaged", { n: wip.unstaged }), token("color.status.modified")],
@@ -341,7 +341,7 @@ export function GraphView(props: {
       ctx.fillText(text, x + 7, cy + 0.5);
       x += pw + 6;
     }
-    ctx.font = "13px Inter, Cantarell, system-ui, sans-serif";
+    ctx.font = canvasFont(13);
   }
 
 
@@ -404,6 +404,10 @@ export function GraphView(props: {
     const ro = new ResizeObserver(() => setSize({ w: scroller.clientWidth, h: scroller.clientHeight }));
     ro.observe(scroller);
     onCleanup(() => ro.disconnect());
+    // Canvas text does not trigger @font-face loading: load the faces, then repaint once.
+    void Promise.all([document.fonts?.load(canvasFont(13)), document.fonts?.load(canvasFont(13, 600))])
+      .then(() => setSize({ w: scroller.clientWidth, h: scroller.clientHeight }))
+      .catch(() => {});
     // On open, or when the reload removed the focused old graph; never steal focus from a control
     // that is still there (a sidebar or WIP button the operation started from, spec A-6).
     const a = document.activeElement;

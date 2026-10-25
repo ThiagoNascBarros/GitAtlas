@@ -42,3 +42,7 @@ export function contrast(a: string, b: string): number {
   const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
   return (hi + 0.05) / (lo + 0.05);
 }
+
+/** Canvas font shorthand; same family as the DOM UI (--font-ui) so the graph matches the panels. */
+export const canvasFont = (px: number, weight = 400) =>
+  `${weight === 400 ? "" : weight + " "}${px}px "Open Sans", "Ubuntu Sans", Cantarell, system-ui, sans-serif`;

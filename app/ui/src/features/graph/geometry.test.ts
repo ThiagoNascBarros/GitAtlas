@@ -48,3 +48,11 @@ describe("crisp", () => {
     expect(crisp(10, 1.5, 2)).toBe(10.25);
   });
 });
+
+import { canvasFont } from "./geometry";
+describe("canvasFont", () => {
+  it("builds a canvas font string led by Open Sans", () => {
+    expect(canvasFont(13)).toMatch(/^13px "Open Sans", /);
+    expect(canvasFont(11.5, 600)).toMatch(/^600 11.5px "Open Sans", /);
+  });
+});
