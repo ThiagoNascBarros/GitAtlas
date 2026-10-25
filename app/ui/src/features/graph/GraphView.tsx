@@ -5,6 +5,7 @@
 import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { api, FLAG_MERGE, GraphRow, OpenedRepo, RefInfo, RowMeta, SEG_IN, SEG_OUT, SEG_PASS, SharedStashInfo } from "../../api";
 import { activeTheme, laneColor, token } from "../../theme/theme";
+import { refLabelColors } from "./refLabel";
 import { activeLocale, t } from "../../i18n";
 
 const CHUNK = 200;
@@ -222,9 +223,12 @@ export function GraphView(props: {
         const label = refLabel(ref);
         const tw = Math.min(ctx.measureText(label).width + 12, widths().refs - rx - 8);
         if (tw < 24) break;
-        ctx.fillStyle = ref.isHead ? token("color.accent.default") : ref.kind === "stash" ? token("color.accent.muted") : token("color.bg.raised");
+        const lab = ref.kind === "stash"
+          ? { bg: token("color.accent.muted"), fg: token("color.text.primary") }
+          : refLabelColors(laneColor(r.g.color), ref.isHead, { canvas: token("color.bg.canvas"), light: token("color.text.primary"), dark: token("color.text.onAccent") });
+        ctx.fillStyle = lab.bg;
         ctx.fillRect(rx, y + 4, tw, ROW_H - 8);
-        ctx.fillStyle = ref.isHead ? token("color.text.onAccent") : token("color.text.primary");
+        ctx.fillStyle = lab.fg;
         ctx.save();
         ctx.beginPath();
         ctx.rect(rx, y, tw - 4, ROW_H);

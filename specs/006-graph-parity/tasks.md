@@ -8,6 +8,8 @@
 - [X] T003 [US1] RED/GREEN: both themes' `color.lane.0..9` equal the reference palette (theme test)
 - [X] T004 [US1] RED/GREEN: ref label background mix helper
 
+- [X] T004b [US1] Ref labels use refLabelColors (lane mix + AA text), contrast() helper
+
 ## Phase 2: Rendering
 - [X] T005 [US2] Edge curve control-point helper with tests
 - [X] T006 [US2] Half-pixel stroke alignment for scale 1 and 2
